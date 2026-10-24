@@ -11,6 +11,16 @@ export interface UsuarioSessao { uid: string; email: string; name: string; role:
 const GABINETES_PRINCIPAIS = ["", "gabinete_default", "default", "gab_rafael_machado", "rafael_machado", "montes_claros", "fazenda_nova", "principal", "gabinete_principal"];
 export const tenantCanonico = (t: string) => (GABINETES_PRINCIPAIS.includes((t || "").toLowerCase().trim()) ? "gabinete_default" : String(t).trim());
 const erro = (status: number, msg: string) => Object.assign(new Error(msg), { status });
+/** Texto de erro para a tela: erros do sistema aparecem como são; falhas do banco viram uma dica de configuração (sem expor senha nem detalhes internos). */
+export const mensagemDeErro = (e: any): string => {
+  if (e?.status) return String(e.message).slice(0, 300);
+  const m = String(e?.message || ""), c = String(e?.code || "");
+  if (m.startsWith("Banco MySQL não configurado")) return "Banco MySQL não configurado: defina MYSQL_USER, MYSQL_PASSWORD e MYSQL_DATABASE nas variáveis de ambiente e reimplante.";
+  if (c === "ER_ACCESS_DENIED_ERROR") return "O MySQL recusou o usuário ou a senha. Confira MYSQL_USER e MYSQL_PASSWORD.";
+  if (c === "ER_BAD_DB_ERROR") return "O banco informado não existe. Confira MYSQL_DATABASE.";
+  if (["ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT", "EAI_AGAIN"].includes(c)) return "Não consegui conectar ao MySQL. Confira MYSQL_HOST (use localhost) e MYSQL_PORT (3306).";
+  return "erro interno (veja os logs de execução do servidor)";
+};
 
 // ---------- esquema ----------
 let usuariosPronto: Promise<void> | null = null;
@@ -68,7 +78,7 @@ export async function autenticarSessao(req: express.Request): Promise<UsuarioSes
 
 const rota = (f: (req: express.Request, res: express.Response) => Promise<any>): express.RequestHandler => async (req, res) => {
   try { await garantirUsuarios(); await f(req, res); }
-  catch (e: any) { const s = e?.status || 500; if (s >= 500) console.error("[auth]", e?.message || e); res.status(s).json({ erro: s >= 500 && !e?.status ? "erro interno" : String(e.message).slice(0, 300) }); }
+  catch (e: any) { const s = e?.status || 500; if (s >= 500) console.error("[auth]", e?.code || "", e?.message || e); res.status(s).json({ erro: mensagemDeErro(e) }); }
 };
 const soSuperAdmin = async (req: express.Request) => { const u = await autenticarSessao(req); if (!u.superAdmin) throw erro(403, "somente o super administrador"); return u; };
 
