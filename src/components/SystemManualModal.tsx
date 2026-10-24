@@ -1638,6 +1638,7 @@ export const SystemManualModal: React.FC<SystemManualModalProps> = ({
                         <li>Botão “Trocar senha” para cada usuário; a limpeza de minutas, auditorias da Lupa e audiências vencidas (retenção) agora roda sozinha no servidor a cada 6 horas; backups e restauração passam a ler e gravar o Histórico no MySQL.</li>
                         <li>Login próprio por e-mail e senha (sem Google/Firebase): o novo usuário pede cadastro na tela de entrada e o Super Admin aprova, recusa, desativa ou reativa pelo botão “Cadastros”. Senhas guardadas com hash; desativar vale na hora.</li>
                         <li>Extensão pela Chrome Web Store (o botão das Configurações foi retirado) e tarja de instalação quando ela não está no navegador.</li>
+                        <li>Aviso destacado de unidade: se os autos parecem ser de outra comarca do usuário, o sistema mostra os nomes e deixa escolher “Usar a unidade dos autos” ou “Continuar com a atual”.</li>
                       </ul>
                     </div>
                   </div>

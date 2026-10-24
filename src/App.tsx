@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { detectarUnidadeDosAutos, unidadesParaAvisar } from "./utils/unidadeDosAutos";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { PromptSelectorAndEditor } from "./components/PromptSelectorAndEditor";
@@ -629,25 +630,11 @@ export default function App() {
     };
   }, [user?.uid, user?.email, userProfile?.tenantId, activeTenantId, isSuperAdmin, isAdmin, isJudge, isUnauthorized, isDeactivated]);
 
-  // Auto-detect unit/comarca mention in process text or PDFs
-  const detectedUnitName = useMemo(() => {
-    const textToScan = [
-      ...pdfFiles.map((p) => p.extractedText || ""),
-      processText,
-    ].join(" ").slice(0, 10000);
-
-    if (!textToScan.trim() || !allowedUnits || allowedUnits.length === 0) return null;
-
-    for (const unit of allowedUnits) {
-      if (!unit || !unit.name) continue;
-      const parts = unit.name.split("/").map((s) => s.trim().toLowerCase());
-      const comarca = parts[0];
-      if (comarca && comarca.length >= 4 && textToScan.toLowerCase().includes(comarca)) {
-        return unit.name;
-      }
-    }
-    return null;
-  }, [pdfFiles, processText, allowedUnits]);
+  // Unidade(s) que os autos indicam (cabeçalho/nome da comarca); o aviso destacado deixa o usuário escolher a correta
+  const unidadesSugeridas = useMemo(() => {
+    const textToScan = [...pdfFiles.map((p) => p.extractedText || ""), processText].join(" ");
+    return unidadesParaAvisar(detectarUnidadeDosAutos(textToScan, allowedUnits || []), activeUnit?.id);
+  }, [pdfFiles, processText, allowedUnits, activeUnit?.id]);
 
   // Save prompts to localStorage with rolling backup
   useEffect(() => {
@@ -2165,7 +2152,7 @@ export default function App() {
                 {/* Lotação / Unidade Judiciária dos Autos com Cadastro Rápido */}
                 <ProcessUnitSelector
                   onOpenUnitManager={() => setIsUnitManagerModalOpen(true)}
-                  detectedUnitName={detectedUnitName}
+                  unidadesSugeridas={unidadesSugeridas}
                 />
 
                 {/* Banner Informativo de Controle & Co-Piloto do Assessor */}
