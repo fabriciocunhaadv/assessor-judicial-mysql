@@ -1,20 +1,15 @@
 // API do HISTÓRICO em MySQL (substitui as coleções history e history_index do Firestore).
-// Login continua no Firebase Auth: o navegador manda o token (Authorization: Bearer) e o servidor confere a assinatura.
+// Login próprio (server/authRoutes.ts): o navegador manda a sessão (Authorization: Bearer) e o servidor confere no banco.
 // Credenciais do banco SÓ em variáveis de ambiente (MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE).
 import express from "express";
-import fs from "fs";
-import path from "path";
 import mysql from "mysql2/promise";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { autenticarSessao } from "./authRoutes";
 import { resumoLeve, digitosDoProcesso } from "../src/utils/historicoLeve";
 
 export const historyRouter = express.Router();
 
-const SUPER_ADMIN_EMAIL = "fabriciocunha.adv@gmail.com";
-const GABINETES_PRINCIPAIS = ["", "gabinete_default", "default", "gab_rafael_machado", "rafael_machado", "montes_claros", "fazenda_nova", "principal", "gabinete_principal"];
 const LISTA_PADRAO = 40, LISTA_MAXIMA = 300, COMPLETO_MAXIMO = 200;
 
-const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf-8"));
 
 // ---------- banco ----------
 let pool: mysql.Pool | null = null;
@@ -42,45 +37,12 @@ const garantirEsquema = (): Promise<void> => (esquemaPronto ||= (async () => {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 })().catch((e) => { esquemaPronto = null; throw e; }));
 
-// ---------- autenticação (token do Firebase) ----------
-const chaves = createRemoteJWKSet(new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"));
+// ---------- autenticação (sessão própria: server/authRoutes.ts) ----------
 interface Usuario { uid: string; email: string; superAdmin: boolean; tenant: string }
-const cachePerfil = new Map<string, { ate: number; role: string; tenantId: string | null }>();
-
-const tenantCanonico = (t: string) => (GABINETES_PRINCIPAIS.includes((t || "").toLowerCase().trim()) ? "gabinete_default" : t.trim());
-
-/** Perfil do usuário no Firestore (banco "assessor-mysql"), lido com o PRÓPRIO token dele (as regras já permitem). */
-async function lerPerfil(uid: string, token: string): Promise<{ role: string; tenantId: string | null }> {
-  const c = cachePerfil.get(uid);
-  if (c && c.ate > Date.now()) return c;
-  const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents/users/${encodeURIComponent(uid)}`;
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  let perfil = { role: "", tenantId: null as string | null };
-  if (r.status === 200) {
-    const f = ((await r.json()) as any).fields || {};
-    perfil = { role: f.role?.stringValue || "", tenantId: f.tenantId?.stringValue ?? null };
-  } else if (r.status !== 404) throw new Error(`não consegui conferir o perfil do usuário (${r.status})`);
-  cachePerfil.set(uid, { ...perfil, ate: Date.now() + 5 * 60_000 });
-  return perfil;
-}
-
-async function autenticar(req: express.Request): Promise<Usuario> {
-  const h = String(req.headers.authorization || "");
-  if (!h.startsWith("Bearer ")) throw Object.assign(new Error("login necessário"), { status: 401 });
-  const token = h.slice(7);
-  let payload: any;
-  try { ({ payload } = await jwtVerify(token, chaves, { issuer: `https://securetoken.google.com/${firebaseConfig.projectId}`, audience: firebaseConfig.projectId })); }
-  catch { throw Object.assign(new Error("login inválido ou vencido"), { status: 401 }); }
-  const uid = String(payload.sub), email = String(payload.email || "").toLowerCase();
-  let perfil: { role: string; tenantId: string | null };
-  try { perfil = await lerPerfil(uid, token); } catch (e: any) { throw Object.assign(new Error(e.message), { status: 503 }); }
-  const superAdmin = (email === SUPER_ADMIN_EMAIL && payload.email_verified !== false) || perfil.role === "super_admin";
-  const pedido = tenantCanonico(String(req.headers["x-tenant-id"] || ""));
-  // mesma regra do firestore.rules (belongsToTenant): super admin em qualquer gabinete; os demais só no próprio
-  const proprio = tenantCanonico(perfil.tenantId || "");
-  if (!superAdmin && pedido !== proprio) throw Object.assign(new Error("este usuário não pertence a este gabinete"), { status: 403 });
-  return { uid, email, superAdmin, tenant: pedido };
-}
+const autenticar = async (req: express.Request): Promise<Usuario> => {
+  const u = await autenticarSessao(req);
+  return { uid: u.uid, email: u.email, superAdmin: u.superAdmin, tenant: u.tenant };
+};
 
 // ---------- regras ----------
 const ehDono = (u: Usuario, createdBy?: string | null) => u.superAdmin || !createdBy || createdBy === "anonymous" || createdBy === u.uid;

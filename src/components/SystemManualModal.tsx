@@ -1629,7 +1629,8 @@ export const SystemManualModal: React.FC<SystemManualModalProps> = ({
                         <li>Citações Mov./Arq./Pág. voltam a seguir o carimbo do PROJUDI.</li>
                         <li>Páginas de imagem passam a ser lidas sozinhas por OCR (sem janela de alarme); falso alarme de “páginas sem texto” em PDFs já com OCR foi corrigido.</li>
                         <li>Painel do Super Admin: os tokens das leituras em lotes e do OCR passam a ser contados; a chave gratuita dos assessores não custa nem baixa o saldo; contadores à prova de gravações simultâneas.</li>
-                        <li>Histórico em banco MySQL próprio (Hostinger): a lista abre só com resumos leves e a minuta completa é baixada somente ao abrir o ato. Login continua pelo Firebase.</li>
+                        <li>Histórico em banco MySQL próprio (Hostinger): a lista abre só com resumos leves e a minuta completa é baixada somente ao abrir o ato.</li>
+                        <li>Login próprio por e-mail e senha (sem Google/Firebase): o novo usuário pede cadastro na tela de entrada e o Super Admin aprova, recusa, desativa ou reativa pelo botão “Cadastros”. Senhas guardadas com hash; desativar vale na hora.</li>
                         <li>Extensão pela Chrome Web Store (o botão das Configurações foi retirado) e tarja de instalação quando ela não está no navegador.</li>
                       </ul>
                     </div>
