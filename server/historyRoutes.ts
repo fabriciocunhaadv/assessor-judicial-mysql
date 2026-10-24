@@ -3,7 +3,7 @@
 // Credenciais do banco SÓ em variáveis de ambiente (MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE).
 import express from "express";
 import mysql from "mysql2/promise";
-import { autenticarSessao } from "./authRoutes";
+import { autenticarSessao, mensagemDeErro } from "./authRoutes";
 import { resumoLeve, digitosDoProcesso } from "../src/utils/historicoLeve";
 
 export const historyRouter = express.Router();
@@ -86,7 +86,7 @@ const rota = (f: (req: express.Request, res: express.Response, u: Usuario) => Pr
   catch (e: any) {
     const status = e?.status || 500;
     if (status >= 500) console.error("[history]", e?.message || e);
-    res.status(status).json({ erro: String(e?.message || e).slice(0, 300) });
+    res.status(status).json({ erro: mensagemDeErro(e) });
   }
 };
 

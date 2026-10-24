@@ -4,7 +4,7 @@
 // O cliente (src/lib/docstore.ts) fala a mesma "língua" do Firestore, então os módulos quase não mudam.
 import express from "express";
 import { banco } from "./historyRoutes";
-import { autenticarSessao, garantirUsuarios, perfilPublico, tenantCanonico, UsuarioSessao } from "./authRoutes";
+import { autenticarSessao, mensagemDeErro, garantirUsuarios, perfilPublico, tenantCanonico, UsuarioSessao } from "./authRoutes";
 
 export const docsRouter = express.Router();
 const erro = (status: number, msg: string) => Object.assign(new Error(msg), { status });
@@ -154,7 +154,7 @@ async function escreverUsuario(quem: UsuarioSessao, id: string, tipo: string, da
 // ---------- rotas ----------
 const rota = (f: (req: express.Request, res: express.Response, u: UsuarioSessao) => Promise<any>): express.RequestHandler => async (req, res) => {
   try { const u = await autenticarSessao(req); await garantirDocs(); await f(req, res, u); }
-  catch (e: any) { const s = e?.status || 500; if (s >= 500) console.error("[docs]", e?.message || e); res.status(s).json({ erro: s >= 500 && !e?.status ? "erro interno" : String(e.message).slice(0, 300) }); }
+  catch (e: any) { const s = e?.status || 500; if (s >= 500) console.error("[docs]", e?.message || e); res.status(s).json({ erro: mensagemDeErro(e) }); }
 };
 const carregarColecao = async (u: UsuarioSessao, col: string): Promise<{ id: string; data: any }[]> => {
   if (col === "users") return todosUsuarios(u);
