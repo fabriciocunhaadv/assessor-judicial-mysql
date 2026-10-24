@@ -132,7 +132,10 @@ authRouter.patch("/me", rota(async (req, res) => {
 authRouter.get("/users", rota(async (req, res) => {
   await soSuperAdmin(req);
   const [rows] = await banco().query<any[]>("SELECT * FROM users ORDER BY FIELD(status,'pendente','aprovado','recusado','desativado'), created_at DESC LIMIT 500");
-  res.json({ usuarios: rows.map((r) => ({ ...perfilPublico(r), status: r.status })) });
+  // perfis trazidos do sistema antigo (por e-mail), para o super admin aprovar já com gabinete, papel e permissões de lá
+  const [imp] = await banco().query<any[]>("SELECT id, data FROM docs WHERE col='perfis_importados'").catch(() => [[]] as any);
+  const importados = new Map<string, any>((imp as any[]).map((d) => [d.id, JSON.parse(d.data)]));
+  res.json({ usuarios: rows.map((r) => { const i = importados.get(r.email); return { ...perfilPublico(r), status: r.status, ...(i ? { perfilImportado: { tenantId: i.tenantId, role: i.role, isJudge: !!i.isJudge, judgeTitle: i.judgeTitle || "" } } : {}) }; }) });
 }));
 
 /** { acao: "aprovar" | "recusar" | "desativar" | "reativar", tenantId?, role?, isJudge?, judgeTitle?, allowedUnits? } */
@@ -145,6 +148,14 @@ authRouter.post("/users/:id/acao", rota(async (req, res) => {
   const status = { aprovar: "aprovado", reativar: "aprovado", recusar: "recusado", desativar: "desativado" }[b.acao as string];
   if (!status) throw erro(400, "ação desconhecida");
   const campos: string[] = ["status=?", "updated_at=?"], args: any[] = [status, Date.now()];
+  if (b.acao === "aprovar" && b.usarImportado) {
+    const [imp] = await banco().query<any[]>("SELECT data FROM docs WHERE col='perfis_importados' AND id=?", [r.email]);
+    if (!imp.length) throw erro(404, "não há perfil importado para este e-mail");
+    const i = JSON.parse(imp[0].data);
+    Object.assign(b, { tenantId: i.tenantId || b.tenantId, role: i.role === "admin" ? "admin" : "user", isJudge: !!i.isJudge, judgeTitle: i.judgeTitle || "", canUseNativeKey: !!i.canUseNativeKey, allowedUnits: Array.isArray(i.allowedUnits) ? i.allowedUnits : undefined });
+    const extras: any = {}; for (const k of ["customApiKey", "customApiKeys", "isCustomKeyActive", "activeKeyId", "keyTelemetry"]) if (i[k] !== undefined) extras[k] = i[k];
+    if (Object.keys(extras).length) { campos.push("extras=?"); args.push(JSON.stringify({ ...(r.extras ? JSON.parse(r.extras) : {}), ...extras })); }
+  }
   if (b.acao === "aprovar") { campos.push("tenant_id=?"); args.push(tenantCanonico(String(b.tenantId || r.tenant_id || "gabinete_default"))); }
   if (b.role && ["user", "admin"].includes(b.role)) { campos.push("role=?"); args.push(b.role); }
   if (typeof b.isJudge === "boolean") { campos.push("is_judge=?"); args.push(b.isJudge ? 1 : 0); }

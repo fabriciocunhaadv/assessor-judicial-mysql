@@ -3440,7 +3440,9 @@ export const restoreGlobalDatabaseSnapshot = async (
   if (Array.isArray(snapshot.data.users)) {
     for (const u of snapshot.data.users) {
       if (targetTenant && u.tenantId !== targetTenant) continue;
-      await setDoc(doc(db, 'users', u.uid), cleanForFirestore(u), { merge: true });
+      // o login agora é próprio: o perfil antigo fica guardado por e-mail e é aplicado quando a pessoa se cadastrar e o super admin aprovar
+      if (!u.email) continue;
+      await setDoc(doc(db, 'perfis_importados', u.email.toLowerCase().trim()), cleanForFirestore(u), { merge: true });
       restoredUsers++;
     }
   }
@@ -3514,17 +3516,19 @@ export const restoreGlobalDatabaseSnapshot = async (
 
       // Prompts
       if (Array.isArray(cab.prompts)) {
-        for (const p of cab.prompts) {
-          await setDoc(doc(db, `gabinetes/${tId}/prompts`, p.id), cleanForFirestore({ ...p, tenant: tId }), { merge: true });
-          restoredPrompts++;
+        for (let i = 0; i < cab.prompts.length; i += 50) {
+          const lote = writeBatch(db);
+          for (const p of cab.prompts.slice(i, i + 50)) { lote.set(doc(db, `gabinetes/${tId}/prompts`, p.id), cleanForFirestore({ ...p, tenant: tId }), { merge: true }); restoredPrompts++; }
+          await lote.commit();
         }
       }
 
       // History
       if (Array.isArray(cab.history)) {
-        for (const h of cab.history) {
-          await setDoc(doc(db, `gabinetes/${tId}/history`, h.id), cleanForFirestore({ ...h, tenant: tId }), { merge: true });
-          restoredHistories++;
+        for (let i = 0; i < cab.history.length; i += 20) {      // em lotes: milhares de atos não viram milhares de chamadas
+          const lote = writeBatch(db);
+          for (const h of cab.history.slice(i, i + 20)) { lote.set(doc(db, `gabinetes/${tId}/history`, h.id), cleanForFirestore({ ...h, tenant: tId }), { merge: true }); restoredHistories++; }
+          await lote.commit();
         }
       }
 
