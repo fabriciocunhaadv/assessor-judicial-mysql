@@ -7,6 +7,7 @@ interface Lei { id: string; nome: string; url: string; baixadoEm?: number; total
 /** Só Super Admin: testa se o servidor alcança os sites oficiais e importa as leis do Planalto (com a marca de revogado/vetado de cada artigo). */
 export const FontesOficiaisPanel: React.FC = () => {
   const [aberto, setAberto] = useState(false), [testando, setTestando] = useState(false), [res, setRes] = useState<Resultado[] | null>(null), [erro, setErro] = useState("");
+  const [envio, setEnvio] = useState<string[]>([]), [enviando, setEnviando] = useState(false);
   const [leis, setLeis] = useState<Lei[] | null>(null), [atualizando, setAtualizando] = useState<string | null>(null), [lote, setLote] = useState<{ feitas: number; total: number } | null>(null);
   const chamar = async (caminho: string, metodo = "POST") => {
     const r = await fetch("/api/fontes" + caminho, { method: metodo, headers: getApiHeaders() });
@@ -17,6 +18,21 @@ export const FontesOficiaisPanel: React.FC = () => {
   const testar = async () => { setTestando(true); setErro(""); setRes(null); try { setRes((await chamar("/reconhecer")).resultados); } catch (e: any) { setErro(e.message); } finally { setTestando(false); } };
   const atualizar = async (id: string) => { setAtualizando(id); try { const { lei } = await chamar(`/leis/${id}/atualizar`); setLeis((ls) => (ls || []).map((l) => (l.id === id ? lei : l))); } catch (e: any) { setErro(e.message); } finally { setAtualizando(null); } };
   const atualizarTodas = async () => { if (!leis) return; setLote({ feitas: 0, total: leis.length }); for (let i = 0; i < leis.length; i++) { await atualizar(leis[i].id); setLote({ feitas: i + 1, total: leis.length }); await new Promise((r) => setTimeout(r, 800)); } setLote(null); };
+  const enviarArquivos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivos = Array.from(e.target.files || []); e.target.value = ""; if (!arquivos.length) return;
+    setEnviando(true); setEnvio([]);
+    for (const f of arquivos) {
+      try {
+        const r = await fetch("/api/fontes/leis/importar-arquivo", { method: "POST", headers: { "Content-Type": "application/octet-stream", "x-nome-arquivo": encodeURIComponent(f.name) }, body: await f.arrayBuffer() });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.erro || `erro ${r.status}`);
+        const l: Lei = j.lei;
+        setLeis((ls) => (ls || []).map((x) => (x.id === l.id ? l : x)));
+        setEnvio((v) => [...v, l.erro ? `❌ ${f.name} → ${l.nome}: ${l.erro}` : `✅ ${f.name} → ${l.nome}: ${l.total} artigos, ${l.revogados} revogados, ${l.vetados} vetados`]);
+      } catch (err: any) { setEnvio((v) => [...v, `❌ ${f.name}: ${err.message}`]); }
+    }
+    setEnviando(false);
+  };
   const btn = "px-3 py-1.5 rounded-full text-xs font-bold cursor-pointer disabled:opacity-50";
   return (
     <div className="shrink-0 border-b border-[#c9b8ff] bg-[#f5f1ff]" data-testid="fontes-oficiais">
@@ -41,7 +57,12 @@ export const FontesOficiaisPanel: React.FC = () => {
             )}
           </div>
           <div className="space-y-1.5">
-            <p><strong>2. Leis do Planalto:</strong> baixa o texto de cada lei e marca os artigos revogados e vetados. A minuta passa a avisar quando cita artigo revogado, vetado ou inexistente, e o prompt lista os dispositivos revogados das leis mencionadas. Atualize de tempos em tempos (as leis mudam).</p>
+            <p><strong>2. Leis do Planalto:</strong> o sistema guarda <em>só a lista de artigos revogados e vetados</em> de cada lei (poucos KB; o texto das leis não vai para o banco). A minuta avisa quando cita artigo revogado, vetado ou inexistente, e o prompt lista os dispositivos revogados das leis mencionadas. Atualize de tempos em tempos (as leis mudam).</p>
+            <p className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-amber-900"><strong>Se o Planalto bloquear o servidor</strong> (aparece “Acesso Negado” no teste ou na lista), faça assim: abra a lei no <em>seu</em> navegador, aperte <kbd>Ctrl</kbd>+<kbd>S</kbd>, escolha “Página da Web, somente HTML” e envie os arquivos abaixo (vários de uma vez; mantenha o nome original, ex.: l13105.htm).</p>
+            <label className={`${btn} inline-block bg-white border border-[#673de6] text-[#673de6]`}>{enviando ? "Lendo arquivos..." : "Enviar arquivos salvos do Planalto"}
+              <input type="file" accept=".htm,.html" multiple className="hidden" disabled={enviando} onChange={enviarArquivos} />
+            </label>
+            {envio.length > 0 && <ul className="space-y-0.5">{envio.map((m, i) => <li key={i}>{m}</li>)}</ul>}
             <button disabled={!!atualizando || !!lote || !leis} onClick={atualizarTodas} className={`${btn} bg-[#673de6] text-white`}>{lote ? `Atualizando ${lote.feitas}/${lote.total}...` : "Atualizar todas as leis"}</button>
             {leis && (
               <table className="w-full text-[11px] border border-[#e4e5ed] bg-white rounded-lg overflow-hidden"><tbody>{leis.map((l) => (
