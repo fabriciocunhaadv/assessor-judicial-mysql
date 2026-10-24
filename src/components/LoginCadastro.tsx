@@ -25,12 +25,12 @@ export const LoginCadastro: React.FC = () => {
     finally { setOcupado(false); }
   };
 
-  const campo = "w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500";
+  const campo = "w-full px-3 py-2.5 rounded-lg bg-white border border-[#c9cbd8] text-sm text-[#1d1e20] placeholder-slate-400 focus:outline-none focus:border-[#673de6] focus:ring-2 focus:ring-[#673de6]/20";
   return (
     <form onSubmit={enviar} className="space-y-3 text-left">
-      <div className="flex rounded-xl overflow-hidden border border-slate-700 text-xs font-bold">
+      <div className="flex rounded-lg overflow-hidden border border-[#c9cbd8] text-xs font-bold">
         {(["entrar", "cadastro"] as const).map((m) => (
-          <button key={m} type="button" onClick={() => { setModo(m); setAviso(null); }} className={`flex-1 py-2 cursor-pointer ${modo === m ? "bg-amber-500 text-slate-950" : "bg-slate-900 text-slate-400"}`}>
+          <button key={m} type="button" onClick={() => { setModo(m); setAviso(null); }} className={`flex-1 py-2 cursor-pointer ${modo === m ? "bg-[#673de6] text-white" : "bg-white text-slate-500"}`}>
             {m === "entrar" ? "Entrar" : "Solicitar cadastro"}
           </button>
         ))}
@@ -39,11 +39,11 @@ export const LoginCadastro: React.FC = () => {
       <input className={campo} type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
       <input className={campo} type="password" placeholder="Senha (mínimo 8 caracteres)" value={senha} onChange={(e) => setSenha(e.target.value)} required minLength={modo === "cadastro" ? 8 : 1} autoComplete={modo === "entrar" ? "current-password" : "new-password"} />
       {modo === "cadastro" && <input className={campo} type="password" placeholder="Repita a senha" value={senha2} onChange={(e) => setSenha2(e.target.value)} required minLength={8} autoComplete="new-password" />}
-      {aviso && <p className={`text-[11px] leading-snug ${aviso.tipo === "ok" ? "text-emerald-300" : "text-red-300"}`}>{aviso.texto}</p>}
-      <button type="submit" disabled={ocupado} className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 font-bold rounded-xl shadow cursor-pointer text-sm">
+      {aviso && <p className={`text-[11px] leading-snug ${aviso.tipo === "ok" ? "text-emerald-700" : "text-red-700"}`}>{aviso.texto}</p>}
+      <button type="submit" disabled={ocupado} className="w-full py-3 px-4 bg-[#673de6] hover:bg-[#5025d1] disabled:opacity-60 text-white font-bold rounded-lg cursor-pointer text-sm">
         {ocupado ? "Aguarde..." : modo === "entrar" ? "Entrar" : "Enviar pedido de cadastro"}
       </button>
-      {modo === "cadastro" && <p className="text-[10px] text-slate-500 leading-snug">Seu pedido fica pendente até o administrador aprovar. Depois da aprovação, entre com o mesmo e-mail e senha.</p>}
+      {modo === "cadastro" && <p className="text-[11px] text-slate-500 leading-snug">Seu pedido fica pendente até o administrador aprovar. Depois da aprovação, entre com o mesmo e-mail e senha.</p>}
     </form>
   );
 };

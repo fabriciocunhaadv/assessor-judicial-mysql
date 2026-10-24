@@ -272,6 +272,18 @@ export const SystemTour: React.FC<SystemTourProps> = ({
       placement: "bottom",
     },
     {
+      target: "#btn-banco-info",
+      content: (
+        <div className="text-left font-sans space-y-1.5">
+          <h3 className="font-bold text-md text-[#673de6]">Onde estão os dados 🗄️</h3>
+          <p className="text-sm text-slate-700 leading-relaxed">
+            Este selo mostra que o sistema usa o banco <strong>MySQL na Hostinger</strong> (sem Firebase). Ao clicar, o Super Admin vê o nome do banco, em qual tabela ficam os cadastros e quantos registros há em cada tabela.
+          </p>
+        </div>
+      ),
+      placement: "top" as const,
+    },
+    {
       target: "#btn-trocar-senha",
       content: (
         <div className="text-left font-sans space-y-1.5">
