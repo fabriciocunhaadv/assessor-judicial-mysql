@@ -3,7 +3,7 @@
 // pelo caminho da coleção (ex.: "gabinetes/gabinete_default/prompts") e pelo id. A pasta "users" não fica aqui: é a tabela `users` do login.
 // O cliente (src/lib/docstore.ts) fala a mesma "língua" do Firestore, então os módulos quase não mudam.
 import express from "express";
-import { banco } from "./historyRoutes";
+import { banco, garantirEsquema, gravarAtoDoTenant, apagarAtoDoTenant } from "./historyRoutes";
 import { autenticarSessao, mensagemDeErro, garantirUsuarios, perfilPublico, tenantCanonico, UsuarioSessao } from "./authRoutes";
 
 export const docsRouter = express.Router();
@@ -13,6 +13,7 @@ const LIMITE_COLECAO = 20000;
 let pronto: Promise<void> | null = null;
 const garantirDocs = (): Promise<void> => (pronto ||= (async () => {
   await garantirUsuarios();
+  await garantirEsquema();      // tabelas do Histórico (a pasta history do armazém usa)
   // só CRIA o que falta; nunca altera nem apaga dados
   await banco().query(`CREATE TABLE IF NOT EXISTS docs (
     col VARCHAR(255) NOT NULL, id VARCHAR(190) NOT NULL, data LONGTEXT NOT NULL, updated_at BIGINT NOT NULL DEFAULT 0,
@@ -29,7 +30,9 @@ const normalizarCol = (col: string): string => {
   if (seg[0] === "gabinetes" && seg[1]) seg[1] = tenantCanonico(seg[1]);
   return seg.join("/");
 };
-const PRIVADAS = new Set(["history", "history_index"]);      // têm API própria
+const PRIVADAS = new Set(["history_index"]);      // o resumo leve é interno da API do Histórico
+/** A pasta "history" de um gabinete é a tabela do Histórico (backups, restauração e métricas leem e gravam por aqui). Devolve o gabinete ou null. */
+const gabineteDoHistorico = (col: string): string | null => { const m = /^gabinetes\/([^/]+)\/history$/.exec(col); return m ? m[1] : null; };
 const podeLer = (u: UsuarioSessao, col: string): boolean => {
   const seg = col.split("/");
   if (seg[0] === "gabinetes") return !PRIVADAS.has(seg[2]) && (u.superAdmin || seg[1] === tenantCanonico(u.row.tenant_id));
@@ -158,6 +161,8 @@ const rota = (f: (req: express.Request, res: express.Response, u: UsuarioSessao)
 };
 const carregarColecao = async (u: UsuarioSessao, col: string): Promise<{ id: string; data: any }[]> => {
   if (col === "users") return todosUsuarios(u);
+  const gh = gabineteDoHistorico(col);
+  if (gh) { const [h] = await banco().query<any[]>("SELECT id, data FROM history WHERE tenant=? LIMIT ?", [gh, LIMITE_COLECAO]); return h.map((r) => ({ id: r.id, data: JSON.parse(r.data) })); }
   const [rows] = await banco().query<any[]>("SELECT id, data FROM docs WHERE col=? LIMIT ?", [col, LIMITE_COLECAO]);
   return rows.map((r) => ({ id: r.id, data: JSON.parse(r.data) }));
 };
@@ -168,7 +173,8 @@ docsRouter.post("/get", rota(async (req, res, u) => {
   const id = seg.pop()!, col = normalizarCol(seg.join("/"));
   if (!podeLer(u, col)) throw erro(403, "sem permissão");
   if (col === "users") { const [r] = await banco().query<any[]>("SELECT * FROM users WHERE id=?", [id]); return void res.json(r.length ? { existe: true, data: linhaParaDoc(r[0], u) } : { existe: false }); }
-  const [rows] = await banco().query<any[]>("SELECT data FROM docs WHERE col=? AND id=?", [col, id]);
+  const gh = gabineteDoHistorico(col);
+  const [rows] = gh ? await banco().query<any[]>("SELECT data FROM history WHERE tenant=? AND id=?", [gh, id]) : await banco().query<any[]>("SELECT data FROM docs WHERE col=? AND id=?", [col, id]);
   res.json(rows.length ? { existe: true, data: JSON.parse(rows[0].data) } : { existe: false });
 }));
 
@@ -195,7 +201,8 @@ docsRouter.post("/assinatura", rota(async (req, res, u) => {
   const col = normalizarCol(req.body?.col);
   if (!podeLer(u, col)) throw erro(403, "sem permissão");
   if (col === "users") { const [r] = await banco().query<any[]>("SELECT COUNT(*) n, COALESCE(MAX(updated_at),0) m FROM users"); return void res.json({ n: Number(r[0].n), m: Number(r[0].m) }); }
-  const [r] = await banco().query<any[]>("SELECT COUNT(*) n, COALESCE(MAX(updated_at),0) m FROM docs WHERE col=?", [col]);
+  const gh = gabineteDoHistorico(col);
+  const [r] = gh ? await banco().query<any[]>("SELECT COUNT(*) n, COALESCE(MAX(atualizado_em),0) m FROM history WHERE tenant=?", [gh]) : await banco().query<any[]>("SELECT COUNT(*) n, COALESCE(MAX(updated_at),0) m FROM docs WHERE col=?", [col]);
   res.json({ n: Number(r[0].n), m: Number(r[0].m) });
 }));
 
@@ -211,12 +218,29 @@ docsRouter.post("/escrever", rota(async (req, res, u) => {
     if (!podeEscrever(u, col)) throw erro(403, "sem permissão para gravar em " + col);
     return { col, id, tipo: o.tipo as string, data: o.data };
   });
-  for (const a of alvos) if (a.col === "users") { await escreverUsuario(u, a.id, a.tipo, a.data); }
+  for (const a of alvos) {
+    if (a.col === "users") { await escreverUsuario(u, a.id, a.tipo, a.data); continue; }
+    const gh = gabineteDoHistorico(a.col);
+    if (!gh) continue;
+    const [h] = await banco().query<any[]>("SELECT data FROM history WHERE tenant=? AND id=?", [gh, a.id]);
+    const atual = h.length ? JSON.parse(h[0].data) : undefined;
+    if (a.tipo === "delete") {
+      if (atual && !u.superAdmin && atual.createdBy && atual.createdBy !== "anonymous" && atual.createdBy !== u.uid) throw erro(403, "Só quem gerou a minuta pode excluí-la.");
+      await apagarAtoDoTenant(gh, a.id); continue;
+    }
+    if (a.tipo === "update" && atual === undefined) throw erro(404, "documento não existe: " + a.col + "/" + a.id);
+    let novo: any;
+    if (a.tipo === "set") novo = mesclar({}, a.data ?? {});
+    else if (a.tipo === "merge") novo = mesclar(atual ?? {}, a.data ?? {});
+    else { novo = JSON.parse(JSON.stringify(atual)); for (const [k, v] of Object.entries(a.data || {})) definirCaminho(novo, k, v); }
+    novo.id = a.id;
+    await gravarAtoDoTenant(gh, novo);
+  }
   const conn = await banco().getConnection();
   try {
     await conn.beginTransaction();
     for (const a of alvos) {
-      if (a.col === "users") continue;
+      if (a.col === "users" || gabineteDoHistorico(a.col)) continue;
       if (a.tipo === "delete") { await conn.query("DELETE FROM docs WHERE col=? AND id=?", [a.col, a.id]); continue; }
       const [rows] = await conn.query<any[]>("SELECT data FROM docs WHERE col=? AND id=? FOR UPDATE", [a.col, a.id]);
       const atual = rows.length ? JSON.parse(rows[0].data) : undefined;

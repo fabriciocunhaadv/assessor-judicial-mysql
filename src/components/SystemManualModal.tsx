@@ -1631,6 +1631,7 @@ export const SystemManualModal: React.FC<SystemManualModalProps> = ({
                         <li>Painel do Super Admin: os tokens das leituras em lotes e do OCR passam a ser contados; a chave gratuita dos assessores não custa nem baixa o saldo; contadores à prova de gravações simultâneas.</li>
                         <li>Histórico em banco MySQL próprio (Hostinger): a lista abre só com resumos leves e a minuta completa é baixada somente ao abrir o ato.</li>
                         <li>Todos os módulos de configuração (prompts, teses, paradigmas, guia do PROJUDI, agenda, unidades, equipe, gabinetes, auditorias, chamados e medições) passaram a ser gravados no MySQL próprio; o sistema não usa mais o Firebase. As telas “ao vivo” atualizam por consulta leve (até 30 s) e na hora para quem grava.</li>
+                        <li>Botão “Trocar senha” para cada usuário; a limpeza de minutas, auditorias da Lupa e audiências vencidas (retenção) agora roda sozinha no servidor a cada 6 horas; backups e restauração passam a ler e gravar o Histórico no MySQL.</li>
                         <li>Login próprio por e-mail e senha (sem Google/Firebase): o novo usuário pede cadastro na tela de entrada e o Super Admin aprova, recusa, desativa ou reativa pelo botão “Cadastros”. Senhas guardadas com hash; desativar vale na hora.</li>
                         <li>Extensão pela Chrome Web Store (o botão das Configurações foi retirado) e tarja de instalação quando ela não está no navegador.</li>
                       </ul>

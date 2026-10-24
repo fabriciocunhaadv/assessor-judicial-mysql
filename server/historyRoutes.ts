@@ -23,7 +23,7 @@ export const banco = (): mysql.Pool => {
   return pool;
 };
 // só CRIA o que falta (CREATE TABLE IF NOT EXISTS): nunca altera nem apaga dados existentes
-const garantirEsquema = (): Promise<void> => (esquemaPronto ||= (async () => {
+export const garantirEsquema = (): Promise<void> => (esquemaPronto ||= (async () => {
   const b = banco();
   await b.query(`CREATE TABLE IF NOT EXISTS history (
     tenant VARCHAR(64) NOT NULL, id VARCHAR(128) NOT NULL, unit_id VARCHAR(64) NOT NULL, created_by VARCHAR(128) NOT NULL DEFAULT '',
@@ -51,7 +51,7 @@ const agora = () => Date.now();
 
 const limparNaoDefinidos = (o: any): any => JSON.parse(JSON.stringify(o ?? null));
 
-async function gravarAto(u: Usuario, ato: any) {
+export async function gravarAtoDoTenant(tenant: string, ato: any) {
   const b = banco();
   const numeroLimpo = digitosDoProcesso(ato.processNumber || ato.result?.minute?.processNumber).slice(0, 32);
   const linha = { id: String(ato.id), unit: String(ato.unitId || "montes_claros"), criador: String(ato.createdBy || ""), data: Number(ato.date) || 0 };
@@ -59,12 +59,13 @@ async function gravarAto(u: Usuario, ato: any) {
   await b.query(
     `INSERT INTO history (tenant,id,unit_id,created_by,date,numero_limpo,atualizado_em,data) VALUES (?,?,?,?,?,?,?,?)
      ON DUPLICATE KEY UPDATE unit_id=VALUES(unit_id), created_by=VALUES(created_by), date=VALUES(date), numero_limpo=VALUES(numero_limpo), atualizado_em=VALUES(atualizado_em), data=VALUES(data)`,
-    [u.tenant, linha.id, linha.unit, linha.criador, linha.data, numeroLimpo, t, JSON.stringify(ato)]);
+    [tenant, linha.id, linha.unit, linha.criador, linha.data, numeroLimpo, t, JSON.stringify(ato)]);
   await b.query(
     `INSERT INTO history_index (tenant,id,unit_id,created_by,date,numero_limpo,atualizado_em,data) VALUES (?,?,?,?,?,?,?,?)
      ON DUPLICATE KEY UPDATE unit_id=VALUES(unit_id), created_by=VALUES(created_by), date=VALUES(date), numero_limpo=VALUES(numero_limpo), atualizado_em=VALUES(atualizado_em), data=VALUES(data)`,
-    [u.tenant, linha.id, linha.unit, linha.criador, linha.data, numeroLimpo, t, JSON.stringify(resumoLeve(ato, "mysql"))]);
+    [tenant, linha.id, linha.unit, linha.criador, linha.data, numeroLimpo, t, JSON.stringify(resumoLeve(ato, "mysql"))]);
 }
+const gravarAto = (u: Usuario, ato: any) => gravarAtoDoTenant(u.tenant, ato);
 
 async function lerAto(u: Usuario, id: string): Promise<any | null> {
   const [rows] = await banco().query<any[]>("SELECT data FROM history WHERE tenant=? AND id=?", [u.tenant, id]);
@@ -191,10 +192,11 @@ historyRouter.delete("/processo/:numero", rota(async (req, res, u) => {
   res.json({ apagados: atos.length });
 }));
 
-async function apagarAto(u: Usuario, id: string) {
-  await banco().query("DELETE FROM history WHERE tenant=? AND id=?", [u.tenant, id]);
-  await banco().query("DELETE FROM history_index WHERE tenant=? AND id=?", [u.tenant, id]);
+export async function apagarAtoDoTenant(tenant: string, id: string) {
+  await banco().query("DELETE FROM history WHERE tenant=? AND id=?", [tenant, id]);
+  await banco().query("DELETE FROM history_index WHERE tenant=? AND id=?", [tenant, id]);
 }
+const apagarAto = (u: Usuario, id: string) => apagarAtoDoTenant(u.tenant, id);
 
 historyRouter.delete("/:id", rota(async (req, res, u) => {
   const [rows] = await banco().query<any[]>("SELECT created_by FROM history_index WHERE tenant=? AND id=?", [u.tenant, req.params.id]);
