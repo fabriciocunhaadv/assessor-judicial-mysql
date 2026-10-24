@@ -10,8 +10,8 @@ import { authRouter, exigirSessao } from './server/authRoutes';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
-import { fontesRouter, verificarCitacoes, avisoDispositivosRevogados } from './server/fontesOficiais';
-import { consultarLegislacao, diagnosticoLegislacao, testarLegislacao } from './src/utils/legislacaoPlanalto';
+import { fontesRouter, verificarCitacoes, avisoDispositivosRevogados, lerCopiaLocal } from './server/fontesOficiais';
+import { consultarLegislacao, diagnosticoLegislacao, testarLegislacao, definirLeitorLocal } from './src/utils/legislacaoPlanalto';
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
@@ -222,6 +222,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/db/docs", docsRouter);
 app.use("/api/db/retencao", retencaoRouter);
 app.use("/api/fontes", fontesRouter);
+definirLeitorLocal(lerCopiaLocal);      // se o Planalto bloquear o servidor, a consulta usa a cópia da lei salva pelo super admin
 
 // Texto oficial (planalto.gov.br) dos artigos citados nestes textos, consultado na hora; qualquer falha devolve vazio e a resposta segue como antes
 async function blocoLegislacao(textos: any[], max = 8, timeoutMs = 6000): Promise<string> {

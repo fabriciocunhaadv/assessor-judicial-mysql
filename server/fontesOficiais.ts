@@ -5,9 +5,10 @@ import express from "express";
 import * as he from "he";
 import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
+import { gzipSync, gunzipSync } from "zlib";
 
 export const fontesRouter = express.Router();
-const COL_LEI = "legislacao", COL_RESUMO = "legislacao_resumo";
+const COL_LEI = "legislacao", COL_RESUMO = "legislacao_resumo", COL_TEXTO = "legislacao_texto";
 
 export interface LeiConfig { id: string; nome: string; curto: string; url: string; aliases: RegExp[] }
 const L = (id: string, nome: string, curto: string, url: string, ...aliases: RegExp[]): LeiConfig => ({ id, nome, curto, url, aliases });
@@ -24,6 +25,11 @@ export const LEIS: LeiConfig[] = [
   L("cpp", "Código de Processo Penal (Decreto-Lei 3.689/1941)", "CPP", P + "decreto-lei/del3689compilado.htm", /\bCPP\b/, /C[óo]digo de Processo Penal(?!\s+Militar)/i),
   L("clt", "Consolidação das Leis do Trabalho (Decreto-Lei 5.452/1943)", "CLT", P + "decreto-lei/del5452.htm", /\bCLT\b/, /Consolida[çc][ãa]o das Leis do Trabalho/i),
   L("l8429", "Improbidade Administrativa (Lei 8.429/1992)", "Lei 8.429/92", P + "leis/l8429.htm", /Lei\s*(?:n[º°o.]*\s*)?8\.?429\s*\/\s*(?:19)?92/i, /\bLIA\b/),
+  L("ctn", "Código Tributário Nacional (Lei 5.172/1966)", "CTN", P + "leis/l5172compilado.htm", /\bCTN\b/, /C[óo]digo Tribut[áa]rio Nacional/i, /Lei\s*(?:n[º°o.]*\s*)?5\.?172\s*\/\s*(?:19)?66/i),
+  L("l11343", "Lei de Drogas (Lei 11.343/2006)", "Lei 11.343/06", P + "_ato2004-2006/2006/lei/l11343.htm", /Lei\s*(?:n[º°o.]*\s*)?11\.?343\s*\/\s*(?:20)?06/i, /Lei de Drogas/i),
+  L("ctb", "Código de Trânsito Brasileiro (Lei 9.503/1997)", "CTB", P + "leis/l9503compilado.htm", /\bCTB\b/, /C[óo]digo de Tr[âa]nsito Brasileiro/i, /Lei\s*(?:n[º°o.]*\s*)?9\.?503\s*\/\s*(?:19)?97/i),
+  L("l6015", "Lei de Registros Públicos (Lei 6.015/1973)", "LRP", P + "leis/l6015compilada.htm", /Lei\s*(?:n[º°o.]*\s*)?6\.?015\s*\/\s*(?:19)?73/i, /Lei de Registros P[úu]blicos/i),
+  L("l14905", "Juros e correção (Lei 14.905/2024)", "Lei 14.905/24", P + "_ato2023-2026/2024/lei/l14905.htm", /Lei\s*(?:n[º°o.]*\s*)?14\.?905\s*\/\s*(?:20)?24/i),
   L("l14133", "Licitações e Contratos (Lei 14.133/2021)", "Lei 14.133/21", P + "_ato2019-2022/2021/lei/l14133.htm", /Lei\s*(?:n[º°o.]*\s*)?14\.?133\s*\/\s*(?:20)?21/i),
   L("l6830", "Execução Fiscal (Lei 6.830/1980)", "LEF", P + "leis/l6830.htm", /Lei\s*(?:n[º°o.]*\s*)?6\.?830\s*\/\s*(?:19)?80/i, /\bLEF\b/),
   L("l7347", "Ação Civil Pública (Lei 7.347/1985)", "Lei 7.347/85", P + "leis/l7347orig.htm", /Lei\s*(?:n[º°o.]*\s*)?7\.?347\s*\/\s*(?:19)?85/i),
@@ -99,29 +105,74 @@ async function salvarDoc(col: string, id: string, data: any) {
   await garantirDocs();
   await banco().query("INSERT INTO docs (col,id,data,updated_at) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE data=VALUES(data), updated_at=VALUES(updated_at)", [col, id, JSON.stringify(data), Date.now()]);
 }
+const chaveDaLei = (cfg: LeiConfig) => (cfg.url.split("/").pop() || "").replace(/\.[a-z]+$/i, "").toLowerCase();
+/** Cópia salva do texto da lei (chave = nome do arquivo no Planalto). Usada por legislacaoPlanalto quando o site não responde. */
+export async function lerCopiaLocal(chave: string): Promise<{ linhas: string[]; salvoEm: number } | null> {
+  await garantirDocs();
+  const [rows] = await banco().query<any[]>("SELECT data FROM docs WHERE col=? AND id=?", [COL_TEXTO, chave]);
+  if (!rows[0]) return null;
+  const d = JSON.parse(rows[0].data);
+  if (!d.gz) return null;
+  return { linhas: gunzipSync(Buffer.from(d.gz, "base64")).toString("utf-8").split("\n"), salvoEm: Number(d.salvoEm) || 0 };
+}
+/** Estado compacto de uma lei: só quais artigos estão revogados/vetados (com a nota curta) e o último número. O texto dos artigos NÃO é guardado (não pesa no banco). */
+interface EstadoLei { r: Record<string, string>; v: Record<string, string>; maior: number }
+const BLOQUEIO = /acesso negado|requisi[çc][ãa]o foi bloqueada|access denied|request blocked/i;
+
+/** Lê o HTML de uma lei e guarda o estado compacto + o resumo. Usado pelo download e pelo arquivo enviado pelo Super Admin. */
+export async function processarHtmlLei(cfg: LeiConfig, texto: string): Promise<ResumoLei> {
+  const linhas = htmlParaLinhas(texto);
+  if (BLOQUEIO.test(linhas.slice(0, 30).join(" ")) && linhas.length < 40) throw new Error("o Planalto bloqueou o acesso do servidor (página de “Acesso Negado”); salve a página no seu navegador e envie o arquivo");
+  const ex = extrairArtigos(linhas);
+  if (ex.total < 5) throw new Error(`formato inesperado: só ${ex.total} artigo(s) reconhecido(s); nada foi gravado`);
+  const chaves = Object.keys(ex.artigos);
+  const maior = Math.max(...chaves.map((k) => parseInt(k, 10)).filter((n) => Number.isFinite(n)));
+  const estado: EstadoLei = { r: {}, v: {}, maior };
+  for (const k of chaves) { const a = ex.artigos[k]; if (a.r) estado.r[k] = (a.n || "").slice(0, 90); else if (a.v) estado.v[k] = (a.n || "").slice(0, 90); }
+  const agora = Date.now();
+  await salvarDoc(COL_LEI, cfg.id, { id: cfg.id, baixadoEm: agora, ...estado });
+  // cópia do texto (compactada) para a consulta na hora da minuta quando o Planalto bloqueia o servidor; ~1/5 do tamanho da página
+  const comprimido = gzipSync(Buffer.from(linhas.join("\n"), "utf-8")).toString("base64");
+  await salvarDoc(COL_TEXTO, chaveDaLei(cfg), { id: cfg.id, salvoEm: agora, gz: comprimido });
+  const resumo: ResumoLei = { id: cfg.id, nome: cfg.nome, url: cfg.url, baixadoEm: agora, total: ex.total, revogados: ex.revogados, vetados: ex.vetados, maior };
+  await salvarDoc(COL_RESUMO, cfg.id, resumo);
+  cacheLeis.delete(cfg.id);
+  return resumo;
+}
+async function anotarErro(cfg: LeiConfig, e: any): Promise<ResumoLei> {
+  // falha não apaga a versão anterior; só anota o erro no resumo
+  const [rows] = await banco().query<any[]>("SELECT data FROM docs WHERE col=? AND id=?", [COL_RESUMO, cfg.id]).catch(() => [[]] as any);
+  const anterior = (rows as any[])[0] ? JSON.parse((rows as any[])[0].data) : {};
+  const resumo = { id: cfg.id, nome: cfg.nome, url: cfg.url, ...anterior, erro: String(e?.name === "AbortError" ? "tempo esgotado" : e?.message || e).slice(0, 220) };
+  await salvarDoc(COL_RESUMO, cfg.id, resumo);
+  return resumo;
+}
 export async function importarLei(id: string): Promise<ResumoLei> {
   const cfg = LEIS.find((l) => l.id === id);
   if (!cfg) throw Object.assign(new Error("lei desconhecida"), { status: 404 });
-  const base: ResumoLei = { id: cfg.id, nome: cfg.nome, url: cfg.url };
   try {
     const r = await baixar(cfg.url);
     if (r.status !== 200) throw new Error(`o Planalto respondeu ${r.status}`);
-    const ex = extrairArtigos(htmlParaLinhas(decodificar(r.buf, r.contentType)));
-    if (ex.total < 5) throw new Error(`formato inesperado: só ${ex.total} artigo(s) reconhecido(s); nada foi gravado`);
-    const maior = Math.max(...Object.keys(ex.artigos).map((k) => parseInt(k, 10)).filter((n) => Number.isFinite(n)));
-    await salvarDoc(COL_LEI, cfg.id, { id: cfg.id, nome: cfg.nome, url: cfg.url, baixadoEm: Date.now(), artigos: ex.artigos });
-    const resumo: ResumoLei = { ...base, baixadoEm: Date.now(), total: ex.total, revogados: ex.revogados, vetados: ex.vetados, maior };
-    await salvarDoc(COL_RESUMO, cfg.id, resumo);
-    cacheLeis.delete(cfg.id);
-    return resumo;
-  } catch (e: any) {
-    // falha não apaga a versão anterior; só anota o erro no resumo
-    const [rows] = await banco().query<any[]>("SELECT data FROM docs WHERE col=? AND id=?", [COL_RESUMO, cfg.id]).catch(() => [[]] as any);
-    const anterior = (rows as any[])[0] ? JSON.parse((rows as any[])[0].data) : {};
-    const resumo = { ...base, ...anterior, erro: String(e?.name === "AbortError" ? "tempo esgotado" : e?.message || e).slice(0, 200) };
-    await salvarDoc(COL_RESUMO, cfg.id, resumo);
-    return resumo;
+    return await processarHtmlLei(cfg, decodificar(r.buf, r.contentType));
+  } catch (e: any) { return anotarErro(cfg, e); }
+}
+/** Descobre qual lei é pelo nome do arquivo salvo (ex.: l13105.htm) ou pelo começo do texto. */
+export function descobrirLei(nomeArquivo: string, texto: string): LeiConfig | null {
+  const base = (nomeArquivo || "").toLowerCase().replace(/\.[a-z]+$/, "");
+  for (const l of LEIS) {
+    const arq = l.url.split("/").pop()!.toLowerCase().replace(/\.[a-z]+$/, "");
+    const n = (x: string) => /(\d{3,5})/.exec(x)?.[1];
+    if (base && (base === arq || (n(base) && n(base) === n(arq) && /^(l|del|lei)/.test(base)) || (arq === "constituicao" && /^constitui/.test(base)))) return l;
   }
+  const inicio = htmlParaLinhas(texto).slice(0, 25).join(" ");
+  return LEIS.find((l) => l.aliases.slice(0, 6).some((re) => /\d{4,}/.test(re.source) && re.test(inicio))) || null;
+}
+export async function importarArquivoLei(nomeArquivo: string, buf: Buffer, idForcado?: string): Promise<ResumoLei> {
+  let texto: string;
+  try { texto = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch { texto = decodificar(buf); }      // arquivo salvo pelo navegador: UTF-8 válido ou windows-1252
+  const cfg = idForcado ? LEIS.find((l) => l.id === idForcado) : descobrirLei(nomeArquivo, texto);
+  if (!cfg) throw Object.assign(new Error(`não reconheci qual lei é o arquivo “${nomeArquivo}”. Use o nome original da página (ex.: l13105.htm) ou escolha a lei na lista.`), { status: 400 });
+  try { return await processarHtmlLei(cfg, texto); } catch (e: any) { return anotarErro(cfg, e); }
 }
 export async function listarResumoLeis(): Promise<ResumoLei[]> {
   await garantirDocs();
@@ -129,15 +180,20 @@ export async function listarResumoLeis(): Promise<ResumoLei[]> {
   const mapa = new Map(rows.map((r) => [r.id, JSON.parse(r.data) as ResumoLei]));
   return LEIS.map((l) => mapa.get(l.id) || { id: l.id, nome: l.nome, url: l.url });
 }
-const cacheLeis = new Map<string, { ate: number; artigos: Record<string, ArtigoLei> | null }>();
-async function artigosDaLei(id: string): Promise<Record<string, ArtigoLei> | null> {
+const cacheLeis = new Map<string, { ate: number; estado: EstadoLei | null }>();
+async function estadoDaLei(id: string): Promise<EstadoLei | null> {
   const c = cacheLeis.get(id);
-  if (c && c.ate > Date.now()) return c.artigos;
+  if (c && c.ate > Date.now()) return c.estado;
   await garantirDocs();
   const [rows] = await banco().query<any[]>("SELECT data FROM docs WHERE col=? AND id=?", [COL_LEI, id]);
-  const artigos = rows[0] ? (JSON.parse(rows[0].data).artigos as Record<string, ArtigoLei>) : null;
-  cacheLeis.set(id, { ate: Date.now() + 10 * 60_000, artigos });
-  return artigos;
+  let estado: EstadoLei | null = null;
+  if (rows[0]) {
+    const d = JSON.parse(rows[0].data);
+    if (d.r && d.v) estado = { r: d.r, v: d.v, maior: d.maior || 0 };
+    else if (d.artigos) { estado = { r: {}, v: {}, maior: 0 }; for (const [k, a] of Object.entries<any>(d.artigos)) { if (a.r) estado.r[k] = a.n || ""; else if (a.v) estado.v[k] = a.n || ""; estado.maior = Math.max(estado.maior, parseInt(k, 10) || 0); } }      // versão antiga, com texto
+  }
+  cacheLeis.set(id, { ate: Date.now() + 10 * 60_000, estado });
+  return estado;
 }
 
 // ---------- conferência das citações ----------
@@ -169,17 +225,16 @@ export async function verificarCitacoes(texto: string): Promise<{ alertas: Alert
     const posicoes: number[] = [];
     for (const re of lei.aliases) { const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g"); for (const m of texto.matchAll(g)) posicoes.push(alvoDoTexto(m)); }
     if (!posicoes.length) continue;
-    const artigos = await artigosDaLei(lei.id);
-    if (!artigos) continue;
+    const estado = await estadoDaLei(lei.id);
+    if (!estado) continue;
     temBase = true; conferidas.add(lei.curto);
-    const maior = Math.max(...Object.keys(artigos).map((k) => parseInt(k, 10)).filter(Number.isFinite));
     const vistos = new Set<string>();
     for (const pos of posicoes) for (const k of artigosAntes(texto, pos)) {
       if (vistos.has(k)) continue; vistos.add(k);
-      const a = artigos[k], n = parseInt(k, 10);
-      if (a?.r) alertas.push({ lei: lei.curto, artigo: k, tipo: "revogado", nota: a.n });
-      else if (a?.v) alertas.push({ lei: lei.curto, artigo: k, tipo: "vetado", nota: a.n });
-      else if (!a && Number.isFinite(n) && n > maior) alertas.push({ lei: lei.curto, artigo: k, tipo: "inexistente", nota: `a lei vai até o art. ${maior}` });
+      const n = parseInt(k, 10);
+      if (k in estado.r) alertas.push({ lei: lei.curto, artigo: k, tipo: "revogado", nota: estado.r[k] || undefined });
+      else if (k in estado.v) alertas.push({ lei: lei.curto, artigo: k, tipo: "vetado", nota: estado.v[k] || undefined });
+      else if (estado.maior > 0 && Number.isFinite(n) && n > estado.maior) alertas.push({ lei: lei.curto, artigo: k, tipo: "inexistente", nota: `a lei vai até o art. ${estado.maior}` });
     }
   }
   return { alertas, leisConferidas: Array.from(conferidas), semBase: !temBase };
@@ -190,9 +245,9 @@ export async function avisoDispositivosRevogados(contexto: string): Promise<stri
   const partes: string[] = [];
   for (const lei of LEIS) {
     if (!lei.aliases.some((re) => re.test(contexto))) continue;
-    const artigos = await artigosDaLei(lei.id);
-    if (!artigos) continue;
-    const ks = Object.keys(artigos).filter((k) => artigos[k].r || artigos[k].v);
+    const estado = await estadoDaLei(lei.id);
+    if (!estado) continue;
+    const ks = [...Object.keys(estado.r), ...Object.keys(estado.v)].sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
     if (ks.length) partes.push(`${lei.curto}: arts. ${ks.slice(0, 90).join(", ")}${ks.length > 90 ? ` (e outros ${ks.length - 90})` : ""}`);
   }
   if (!partes.length) return "";
@@ -223,7 +278,7 @@ export async function reconhecer(): Promise<any[]> {
         out.amostra = linhas.slice(0, 6).join(" | ").slice(0, 280);
         out.linhas = linhas.length;
         if (s.grupo === "Planalto") { const ex = extrairArtigos(linhas); out.leitura = { artigos: ex.total, revogados: ex.revogados, vetados: ex.vetados }; }
-        if (/captcha|access denied|forbidden|enable javascript|cloudflare/i.test(linhas.slice(0, 40).join(" "))) out.bloqueio = "a página parece ser um bloqueio ou exigir JavaScript";
+        if ((BLOQUEIO.test(linhas.slice(0, 40).join(" ")) && linhas.length < 40) || /captcha|forbidden|enable javascript|cloudflare/i.test(linhas.slice(0, 40).join(" "))) out.bloqueio = "BLOQUEADO: a página é um aviso de bloqueio (ou exige JavaScript), não o conteúdo";
       } else out.amostra = "(arquivo PDF)";
       return out;
     } catch (e: any) { return { ...s, status: 0, erro: String(e?.name === "AbortError" ? "tempo esgotado (20 s)" : e?.cause?.code || e?.message || e).slice(0, 160) }; }
@@ -238,5 +293,14 @@ const soSuper = (req: any, res: express.Response): boolean => { if (!req.usuario
 fontesRouter.post("/reconhecer", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ resultados: await reconhecer() }); } catch (e: any) { res.status(500).json({ erro: "falha no teste" }); } });
 fontesRouter.get("/leis", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ leis: await listarResumoLeis() }); } catch { res.status(500).json({ erro: "não consegui ler o banco" }); } });
 fontesRouter.post("/leis/:id/atualizar", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ lei: await importarLei(req.params.id) }); } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.message || "falha" }); } });
+/** Arquivo de lei salvo no navegador (Ctrl+S na página do Planalto): o servidor lê e guarda só o estado compacto. Corpo = bytes do arquivo. */
+fontesRouter.post("/leis/importar-arquivo", express.raw({ type: () => true, limit: "30mb" }), async (req, res) => {
+  if (!soSuper(req, res)) return;
+  try {
+    const nome = decodeURIComponent(String(req.headers["x-nome-arquivo"] || "")), id = String(req.query.id || "") || undefined;
+    if (!Buffer.isBuffer(req.body) || req.body.length < 200) return void res.status(400).json({ erro: "arquivo vazio ou pequeno demais" });
+    res.json({ lei: await importarArquivoLei(nome, req.body, id) });
+  } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.message || "falha ao ler o arquivo" }); }
+});
 /** Qualquer usuário logado pode conferir um texto (ex.: a minuta) contra a base de leis. */
 fontesRouter.post("/verificar-citacoes", async (req, res) => { try { res.json(await verificarCitacoes(String(req.body?.texto || "").slice(0, 400000))); } catch { res.status(500).json({ erro: "falha na conferência" }); } });

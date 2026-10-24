@@ -4,9 +4,12 @@ import { getApiHeaders } from "../utils/apiKeyManager";
 interface Resultado { id: string; grupo: string; nome: string; url: string; status: number; urlFinal?: string; tipo?: string; bytes?: number; ms?: number; amostra?: string; linhas?: number; erro?: string; bloqueio?: string; leitura?: { artigos: number; revogados: number; vetados: number } }
 interface Lei { id: string; nome: string; url: string; baixadoEm?: number; total?: number; revogados?: number; vetados?: number; erro?: string }
 
+const chamarSimples = async (url: string) => { const r = await fetch(url, { headers: getApiHeaders() }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || j.erro || `erro ${r.status}`); return j; };
+
 /** Só Super Admin: testa se o servidor alcança os sites oficiais e importa as leis do Planalto (com a marca de revogado/vetado de cada artigo). */
 export const FontesOficiaisPanel: React.FC = () => {
   const [aberto, setAberto] = useState(false), [testando, setTestando] = useState(false), [res, setRes] = useState<Resultado[] | null>(null), [erro, setErro] = useState("");
+  const [envio, setEnvio] = useState<string[]>([]), [enviando, setEnviando] = useState(false);
   const [leis, setLeis] = useState<Lei[] | null>(null), [atualizando, setAtualizando] = useState<string | null>(null), [lote, setLote] = useState<{ feitas: number; total: number } | null>(null);
   const chamar = async (caminho: string, metodo = "POST") => {
     const r = await fetch("/api/fontes" + caminho, { method: metodo, headers: getApiHeaders() });
@@ -17,6 +20,27 @@ export const FontesOficiaisPanel: React.FC = () => {
   const testar = async () => { setTestando(true); setErro(""); setRes(null); try { setRes((await chamar("/reconhecer")).resultados); } catch (e: any) { setErro(e.message); } finally { setTestando(false); } };
   const atualizar = async (id: string) => { setAtualizando(id); try { const { lei } = await chamar(`/leis/${id}/atualizar`); setLeis((ls) => (ls || []).map((l) => (l.id === id ? lei : l))); } catch (e: any) { setErro(e.message); } finally { setAtualizando(null); } };
   const atualizarTodas = async () => { if (!leis) return; setLote({ feitas: 0, total: leis.length }); for (let i = 0; i < leis.length; i++) { await atualizar(leis[i].id); setLote({ feitas: i + 1, total: leis.length }); await new Promise((r) => setTimeout(r, 800)); } setLote(null); };
+  const enviarArquivos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivos = Array.from(e.target.files || []); e.target.value = ""; if (!arquivos.length) return;
+    setEnviando(true); setEnvio([]);
+    for (const f of arquivos) {
+      try {
+        const r = await fetch("/api/fontes/leis/importar-arquivo", { method: "POST", headers: { "Content-Type": "application/octet-stream", "x-nome-arquivo": encodeURIComponent(f.name) }, body: await f.arrayBuffer() });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.erro || `erro ${r.status}`);
+        const l: Lei = j.lei;
+        setLeis((ls) => (ls || []).map((x) => (x.id === l.id ? l : x)));
+        setEnvio((v) => [...v, l.erro ? `❌ ${f.name} → ${l.nome}: ${l.erro}` : `✅ ${f.name} → ${l.nome}: ${l.total} artigos, ${l.revogados} revogados, ${l.vetados} vetados`]);
+      } catch (err: any) { setEnvio((v) => [...v, `❌ ${f.name}: ${err.message}`]); }
+    }
+    setEnviando(false);
+  };
+  const [consulta, setConsulta] = useState(""), [saidaConsulta, setSaidaConsulta] = useState<any>(null), [consultando, setConsultando] = useState(false);
+  const testarConsulta = async () => {      // usa o fetch do app (leva a sessão); o endereço digitado direto no navegador não leva
+    setConsultando(true); setErro(""); setSaidaConsulta(null);
+    try { const [st, te] = await Promise.all([chamarSimples("/api/legislacao-status"), consulta.trim() ? chamarSimples("/api/legislacao-teste?q=" + encodeURIComponent(consulta.trim())) : Promise.resolve(null)]); setSaidaConsulta({ st, te }); }
+    catch (e: any) { setErro(e.message); } finally { setConsultando(false); }
+  };
   const btn = "px-3 py-1.5 rounded-full text-xs font-bold cursor-pointer disabled:opacity-50";
   return (
     <div className="shrink-0 border-b border-[#c9b8ff] bg-[#f5f1ff]" data-testid="fontes-oficiais">
@@ -41,8 +65,22 @@ export const FontesOficiaisPanel: React.FC = () => {
             )}
           </div>
           <div className="space-y-1.5">
-            <p><strong>2. Leis do Planalto:</strong> baixa o texto de cada lei e marca os artigos revogados e vetados. A minuta passa a avisar quando cita artigo revogado, vetado ou inexistente, e o prompt lista os dispositivos revogados das leis mencionadas. Atualize de tempos em tempos (as leis mudam).</p>
+            <p><strong>2. Leis do Planalto:</strong> o sistema guarda a lista de artigos revogados e vetados de cada lei (poucos KB) e, só das leis que você enviar/atualizar, uma cópia <em>compactada</em> do texto (cerca de 100 KB por lei) que serve de reserva quando o Planalto não responde na hora da minuta. A minuta avisa quando cita artigo revogado, vetado ou inexistente, e o prompt lista os dispositivos revogados das leis mencionadas. Atualize de tempos em tempos (as leis mudam).</p>
+            <p className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-amber-900"><strong>Se o Planalto bloquear o servidor</strong> (aparece “Acesso Negado” no teste ou na lista), faça assim: abra a lei no <em>seu</em> navegador, aperte <kbd>Ctrl</kbd>+<kbd>S</kbd>, escolha “Página da Web, somente HTML” e envie os arquivos abaixo (vários de uma vez; mantenha o nome original, ex.: l13105.htm).</p>
+            <label className={`${btn} inline-block bg-white border border-[#673de6] text-[#673de6]`}>{enviando ? "Lendo arquivos..." : "Enviar arquivos salvos do Planalto"}
+              <input type="file" accept=".htm,.html" multiple className="hidden" disabled={enviando} onChange={enviarArquivos} />
+            </label>
+            {envio.length > 0 && <ul className="space-y-0.5">{envio.map((m, i) => <li key={i}>{m}</li>)}</ul>}
             <button disabled={!!atualizando || !!lote || !leis} onClick={atualizarTodas} className={`${btn} bg-[#673de6] text-white`}>{lote ? `Atualizando ${lote.feitas}/${lote.total}...` : "Atualizar todas as leis"}</button>
+            <p className="pt-1"><strong>3. Consulta na hora da minuta:</strong> ao gerar a minuta o sistema busca no Planalto o texto oficial dos artigos citados (de qualquer lei federal) e usa a cópia salva acima se o site não responder. Teste aqui:</p>
+            <div className="flex flex-wrap gap-2 items-center">
+              <input value={consulta} onChange={(e) => setConsulta(e.target.value)} placeholder="ex.: art. 6º da Lei 8.987/1995 (opcional)" className="flex-1 min-w-[220px] border border-[#c9cbd8] rounded-lg px-2 py-1 bg-white" />
+              <button disabled={consultando} onClick={testarConsulta} className={`${btn} bg-white border border-[#673de6] text-[#673de6]`}>{consultando ? "Testando..." : "Testar consulta"}</button>
+            </div>
+            {saidaConsulta && <div className="rounded-lg border border-[#e4e5ed] bg-white p-2 space-y-1">
+              <div>Leis alcançáveis agora no site do Planalto: <strong>{saidaConsulta.st.ok}/{saidaConsulta.st.total}</strong> {saidaConsulta.st.ok === 0 && <span className="text-amber-800">(bloqueado: vale a cópia salva)</span>}</div>
+              {saidaConsulta.te && <pre className="whitespace-pre-wrap break-words max-h-48 overflow-auto text-[10px]">{JSON.stringify(saidaConsulta.te, null, 1).slice(0, 2500)}</pre>}
+            </div>}
             {leis && (
               <table className="w-full text-[11px] border border-[#e4e5ed] bg-white rounded-lg overflow-hidden"><tbody>{leis.map((l) => (
                 <tr key={l.id} className="border-t border-[#e4e5ed] align-top">
