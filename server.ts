@@ -1125,6 +1125,12 @@ app.post("/api/generate-minute-turbo", async (req, res) => {
         if (accumulatedText.length > 1500000) accumulatedText = accumulatedText.substring(0, 750000) + "\n\n... [AUTOS ABREVIADOS: trecho do meio omitido por limite técnico] ...\n\n" + accumulatedText.substring(accumulatedText.length - 750000);
         const cobT = montarCobertura(req.body, false);
         // artigos citados nos autos conferidos no texto oficial do Planalto (até 6 e 5 s no máximo, para o Turbo continuar rápido; falha silenciosa)
+        // súmulas, teses e informativos (nativos e anexados pelo gabinete, lidos do MySQL) que se aplicam aos autos: até 5, para o Turbo continuar rápido
+        const [anexadosT, conferenciasT] = await Promise.all([listarPrecedentes().catch(() => [] as any[]), listarConferencias().catch(() => ({} as Record<string, any>))]);
+        const precedentesTurbo = matchApplicableBindingPrecedents([accumulatedText, String(actType), specificInstructions, promptTitle, promptText].join("\n"), anexadosT).slice(0, 5);
+        const blocoPrecedentesTurbo = precedentesTurbo.length
+            ? `\n\n[SÚMULAS, TESES VINCULANTES E INFORMATIVOS APLICÁVEIS (STF • STJ • TNU • TJGO)]:\n` + precedentesTurbo.map((p, i) => `${i + 1}. [${p.tribunal} • ${p.number} - ${p.title}] (${conferenciasT[p.id] ? "CONFERIDO na fonte oficial" : "NÃO CONFERIDO"}): "${p.statement}" (Fonte: ${p.sourceUrl})`).join("\n") + `\nDIRETRIZ: cite número de súmula, tema ou informativo SOMENTE se constar desta lista; nunca invente numeração.`
+            : "";
         const legTurbo = await consultarLegislacao([accumulatedText.slice(0, 150000)], { maxArtigos: 6, timeoutMs: 5000 });
         const blocoLegislacaoTurbo = legTurbo.bloco;
         let alertaInjecaoT: any = null, defesaInjecaoT = "";
@@ -1269,7 +1275,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
                 { role: "user", parts: [{ text: userPrompt }, ...cobT.partes] }
             ],
             config: {
-                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoLegislacaoTurbo,
+                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
                 temperature: 0.1,
                 maxOutputTokens: 8192,
                 responseMimeType: "application/json",
@@ -4628,6 +4634,12 @@ if (hasActiveParadigm) {
     stage1SystemInstruction += `\n\n[ESTRUTURA DE CASO IDÊNTICO E MINUTA PARADIGMA DE REFERÊNCIA - CLONAGEM ESTRUTURAL E DE ESTILO OBRIGATÓRIA]:\nO magistrado titular e o assessor vincularam a seguinte MINUTA PARADIGMA ${paradigmModelTitle ? `("${paradigmModelTitle}")` : ""} como padrão oficial e imutável de entendimento, estilo, formatação, redação, tópicos, fundamentação integral e dispositivo para este tipo de demanda idêntica:\n"""\n${paradigmModelText}\n"""\n\nREGRAS MANDATÓRIAS DE ESPELHAMENTO DE FORMATAÇÃO, ESTILO E ENTENDIMENTO (COM ISOLAMENTO FÁTICO):\n1. REPRODUÇÃO DA TESE JURÍDICA E JURISPRUDÊNCIA DO JUIZ (PROIBIDO RESUMIR A TESE): Espelhe e copie fielmente toda a TESE JURÍDICA, legislação, precedentes, acórdãos citados, súmulas e doutrina do modelo paradigma.\n2. PROIBIÇÃO ABSOLUTA DE ALUCINAÇÃO FÁTICA E ISOLAMENTO DO MODELO (REGRA DE OURO): Descarte os fatos antigos do paradigma e utilize ESTRITAMENTE os fatos e provas reais do processo em exame narrados na Minuta Preliminar Factual da Etapa 1.\n3. ESPELHAMENTO ESTRUTURAL: Mantenha rigorosamente a divisão de tópicos e subtópicos (I - RELATÓRIO, II - FUNDAMENTAÇÃO, 1. PRELIMINAR, 2. MÉRITO, etc.) e formatação Markdown.\n4. ADOÇÃO INTEGRAL DA LINHA DECISÓRIA E DISPOSITIVO: Aplique a mesma ratio decidendi e preserve a estrutura de comandos do dispositivo.\n`;
 }
 
+if (matchedPrecedents.length > 0) {
+    // os 5 julgados mais aplicáveis (súmulas nativas e anexados pelo gabinete) já na etapa 1, para a minuta preliminar nascer coerente com eles; a etapa 2 recebe a lista completa
+    stage1SystemInstruction += `\n\n[SÚMULAS, TESES VINCULANTES E INFORMATIVOS MAIS APLICÁVEIS (STF • STJ • TNU • TJGO)]:\n` +
+        matchedPrecedents.slice(0, 5).map((p, idx) => `${idx + 1}. [${p.tribunal} • ${p.number} - ${p.title}] (${conferenciasPrecedentes[p.id] ? "CONFERIDO na fonte oficial" : "NÃO CONFERIDO"}): "${p.statement}" (Fonte: ${p.sourceUrl})`).join("\n") +
+        `\nDIRETRIZ: ao levantar fatos e redigir a minuta preliminar, considere estes precedentes quando se aplicarem aos fatos dos autos; não cite precedente que não conste desta lista nem dos autos.\n`;
+}
 if (taxonomySummary) {
     stage1SystemInstruction += `\n\n[MAPEAMENTO TAXONÔMICO NORMATIVO & MICROSSISTEMAS]:\n${taxonomySummary}\n`;
 }
