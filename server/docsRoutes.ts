@@ -36,12 +36,12 @@ const gabineteDoHistorico = (col: string): string | null => { const m = /^gabine
 const podeLer = (u: UsuarioSessao, col: string): boolean => {
   const seg = col.split("/");
   if (seg[0] === "gabinetes") return !PRIVADAS.has(seg[2]) && (u.superAdmin || seg[1] === tenantCanonico(u.row.tenant_id));
-  if (seg[0] === "system_snapshots") return u.superAdmin;
+  if (seg[0] === "system_snapshots" || seg[0] === "perfis_importados") return u.superAdmin;      // perfis importados têm chaves de API: só o super admin
   return true;
 };
 const podeEscrever = (u: UsuarioSessao, col: string): boolean => {
   const seg = col.split("/");
-  if (seg[0] === "tenants" || seg[0] === "system_snapshots") return u.superAdmin;
+  if (seg[0] === "tenants" || seg[0] === "system_snapshots" || seg[0] === "perfis_importados") return u.superAdmin;
   if (seg[0] === "settings") return u.superAdmin;
   return podeLer(u, col);
 };

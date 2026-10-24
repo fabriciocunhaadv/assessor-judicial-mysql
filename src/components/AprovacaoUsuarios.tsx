@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { chamarAuth } from "../lib/sessao";
 
-interface Cadastro { uid: string; name: string; email: string; status: string; role: string; tenantId: string; isJudge: boolean; superAdmin?: boolean; createdAt: number }
+interface Cadastro { uid: string; name: string; email: string; status: string; role: string; tenantId: string; isJudge: boolean; superAdmin?: boolean; perfilImportado?: { tenantId?: string; role?: string; isJudge?: boolean; judgeTitle?: string }; createdAt: number }
 
 /** Super admin: aprova ou recusa pedidos de cadastro e desativa/reativa usuários. */
 export const AprovacaoUsuarios: React.FC = () => {
@@ -41,6 +41,11 @@ export const AprovacaoUsuarios: React.FC = () => {
                   <div className="font-semibold">{c.name} <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300">{rotulo[c.status] || c.status}</span></div>
                   <div className="text-xs text-slate-400">{c.email} · {new Date(c.createdAt).toLocaleDateString("pt-BR")}</div>
                 </div>
+                {c.status === "pendente" && c.perfilImportado && (
+                  <button disabled={ocupado} className={`${btn} bg-amber-600 text-white`} onClick={() => agir(c, "aprovar", { usarImportado: true })}>
+                    Aprovar com perfil antigo ({c.perfilImportado.role === "admin" ? "admin" : "usuário"}{c.perfilImportado.isJudge ? ", juiz" : ""} · {c.perfilImportado.tenantId || "gabinete"})
+                  </button>
+                )}
                 {c.status === "pendente" && <>
                   <button disabled={ocupado} className={`${btn} bg-emerald-600 text-white`} onClick={() => agir(c, "aprovar", { tenantId: "gabinete_default", role: "user" })}>Aprovar</button>
                   <button disabled={ocupado} className={`${btn} bg-emerald-800 text-white`} onClick={() => agir(c, "aprovar", { tenantId: "gabinete_default", role: "admin" })}>Aprovar como admin</button>
