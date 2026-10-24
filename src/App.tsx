@@ -1276,6 +1276,11 @@ export default function App() {
         toast("Autos grandes: parte das páginas foi omitida/abreviada. Veja o aviso fixo no topo da minuta.", { duration: 10000, icon: "📄" });
       }
 
+      // Artigos revogados/vetados/inexistentes citados na minuta (conferidos contra o Planalto)
+      if (Array.isArray(rawData?.alertasLegislacao) && rawData.alertasLegislacao.length > 0) {
+        toast.error(`Atenção: a minuta cita ${rawData.alertasLegislacao.length} dispositivo(s) revogado(s), vetado(s) ou inexistente(s). Veja o aviso no topo da minuta.`, { duration: 12000 });
+      }
+
       // Pesquisa ao vivo (Grounding) ligada, mas sem resultado com fontes: avisa (a análise segue só com a base interna e os autos)
       if (rawData?.groundingStatus && rawData.groundingStatus !== "desligado" && rawData.groundingStatus !== "ok") {
         const motivo = rawData.groundingStatus === "falhou" ? `a busca falhou (${rawData.groundingMensagem || "erro"}). Pode ser limite ou plano da chave do Google` : rawData.groundingStatus === "sem_fontes" ? "a busca respondeu, mas sem links de fontes para conferir" : "a busca não trouxe resultado";

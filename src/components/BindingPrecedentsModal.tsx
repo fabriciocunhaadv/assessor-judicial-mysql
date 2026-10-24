@@ -37,6 +37,7 @@ import {
 } from "../utils/bindingPrecedents";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
 import { getApiHeaders } from "../utils/apiKeyManager";
+import { FontesOficiaisPanel } from "./FontesOficiaisPanel";
 
 interface BindingPrecedentsModalProps {
   isOpen: boolean;
@@ -295,6 +296,8 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {isSuperAdmin && <FontesOficiaisPanel />}
 
         {/* Informative Banner on 100% Automated Execution */}
         <div className="shrink-0 px-4 sm:px-6 py-2 bg-emerald-50/80 dark:bg-emerald-950/30 border-b border-emerald-200/80 dark:border-emerald-900/50 flex items-center gap-2.5 sm:gap-3">
