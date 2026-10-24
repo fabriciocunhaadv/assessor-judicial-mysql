@@ -1279,7 +1279,10 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
       }
 
       const res = await restoreGlobalDatabaseSnapshot(parsed);
-      showSuccessToast(`Snapshot "${parsed.reason || parsed.id}" importado! ${res.restoredTenants} gabinetes, ${res.restoredUsers} perfis de usuários, ${res.restoredPrompts} prompts e ${res.restoredHistories} minutas do Histórico${res.failedHistories ? ` (${res.failedHistories} minutas NÃO entraram — veja o console)` : ''}. No arquivo: ${parsed.summary?.totalHistoriesCount ?? 0} minutas.`);
+      const sm: any = parsed.summary || {};
+      const relatorio = `No arquivo: ${sm.tenantsCount ?? 0} gabinetes, ${sm.usersCount ?? 0} usuários, ${sm.totalPromptsCount ?? 0} prompts, ${sm.totalTesesCount ?? 0} teses, ${sm.totalHistoriesCount ?? 0} minutas. Importado: ${res.restoredTenants} gabinetes, ${res.restoredUsers} perfis, ${res.restoredPrompts} prompts, ${res.restoredHistories} minutas${res.failedHistories ? ` (${res.failedHistories} minutas não entraram)` : ''}.`;
+      if (res.erros.length) showErrorToast(`Importação com falhas. ${relatorio} Falhas: ${res.erros.slice(0, 3).join(' | ')}`);
+      else showSuccessToast(`Snapshot importado. ${relatorio}`);
       await loadAllData();
     } catch (err: any) {
       showErrorToast("Erro ao importar arquivo de snapshot: " + (err.message || String(err)));

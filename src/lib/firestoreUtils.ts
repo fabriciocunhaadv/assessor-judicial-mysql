@@ -3408,7 +3408,7 @@ export const deleteGlobalDatabaseSnapshot = async (snapshotId: string, meta?: { 
 export const restoreGlobalDatabaseSnapshot = async (
   snapshotInput: GlobalDatabaseSnapshot,
   options?: { targetTenantOnly?: string }
-): Promise<{ restoredTenants: number; restoredUsers: number; restoredHistories: number; restoredPrompts: number; failedHistories: number }> => {
+): Promise<{ restoredTenants: number; restoredUsers: number; restoredHistories: number; restoredPrompts: number; failedHistories: number; erros: string[] }> => {
   const snapshot = (await fetchFullGlobalDatabaseSnapshot(snapshotInput)) || snapshotInput;
 
   if (!snapshot || !snapshot.data) {
@@ -3425,6 +3425,8 @@ export const restoreGlobalDatabaseSnapshot = async (
   let restoredHistories = 0;
   let restoredPrompts = 0;
   let failedHistories = 0;
+  const erros: string[] = [];      // cada etapa que falhar é anotada e a restauração continua nas demais
+  const anotar = (etapa: string, e: any) => { console.warn('[Restauração] falha em', etapa, e); erros.push(`${etapa}: ${String(e?.message || e).slice(0, 140)}`); };
 
   // Atos do Histórico em lotes limitados por TAMANHO (minutas com texto dos autos são grandes). Se um lote for recusado, tenta um por um e conta o que não entrou.
   const gravarAtos = async (tId: string, lista: SavedAnalysis[]) => {
@@ -3455,6 +3457,7 @@ export const restoreGlobalDatabaseSnapshot = async (
 
   const targetTenant = options?.targetTenantOnly;
 
+  try {
   // 1. Restore Tenants
   if (Array.isArray(snapshot.data.tenants)) {
     for (const t of snapshot.data.tenants) {
@@ -3463,7 +3466,9 @@ export const restoreGlobalDatabaseSnapshot = async (
       restoredTenants++;
     }
   }
+  } catch (e) { anotar('gabinetes', e); }
 
+  try {
   // 2. Restore Users
   if (Array.isArray(snapshot.data.users)) {
     for (const u of snapshot.data.users) {
@@ -3474,7 +3479,9 @@ export const restoreGlobalDatabaseSnapshot = async (
       restoredUsers++;
     }
   }
+  } catch (e) { anotar('perfis de usuários', e); }
 
+  try {
   // 3. Restore Invites
   if (Array.isArray(snapshot.data.invites)) {
     for (const inv of snapshot.data.invites) {
@@ -3484,18 +3491,22 @@ export const restoreGlobalDatabaseSnapshot = async (
       }
     }
   }
+  } catch (e) { anotar('convites', e); }
 
+  try {
   // 4. Restore Global Settings
   if (snapshot.data.globalSettings && !targetTenant) {
     for (const [sId, sData] of Object.entries(snapshot.data.globalSettings)) {
       await setDoc(doc(db, 'settings', sId), cleanForFirestore(sData), { merge: true });
     }
   }
+  } catch (e) { anotar('configurações globais', e); }
 
   // 5. Restore Cabinet Partitions
   if (snapshot.data.gabinetesData) {
     for (const [tId, cab] of Object.entries(snapshot.data.gabinetesData)) {
       if (targetTenant && tId !== targetTenant) continue;
+      try {
 
       // Profile
       if (cab.profile) {
@@ -3569,10 +3580,12 @@ export const restoreGlobalDatabaseSnapshot = async (
           await setDoc(doc(db, `gabinetes/${tId}/audits`, a.id), cleanForFirestore({ ...a, tenant: tId }), { merge: true });
         }
       }
+      } catch (e) { anotar(`gabinete ${tId}`, e); }
     }
   }
 
   // 6. Dados antigos da raiz (coleções history, prompts, knowledge e audits fora de qualquer gabinete): vão para o gabinete principal
+  try {
   const legado = snapshot.data.legacyData;
   if (legado && !targetTenant) {
     const principal = 'gabinete_default';
@@ -3581,8 +3594,9 @@ export const restoreGlobalDatabaseSnapshot = async (
     if (Array.isArray(legado.knowledge)) for (const k of legado.knowledge) { if (k?.id) await setDoc(doc(db, `gabinetes/${principal}/knowledge`, k.id), cleanForFirestore({ ...k, tenant: principal }), { merge: true }); }
     if (Array.isArray(legado.audits)) for (const a of legado.audits) { if (a?.id) await setDoc(doc(db, `gabinetes/${principal}/audits`, a.id), cleanForFirestore({ ...a, tenant: principal }), { merge: true }); }
   }
+  } catch (e) { anotar('dados antigos da raiz', e); }
 
-  return { restoredTenants, restoredUsers, restoredHistories, restoredPrompts, failedHistories };
+  return { restoredTenants, restoredUsers, restoredHistories, restoredPrompts, failedHistories, erros };
 };
 
 /**
