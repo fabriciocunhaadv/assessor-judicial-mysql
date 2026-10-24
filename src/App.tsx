@@ -260,6 +260,7 @@ export default function App() {
   // UI Panels & Modals
   const [isFormCollapsed, setIsFormCollapsed] = useState<boolean>(false);
   const [isPromptManagerOpen, setIsPromptManagerOpen] = useState<boolean>(false);
+  const [trocarSenhaAberta, setTrocarSenhaAberta] = useState<boolean>(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
   const [isCreditsModalOpen, setIsCreditsModalOpen] = useState<boolean>(false);
   const [isXRayModalOpen, setIsXRayModalOpen] = useState<boolean>(false);
@@ -1951,6 +1952,7 @@ export default function App() {
         onOpenCalendar={() => setIsCalendarModalOpen(true)}
         onOpenHearingWorkbench={() => abrirModuloPrincipal("mesa")}
         onOpenPromptManager={() => setIsPromptManagerOpen(true)}
+        onOpenChangePassword={() => setTrocarSenhaAberta(true)}
         tesesCount={(tesesData.text.match(/^\s*\d+\.\s+[^\n]+/gm) || []).length}
         isJudge={isJudge}
         isSuperAdmin={isSuperAdmin}
@@ -2769,7 +2771,7 @@ export default function App() {
         onClose={() => setIsUserModalOpen(false)}
       />
       {isSuperAdmin && <AprovacaoUsuarios />}
-      <TrocarSenha />
+      <TrocarSenha aberto={trocarSenhaAberta} onFechar={() => setTrocarSenhaAberta(false)} />
       {(userProfile as any)?.mustChangePassword && <TrocaSenhaObrigatoria />}
       <BancoBadge />
       <SuperAdminPanel

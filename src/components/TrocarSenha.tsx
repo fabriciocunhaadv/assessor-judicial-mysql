@@ -3,9 +3,9 @@ import toast from "react-hot-toast";
 import { chamarAuth } from "../lib/sessao";
 
 /** Botão e janela para o próprio usuário trocar a senha de acesso. */
-export const TrocarSenha: React.FC = () => {
-  const [aberto, setAberto] = useState(false), [atual, setAtual] = useState(""), [nova, setNova] = useState(""), [nova2, setNova2] = useState(""), [ocupado, setOcupado] = useState(false);
-  const fechar = () => { setAberto(false); setAtual(""); setNova(""); setNova2(""); };
+export const TrocarSenha: React.FC<{ aberto: boolean; onFechar: () => void }> = ({ aberto, onFechar }) => {
+  const [atual, setAtual] = useState(""), [nova, setNova] = useState(""), [nova2, setNova2] = useState(""), [ocupado, setOcupado] = useState(false);
+  const fechar = () => { onFechar(); setAtual(""); setNova(""); setNova2(""); };
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (nova !== nova2) { toast.error("As senhas novas não conferem."); return; }
@@ -17,7 +17,6 @@ export const TrocarSenha: React.FC = () => {
   const campo = "w-full px-3 py-2 rounded-lg bg-white border border-[#c9cbd8] text-sm text-[#1d1e20] focus:outline-none focus:border-[#673de6]";
   return (
     <>
-      <button id="btn-trocar-senha" onClick={() => setAberto(true)} className="fixed bottom-16 left-4 z-40 px-3 py-1.5 rounded-full bg-white text-[#673de6] border border-[#c9cbd8] text-[11px] font-bold shadow cursor-pointer">Trocar senha</button>
       {aberto && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={fechar}>
           <form onSubmit={salvar} className="bg-white text-[#1d1e20] border border-[#e4e5ed] rounded-3xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>

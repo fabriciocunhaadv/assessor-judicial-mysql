@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   Home, ShieldCheck, UserCheck, Activity, History, Scale,
   Sparkles, BookOpen, ClipboardList, Calendar, Gavel, SlidersHorizontal,
-  ChevronLeft, ChevronRight, Bot
+  ChevronLeft, ChevronRight, Bot, KeyRound
 } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 
@@ -20,6 +20,7 @@ interface SidebarProps {
   onOpenCalendar?: () => void;
   onOpenHearingWorkbench?: () => void;
   onOpenPromptManager?: () => void;
+  onOpenChangePassword?: () => void;
   tesesCount?: number;
   isJudge?: boolean;
   isSuperAdmin?: boolean;
@@ -28,7 +29,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   onGoHome, onOpenMinuteAuditor, onOpenPresentation, onOpenXRay, onOpenHistory,
   onOpenTeses, onOpenBindingPrecedents, onOpenLegislativeLookup, onOpenProjudiGuide,
-  onOpenCalendar, onOpenHearingWorkbench, onOpenPromptManager,
+  onOpenCalendar, onOpenHearingWorkbench, onOpenPromptManager, onOpenChangePassword,
   tesesCount = 0, isJudge, isSuperAdmin
 }) => {
   const { isJudge: authIsJudge, isSuperAdmin: authIsSuperAdmin } = useAuth();
@@ -217,6 +218,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <SlidersHorizontal className="w-4 h-4 text-emerald-500" />
               {!isCollapsed && <span>Prompts</span>}
+            </button>
+          )}
+
+          {onOpenChangePassword && (
+            <button
+              id="btn-trocar-senha"
+              onClick={onOpenChangePassword}
+              className={`flex items-center gap-2.5 px-3 h-10 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs transition cursor-pointer ${isCollapsed ? 'justify-center' : 'justify-start'}`}
+              title="Trocar senha"
+            >
+              <KeyRound className="w-4 h-4 text-violet-500" />
+              {!isCollapsed && <span>Trocar senha</span>}
             </button>
           )}
         </div>
