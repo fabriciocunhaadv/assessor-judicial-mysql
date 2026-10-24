@@ -11,6 +11,7 @@ import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
 import { fontesRouter, verificarCitacoes, avisoDispositivosRevogados } from './server/fontesOficiais';
+import { consultarLegislacao, diagnosticoLegislacao, testarLegislacao } from './src/utils/legislacaoPlanalto';
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
@@ -221,6 +222,11 @@ app.use("/api/auth", authRouter);
 app.use("/api/db/docs", docsRouter);
 app.use("/api/db/retencao", retencaoRouter);
 app.use("/api/fontes", fontesRouter);
+
+// Texto oficial (planalto.gov.br) dos artigos citados nestes textos, consultado na hora; qualquer falha devolve vazio e a resposta segue como antes
+async function blocoLegislacao(textos: any[], max = 8, timeoutMs = 6000): Promise<string> {
+    try { return (await consultarLegislacao(textos.map((t) => String(t || "").slice(0, 200000)), { maxArtigos: max, timeoutMs })).bloco; } catch { return ""; }
+}
 
 app.get("/api/native-key-info", (req, res) => res.json({ hasNativeKey: !!process.env.GEMINI_API_KEY }));
 app.post("/api/test-claude-key", async (req, res) => {
@@ -793,6 +799,17 @@ app.post("/api/sync-precedents-weekly", async (_req, res) => {
     }
 });
 
+// Diagnóstico (quais leis o servidor consegue consultar agora no Planalto; não devolve conteúdo)
+app.get("/api/legislacao-status", async (_req, res) => {
+    try { const r = await diagnosticoLegislacao(); res.json({ ok: r.filter((x) => x.ok).length, total: r.length, diplomas: r }); }
+    catch (e: any) { res.status(500).json({ error: e?.message || "falha no diagnóstico" }); }
+});
+// Teste manual: /api/legislacao-teste?q=art. 6º da Lei 8.987/1995 → mostra se a lei foi reconhecida e localizada no Planalto
+app.get("/api/legislacao-teste", async (req, res) => {
+    try { res.json(await testarLegislacao(String(req.query.q || "").slice(0, 600))); }
+    catch (e: any) { res.status(500).json({ error: e?.message || "falha no teste" }); }
+});
+
 app.post("/api/chat-agaia", async (req, res) => {
     try {
         const claude = pedidoClaude(req);      // IA escolhida pelo usuário: Claude (chave dele) ou Gemini
@@ -860,7 +877,7 @@ ${cabinetTesesText ? `\n# CADERNO DE TESES E DIRETRIZES DO GABINETE:\n${cabinetT
            });
         }
         
-        const userPrompt = `${historyPrompt}\nUsuário: ${message}`;
+        const userPrompt = `${historyPrompt}\nUsuário: ${message}` + await blocoLegislacao([message, currentMinute?.fundamentacao, currentMinute?.dispositivo, originalProcessText]);
         
         const options = {
             apiKey: apiKey,
@@ -1014,7 +1031,7 @@ ${contextSection}`;
             }).join("\n") + "\n\n";
         }
 
-        const promptText = `${systemPrompt}\n\n${historyPrompt}Pergunta/Demanda do Assessor/Magistrado:\n${message.trim()}`;
+        const promptText = `${systemPrompt}\n\n${historyPrompt}Pergunta/Demanda do Assessor/Magistrado:\n${message.trim()}` + await blocoLegislacao([message]);
 
         const options = {
             apiKey: apiKey,
@@ -1106,6 +1123,8 @@ app.post("/api/generate-minute-turbo", async (req, res) => {
         // decisões anteriores, certidões e provas para avaliar com precisão a marcha processual.
         if (accumulatedText.length > 1500000) accumulatedText = accumulatedText.substring(0, 750000) + "\n\n... [AUTOS ABREVIADOS: trecho do meio omitido por limite técnico] ...\n\n" + accumulatedText.substring(accumulatedText.length - 750000);
         const cobT = montarCobertura(req.body, false);
+        // artigos citados nos autos conferidos no texto oficial do Planalto (até 6 e 5 s no máximo, para o Turbo continuar rápido; falha silenciosa)
+        const blocoLegislacaoTurbo = (await consultarLegislacao([accumulatedText.slice(0, 150000)], { maxArtigos: 6, timeoutMs: 5000 })).bloco;
         let alertaInjecaoT: any = null, defesaInjecaoT = "";
         try { const r = detectarInjecao(accumulatedText); if (r.verificado) alertaInjecaoT = r; if (r.total > 0) { defesaInjecaoT = instrucaoDefesaInjecao(r); console.log(`[Prompt Injection][turbo] ${r.total} indício(s) nos autos.`); } } catch { /* ignora */ }
 
@@ -1248,7 +1267,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
                 { role: "user", parts: [{ text: userPrompt }, ...cobT.partes] }
             ],
             config: {
-                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT,
+                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoLegislacaoTurbo,
                 temperature: 0.1,
                 maxOutputTokens: 8192,
                 responseMimeType: "application/json",
@@ -1856,7 +1875,7 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
             customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
             timeoutMs: 150000,
             maxCycles: 2,
-            contents: [{ role: "user", parts: [{ text: auditSystemInstruction + "\n\n" + auditUserPrompt }, ...cobL.partes] }],
+            contents: [{ role: "user", parts: [{ text: auditSystemInstruction + "\n\n" + auditUserPrompt + await blocoLegislacao([auditUserPrompt]) }, ...cobL.partes] }],
             config: {
                 systemInstruction: "Você é um juiz de direito auditor rigoroso. Responda apenas com JSON válido e completo." + cobL.regra + notaDossieL + defesaInjecaoL,
                 responseMimeType: "application/json"
@@ -2059,7 +2078,7 @@ Você DEVE responder ESTRITAMENTE em formato JSON com o seguinte schema:
                 res,
                 customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
                 maxCycles: 2,
-                contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }],
+                contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt + await blocoLegislacao([userPrompt], 6) }] }],
                 config: {
                     systemInstruction: "Você é um assistente de audiências judiciais que responde apenas com objetos JSON estritos e válidos.",
                     responseMimeType: "application/json"
@@ -2227,7 +2246,7 @@ Redija em linguagem jurídica formal, concisa e direta para ser ditada e constar
                 apiKey,
                 keyPool: extractApiKeyPool(req),
                 res,
-                contents: [{ role: "user", parts: [{ text: systemPrompt }] }],
+                contents: [{ role: "user", parts: [{ text: systemPrompt + await blocoLegislacao([systemPrompt], 6) }] }],
                 config: { systemInstruction: "Redija o texto de deliberação judicial para ata de audiência." }
             };
 
@@ -2255,7 +2274,7 @@ Redija a sentença em mesa (relatório sucinto/dispensado na forma da lei, funda
                 apiKey,
                 keyPool: extractApiKeyPool(req),
                 res,
-                contents: [{ role: "user", parts: [{ text: systemPrompt }] }],
+                contents: [{ role: "user", parts: [{ text: systemPrompt + await blocoLegislacao([systemPrompt], 6) }] }],
                 config: { systemInstruction: "Redija sentença em mesa para termo de audiência." }
             };
 
@@ -5273,6 +5292,12 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
 } else {
     console.log("[Assessor Judicial] Disparando ETAPA 1: Assessor Fático (Extração e Confronto Probatório Bruto)...");
     setProg(progId, "Etapa 1 — assessor fático: extraindo partes, fatos e provas dos autos…", 12, 56);
+    // LEGISLAÇÃO OFICIAL já na etapa 1: artigos que os autos citam são conferidos no texto do Planalto (consulta na hora, de qualquer lei federal); falha silenciosa
+    try {
+        setProg(progId, "Etapa 1 — consultando a legislação oficial (Planalto)…", 10, 56);
+        const legAutos = await consultarLegislacao([(accumulatedPdfText || safeProcessText || "").slice(0, 200000)], { maxArtigos: 10, timeoutMs: 8000 });
+        if (legAutos.bloco) { stage1SystemInstruction += legAutos.bloco; console.log(`[Legislação] etapa 1: ${legAutos.consultados} artigo(s) citado(s) nos autos conferido(s) no Planalto.`); }
+    } catch (e) { console.warn("[Legislação] etapa 1 ignorada:", e); }
     stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const stage1StartTimer = Date.now();
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage1ContentsParts, stage1SystemInstruction) / 10000) * 3000);      // maior para autos grandes
@@ -5894,6 +5919,13 @@ let stage2ErrorMsg = "";
 
 try {
     const stage2StartTimer = Date.now();
+    // LEGISLAÇÃO OFICIAL: os artigos citados na minuta preliminar e nos autos são conferidos no texto do Planalto (falha silenciosa)
+    try {
+        setProg(progId, "Etapa 2 — consultando a legislação oficial (Planalto)…", 62, 97);
+        const leg = await consultarLegislacao([[stage1Json?.fundamentacao, stage1Json?.dispositivo].filter(Boolean).join("\n"), (accumulatedPdfText || safeProcessText || "").slice(0, 200000)], { maxArtigos: 10, timeoutMs: 8000 });
+        if (leg.bloco) { stage2SystemInstruction += leg.bloco; console.log(`[Legislação] ${leg.consultados} artigo(s) conferido(s) no Planalto${leg.naoAchados.length ? `; não localizado(s): ${leg.naoAchados.join("; ")}` : ""}.`); }
+        else if (leg.falhas.length) console.log(`[Legislação] sem acesso ao Planalto para: ${leg.falhas.join("; ")}.`);
+    } catch (e) { console.warn("[Legislação] consulta ignorada:", e); }
     stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage2Prompt, stage2SystemInstruction) / 10000) * 3000);
     response = await generateWithFallbackAndRetry({
