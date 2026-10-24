@@ -5,8 +5,10 @@ import './index.css';
 import { AuthProvider } from './lib/AuthContext.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { instalarMonitorDeErros } from './utils/monitorErros';
+import { aplicarTema } from './utils/tema';
 
 instalarMonitorDeErros();
+aplicarTema();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

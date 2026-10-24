@@ -272,6 +272,18 @@ export const SystemTour: React.FC<SystemTourProps> = ({
       placement: "bottom",
     },
     {
+      target: "#btn-tema",
+      content: (
+        <div className="text-left font-sans space-y-1.5">
+          <h3 className="font-bold text-md text-[#673de6]">Visual do sistema 🎨</h3>
+          <p className="text-sm text-slate-700 leading-relaxed">
+            O sistema usa o visual moderno no estilo da Hostinger (roxo, cantos arredondados e botões em pílula). Se preferir o visual anterior, clique aqui para alternar; a escolha fica neste navegador.
+          </p>
+        </div>
+      ),
+      placement: "top" as const,
+    },
+    {
       target: "#btn-banco-info",
       content: (
         <div className="text-left font-sans space-y-1.5">
@@ -614,7 +626,7 @@ export const SystemTour: React.FC<SystemTourProps> = ({
       continuous={true}
       scrollToFirstStep={true}
       onEvent={handleJoyrideCallback}
-      options={{ zIndex: 100000, primaryColor: "#059669", textColor: "#334155", buttons: ['back', 'close', 'primary', 'skip'], showProgress: true }}
+      options={{ zIndex: 100000, primaryColor: "#673de6", textColor: "#334155", buttons: ['back', 'close', 'primary', 'skip'], showProgress: true }}
       styles={{
         buttonClose: {
           display: 'none',

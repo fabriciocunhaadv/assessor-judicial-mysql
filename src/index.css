@@ -179,3 +179,50 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { border-radi
 .mesa-escura button[class*="bg-orange-"]:not([class*="/"]), .mesa-escura button[class*="bg-red-600"]:not([class*="/"]):not([title*="xclu"]) { background-color: #4f46e5 !important; color:#fff !important; }
 .mesa-escura .text-slate-600 { color: var(--me-texto3) !important; }
 .mesa-escura .text-slate-700 { color: #7480a3 !important; }
+
+
+/* ===== TEMA HOSTINGER (modo padrão) =====
+   Só CSS: vale em todo o sistema quando <html> tem a classe .tema-hostinger (ligada em src/utils/tema.ts; o botão "Tema" volta ao visual clássico).
+   Paleta do hPanel: roxo #673de6 como cor principal, faixas escuras quase pretas (#17122b e #1d1e20), fundo cinza claro #f4f4f6, cartões brancos bem arredondados e botões em pílula.
+   Nenhum componente foi alterado. Variantes translúcidas (ex.: bg-slate-950/80, usadas em fundos de janelas) ficam como estão. */
+.tema-hostinger { --h-roxo:#673de6; --h-roxo-esc:#5025d1; --h-roxo-claro:#ebe4ff; --h-roxo-fraco:#f5f1ff; --h-navy:#1d1e20; --h-navy-fundo:#17122b; --h-navy-2:#2b2c30; --h-fundo:#f4f4f6; --h-linha:#e4e5ed; --h-texto:#1d1e20; }
+.tema-hostinger body { background-color: var(--h-fundo); font-family: 'DM Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; letter-spacing: -0.005em; }
+.tema-hostinger .font-sans { font-family: 'DM Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+.tema-hostinger [class~="bg-[#f3f4f6]"], .tema-hostinger [class~="bg-slate-100"], .tema-hostinger [class~="bg-gray-100"] { background-color: var(--h-fundo) !important; }
+
+/* faixas e janelas escuras: quase pretas, no tom do hPanel. Só a classe EXATA conta (não pega dark:/hover:, nem as translúcidas como bg-slate-950/80) */
+.tema-hostinger [class~="bg-slate-950"], .tema-hostinger [class*=" bg-[#0"]:not([class*="/"]), .tema-hostinger [class^="bg-[#0"]:not([class*="/"]) { background-color: var(--h-navy-fundo) !important; }
+.tema-hostinger [class~="bg-slate-900"] { background-color: var(--h-navy) !important; }
+.tema-hostinger [class~="bg-slate-800"] { background-color: var(--h-navy-2) !important; }
+.tema-hostinger [class~="border-slate-800"], .tema-hostinger [class~="border-slate-700"] { border-color: rgba(255,255,255,.14) !important; }
+
+/* cor principal: tudo que era verde-esmeralda, índigo, violeta ou roxo vira o roxo da Hostinger */
+.tema-hostinger [class~="bg-emerald-500"], .tema-hostinger [class~="bg-emerald-600"], .tema-hostinger [class~="bg-emerald-700"], .tema-hostinger [class~="bg-teal-500"], .tema-hostinger [class~="bg-teal-600"], .tema-hostinger [class~="bg-teal-700"],
+.tema-hostinger [class~="bg-indigo-500"], .tema-hostinger [class~="bg-indigo-600"], .tema-hostinger [class~="bg-indigo-700"], .tema-hostinger [class~="bg-violet-500"], .tema-hostinger [class~="bg-violet-600"], .tema-hostinger [class~="bg-violet-700"],
+.tema-hostinger [class~="bg-purple-500"], .tema-hostinger [class~="bg-purple-600"], .tema-hostinger [class~="bg-purple-700"], .tema-hostinger [class~="bg-blue-600"], .tema-hostinger [class~="bg-blue-700"], .tema-hostinger [class~="bg-sky-600"], .tema-hostinger [class~="bg-sky-700"] { background-color: var(--h-roxo) !important; border-color: var(--h-roxo) !important; }
+.tema-hostinger [class~="hover:bg-emerald-500"]:hover, .tema-hostinger [class~="hover:bg-emerald-600"]:hover, .tema-hostinger [class~="hover:bg-emerald-700"]:hover, .tema-hostinger [class~="hover:bg-indigo-500"]:hover, .tema-hostinger [class~="hover:bg-indigo-600"]:hover, .tema-hostinger [class~="hover:bg-indigo-700"]:hover, .tema-hostinger [class~="hover:bg-violet-600"]:hover, .tema-hostinger [class~="hover:bg-purple-600"]:hover, .tema-hostinger [class~="hover:bg-purple-700"]:hover, .tema-hostinger [class~="hover:bg-blue-700"]:hover, .tema-hostinger [class~="hover:bg-teal-700"]:hover { background-color: var(--h-roxo-esc) !important; }
+.tema-hostinger [class~="bg-emerald-50"], .tema-hostinger [class~="bg-emerald-100"], .tema-hostinger [class~="bg-indigo-50"], .tema-hostinger [class~="bg-indigo-100"], .tema-hostinger [class~="bg-violet-50"], .tema-hostinger [class~="bg-violet-100"], .tema-hostinger [class~="bg-purple-50"], .tema-hostinger [class~="bg-purple-100"], .tema-hostinger [class~="bg-teal-50"], .tema-hostinger [class~="bg-blue-50"], .tema-hostinger [class~="bg-sky-50"] { background-color: var(--h-roxo-fraco) !important; }
+.tema-hostinger [class~="hover:bg-emerald-50"]:hover, .tema-hostinger [class~="hover:bg-indigo-50"]:hover, .tema-hostinger [class~="hover:bg-purple-50"]:hover { background-color: var(--h-roxo-claro) !important; }
+.tema-hostinger [class~="text-emerald-500"], .tema-hostinger [class~="text-emerald-600"], .tema-hostinger [class~="text-emerald-700"], .tema-hostinger [class~="text-emerald-800"], .tema-hostinger [class~="text-emerald-900"], .tema-hostinger [class~="text-teal-600"], .tema-hostinger [class~="text-teal-700"], .tema-hostinger [class~="text-indigo-500"], .tema-hostinger [class~="text-indigo-600"], .tema-hostinger [class~="text-indigo-700"], .tema-hostinger [class~="text-violet-600"], .tema-hostinger [class~="text-violet-700"], .tema-hostinger [class~="text-purple-600"], .tema-hostinger [class~="text-purple-700"], .tema-hostinger [class~="text-blue-600"], .tema-hostinger [class~="text-blue-700"] { color: var(--h-roxo) !important; }
+.tema-hostinger [class~="text-emerald-300"], .tema-hostinger [class~="text-emerald-400"], .tema-hostinger [class~="text-indigo-300"], .tema-hostinger [class~="text-indigo-400"], .tema-hostinger [class~="text-violet-300"], .tema-hostinger [class~="text-violet-400"], .tema-hostinger [class~="text-purple-300"], .tema-hostinger [class~="text-purple-400"] { color: #b9a2ff !important; }
+.tema-hostinger [class~="border-emerald-200"], .tema-hostinger [class~="border-emerald-300"], .tema-hostinger [class~="border-emerald-400"], .tema-hostinger [class~="border-emerald-500"], .tema-hostinger [class~="border-emerald-600"], .tema-hostinger [class~="border-indigo-200"], .tema-hostinger [class~="border-indigo-300"], .tema-hostinger [class~="border-indigo-500"], .tema-hostinger [class~="border-violet-300"], .tema-hostinger [class~="border-purple-300"], .tema-hostinger [class~="border-purple-500"] { border-color: #c9b8ff !important; }
+.tema-hostinger [class~="ring-emerald-500"], .tema-hostinger [class~="ring-emerald-400"], .tema-hostinger [class~="focus:ring-emerald-500"]:focus, .tema-hostinger [class~="focus:ring-indigo-500"]:focus { --tw-ring-color: rgba(103,61,230,.35) !important; }
+
+/* campos, rolagem e detalhes */
+.tema-hostinger input:focus, .tema-hostinger textarea:focus, .tema-hostinger select:focus { border-color: var(--h-roxo) !important; outline: none; box-shadow: 0 0 0 3px rgba(103,61,230,.18) !important; }
+.tema-hostinger input[type="checkbox"], .tema-hostinger input[type="radio"], .tema-hostinger input[type="range"] { accent-color: var(--h-roxo); }
+.tema-hostinger ::selection { background: var(--h-roxo); color: #fff; }
+.tema-hostinger [class*="shadow-2xl"], .tema-hostinger [class*="shadow-xl"] { box-shadow: 0 10px 30px rgba(47,28,106,.14), 0 2px 6px rgba(47,28,106,.08) !important; }
+.tema-hostinger [class*="shadow-lg"], .tema-hostinger [class*="shadow-md"] { box-shadow: 0 4px 14px rgba(47,28,106,.10) !important; }
+.tema-hostinger [class~="rounded-3xl"] { border-radius: 28px !important; }
+.tema-hostinger [class~="rounded-2xl"] { border-radius: 22px !important; }
+.tema-hostinger [class~="rounded-xl"] { border-radius: 16px !important; }
+/* botões pequenos e médios em pílula, como no hPanel (botões altos, de várias linhas, não entram) */
+.tema-hostinger button:is([class*="rounded-lg"], [class*="rounded-xl"], [class*="rounded-md"]):is([class*="py-1"], [class*="py-1.5"], [class*="py-2"], [class*="py-2.5"], [class*="py-3"], [class*="h-8"], [class*="h-9"], [class*="h-10"]):not([class*="items-start"]):not([class*="text-left"]) { border-radius: 9999px !important; }
+.tema-hostinger input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), .tema-hostinger select { border-radius: 14px; }
+.tema-hostinger ::-webkit-scrollbar { width: 10px; height: 10px; }
+.tema-hostinger ::-webkit-scrollbar-thumb { background: #c9cbd8; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+.tema-hostinger ::-webkit-scrollbar-thumb:hover { background: #a9abc0; background-clip: content-box; border: 2px solid transparent; }
+/* tour guiado (react-joyride) */
+.tema-hostinger .react-joyride__tooltip button[data-action="primary"] { background-color: var(--h-roxo) !important; border-radius: 8px !important; }
+.tema-hostinger .react-joyride__tooltip button[data-action="back"], .tema-hostinger .react-joyride__tooltip button[data-action="skip"] { color: var(--h-roxo) !important; }
