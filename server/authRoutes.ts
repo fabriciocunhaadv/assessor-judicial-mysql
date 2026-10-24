@@ -38,6 +38,8 @@ export const garantirUsuarios = (): Promise<void> => (usuariosPronto ||= (async 
   const email = (process.env.SUPERADMIN_EMAIL || "").toLowerCase().trim(), senha = process.env.SUPERADMIN_PASSWORD || "";
   if (email && senha) {
     const [r] = await b.query<any[]>("SELECT id FROM users WHERE email=?", [email]);
+    // redefinição de emergência: só com SUPERADMIN_RESET_SENHA=sim nas variáveis de ambiente (quem controla o servidor); troca só a senha do super admin
+    if (r.length && process.env.SUPERADMIN_RESET_SENHA === "sim") await b.query("UPDATE users SET password_hash=?, role='super_admin', status='aprovado', updated_at=? WHERE id=?", [hashSenha(senha), Date.now(), r[0].id]);
     if (!r.length) await b.query("INSERT INTO users (id,email,name,password_hash,role,status,tenant_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)", [crypto.randomUUID(), email, "Super Administrador", hashSenha(senha), "super_admin", "aprovado", "gabinete_default", Date.now(), Date.now()]);
   }
 })().catch((e) => { usuariosPronto = null; throw e; }));
