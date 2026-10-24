@@ -1125,7 +1125,8 @@ app.post("/api/generate-minute-turbo", async (req, res) => {
         if (accumulatedText.length > 1500000) accumulatedText = accumulatedText.substring(0, 750000) + "\n\n... [AUTOS ABREVIADOS: trecho do meio omitido por limite técnico] ...\n\n" + accumulatedText.substring(accumulatedText.length - 750000);
         const cobT = montarCobertura(req.body, false);
         // artigos citados nos autos conferidos no texto oficial do Planalto (até 6 e 5 s no máximo, para o Turbo continuar rápido; falha silenciosa)
-        const blocoLegislacaoTurbo = (await consultarLegislacao([accumulatedText.slice(0, 150000)], { maxArtigos: 6, timeoutMs: 5000 })).bloco;
+        const legTurbo = await consultarLegislacao([accumulatedText.slice(0, 150000)], { maxArtigos: 6, timeoutMs: 5000 });
+        const blocoLegislacaoTurbo = legTurbo.bloco;
         let alertaInjecaoT: any = null, defesaInjecaoT = "";
         try { const r = detectarInjecao(accumulatedText); if (r.verificado) alertaInjecaoT = r; if (r.total > 0) { defesaInjecaoT = instrucaoDefesaInjecao(r); console.log(`[Prompt Injection][turbo] ${r.total} indício(s) nos autos.`); } } catch { /* ignora */ }
 
@@ -1474,6 +1475,8 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
         };
 
         if (alertaInjecaoT) (payload as any).alertaInjecao = alertaInjecaoT;
+        { const f: any = { legislacao: legTurbo.conferidos, naoLocalizados: legTurbo.naoAchados, indisponiveis: legTurbo.falhas, locais: legTurbo.locais, precedentes: [] };
+          if (f.legislacao.length || f.naoLocalizados.length || f.indisponiveis.length || f.locais.length) (payload as any).fontesConsultadas = f; }
         if (cobT.cobertura) (payload as any).coberturaLeitura = cobT.cobertura;
         if (keepAliveInterval) { clearInterval(keepAliveInterval); keepAliveInterval = null; }      // o pulso para antes de a resposta final ser escrita
         if (!res.headersSent) {
@@ -4435,6 +4438,10 @@ const combinedContextForPrecedents = [safeProcessText || "", accumulatedPdfText 
 const precedentesAnexados = await listarPrecedentes().catch(() => [] as any[]);
 const conferenciasPrecedentes = await listarConferencias().catch(() => ({} as Record<string, any>));
 const matchedPrecedents = matchApplicableBindingPrecedents(combinedContextForPrecedents, precedentesAnexados);
+// o que foi realmente consultado nesta análise: volta junto da minuta para a tela mostrar ao usuário
+const fontesConsultadas: { legislacao: string[]; naoLocalizados: string[]; indisponiveis: string[]; locais: string[]; precedentes: string[] } = { legislacao: [], naoLocalizados: [], indisponiveis: [], locais: [], precedentes: matchedPrecedents.map((p) => `${p.tribunal} • ${p.number}`) };
+const somarFontes = (l: { conferidos?: string[]; naoAchados?: string[]; falhas?: string[]; locais?: string[] }, alvo: any = fontesConsultadas) => { for (const [k, v] of [["legislacao", l.conferidos], ["naoLocalizados", l.naoAchados], ["indisponiveis", l.falhas], ["locais", l.locais]] as const) for (const x of v || []) if (!alvo[k].includes(x)) alvo[k].push(x); };
+const fontesParaTela = (f: any = fontesConsultadas) => (f.legislacao.length || f.naoLocalizados.length || f.indisponiveis.length || f.locais.length || f.precedentes.length) ? f : undefined;
 const taxonomySummary = getApplicableTaxonomySummary(combinedContextForPrecedents);
 
 let liveGroundingPrecedents = "";
@@ -5297,6 +5304,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
     try {
         setProg(progId, "Etapa 1 — consultando a legislação oficial (Planalto)…", 10, 56);
         const legAutos = await consultarLegislacao([(accumulatedPdfText || safeProcessText || "").slice(0, 200000)], { maxArtigos: 10, timeoutMs: 8000 });
+        somarFontes(legAutos);
         if (legAutos.bloco) { stage1SystemInstruction += legAutos.bloco; console.log(`[Legislação] etapa 1: ${legAutos.consultados} artigo(s) citado(s) nos autos conferido(s) no Planalto.`); }
     } catch (e) { console.warn("[Legislação] etapa 1 ignorada:", e); }
     stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
@@ -5667,6 +5675,7 @@ if (executionStage === 1) {
     }
     if ((stage1Response as any)?.autosReduzidos) parsedStage1.autosReduzidos = (stage1Response as any).autosReduzidos;
     if (alertaInjecao) parsedStage1.alertaInjecao = alertaInjecao;
+    if (fontesParaTela()) parsedStage1.fontesConsultadas = fontesParaTela();
     if (coberturaLeitura) parsedStage1.coberturaLeitura = coberturaLeitura;
     if (!res.headersSent) {
         return res.json(parsedStage1);
@@ -5924,6 +5933,7 @@ try {
     try {
         setProg(progId, "Etapa 2 — consultando a legislação oficial (Planalto)…", 62, 97);
         const leg = await consultarLegislacao([[stage1Json?.fundamentacao, stage1Json?.dispositivo].filter(Boolean).join("\n"), (accumulatedPdfText || safeProcessText || "").slice(0, 200000)], { maxArtigos: 10, timeoutMs: 8000 });
+        somarFontes(leg);
         if (leg.bloco) { stage2SystemInstruction += leg.bloco; console.log(`[Legislação] ${leg.consultados} artigo(s) conferido(s) no Planalto${leg.naoAchados.length ? `; não localizado(s): ${leg.naoAchados.join("; ")}` : ""}.`); }
         else if (leg.falhas.length) console.log(`[Legislação] sem acesso ao Planalto para: ${leg.falhas.join("; ")}.`);
     } catch (e) { console.warn("[Legislação] consulta ignorada:", e); }
@@ -6436,6 +6446,7 @@ if (wasRotated && rotatedKey) {
     }
     if ((stage1Response as any)?.autosReduzidos) parsed.autosReduzidos = (stage1Response as any).autosReduzidos;
     if (alertaInjecao) parsed.alertaInjecao = alertaInjecao;
+    if (fontesParaTela()) parsed.fontesConsultadas = fontesParaTela();
     if (coberturaLeitura) parsed.coberturaLeitura = coberturaLeitura;
     try {      // artigos citados que o Planalto mostra como revogados, vetados ou inexistentes
         const mn = parsed?.minute || {};

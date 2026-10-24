@@ -209,10 +209,10 @@ async function linhasDoDiploma(d: Diploma, timeoutMs: number): Promise<string[] 
   negativos.set(d.id, Date.now()); console.warn(`[Legislação] ${d.nome}: não localizei no Planalto (${cand.length} endereços tentados).`); return null;
 }
 
-export interface ResultadoLegislacao { bloco: string; consultados: number; naoAchados: string[]; falhas: string[]; locais: string[] }
+export interface ResultadoLegislacao { bloco: string; consultados: number; naoAchados: string[]; falhas: string[]; locais: string[]; conferidos: string[] }
 /** Consulta os artigos citados e monta o bloco para o prompt. Nunca lança erro. */
 export async function consultarLegislacao(textos: string[], opts: { maxArtigos?: number; timeoutMs?: number } = {}): Promise<ResultadoLegislacao> {
-  const vazio: ResultadoLegislacao = { bloco: "", consultados: 0, naoAchados: [], falhas: [], locais: [] };
+  const vazio: ResultadoLegislacao = { bloco: "", consultados: 0, naoAchados: [], falhas: [], locais: [], conferidos: [] };
   try {
     const citacoes: Citacao[] = [], locais: string[] = [];
     for (const t of textos) {
@@ -227,12 +227,14 @@ export async function consultarLegislacao(textos: string[], opts: { maxArtigos?:
     const diplomas = [...new Set(lista.map((c) => c.diploma))];
     const baixados = new Map<string, string[] | null>();
     await Promise.all(diplomas.map(async (d) => baixados.set(d.id, await linhasDoDiploma(d, opts.timeoutMs ?? 8000))));
-    const linhas: string[] = [], naoAchados: string[] = [], falhas: string[] = [];
+    const linhas: string[] = [], naoAchados: string[] = [], falhas: string[] = [], conferidos: string[] = [];
+    const curto = (n: string) => n.replace(/\s*\(.*\)\s*$/, "");
     for (const c of lista) {
       const base = baixados.get(c.diploma.id);
       if (!base) { if (!falhas.includes(c.diploma.nome)) falhas.push(c.diploma.nome); continue; }
       const tr = trechoDoArtigo(base, c.artigo);
       if (!tr) { naoAchados.push(`${c.diploma.nome}, art. ${c.artigo}`); continue; }
+      conferidos.push(`${curto(c.diploma.nome)}, art. ${c.artigo}${tr.revogado ? " (REVOGADO)" : ""}`);
       linhas.push(`• ${c.diploma.nome} — ${tr.revogado ? "ARTIGO REVOGADO (não fundamentar nele) — " : ""}\n${tr.texto}`);
     }
     const hoje = new Date().toLocaleDateString("pt-BR");
@@ -247,7 +249,7 @@ export async function consultarLegislacao(textos: string[], opts: { maxArtigos?:
     const copias = diplomas.filter((d) => copiasLocais.has(d.id) && lista.some((c) => c.diploma.id === d.id && baixados.get(d.id)));
     if (bloco && copias.length) bloco += `\nOBSERVAÇÃO: o site do Planalto não respondeu; ${copias.map((d) => `${d.nome} veio de cópia salva pelo gabinete em ${new Date(copiasLocais.get(d.id) as number).toLocaleDateString("pt-BR")}`).join("; ")}. Essa cópia pode não refletir alterações posteriores: na dúvida sobre a vigência, sinalize a conferência.\n`;
     if (!bloco) return { ...vazio, falhas };
-    return { bloco, consultados: linhas.length, naoAchados, falhas, locais: localTxt };
+    return { bloco, consultados: linhas.length, naoAchados, falhas, locais: localTxt, conferidos };
   } catch (e) { console.warn("[Legislação] falha inesperada na consulta; segue sem o bloco:", e); return vazio; }
 }
 

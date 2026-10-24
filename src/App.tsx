@@ -1,3 +1,4 @@
+import { unirFontes } from "./utils/fontesConsultadas";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { detectarUnidadeDosAutos, unidadesParaAvisar } from "./utils/unidadeDosAutos";
 import { Header } from "./components/Header";
@@ -1913,7 +1914,7 @@ export default function App() {
       }
 
       const completedResult: GenerationResult = await res.json();
-      setGenerationResult((prev) => ({ ...completedResult, autosReduzidos: completedResult.autosReduzidos || prev?.autosReduzidos, alertaInjecao: completedResult.alertaInjecao || prev?.alertaInjecao, coberturaLeitura: completedResult.coberturaLeitura || prev?.coberturaLeitura }));
+      setGenerationResult((prev) => ({ ...completedResult, autosReduzidos: completedResult.autosReduzidos || prev?.autosReduzidos, alertaInjecao: completedResult.alertaInjecao || prev?.alertaInjecao, fontesConsultadas: unirFontes(prev?.fontesConsultadas, completedResult.fontesConsultadas), coberturaLeitura: completedResult.coberturaLeitura || prev?.coberturaLeitura }));
       toast.success("2ª Etapa concluída com sucesso! Minuta definitiva consolidada.", { id: toastId });
     } catch (err: any) {
       console.error("Erro na 2ª etapa:", err);
@@ -2405,7 +2406,7 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                       <div className="text-[11px] leading-tight">
-                        <span className="font-bold text-teal-950">Consulta Externa Vinculante Ativa:</span> Súmulas e Teses (STF • STJ • TNU) consultadas automaticamente nas execuções.
+                        <span className="font-bold text-teal-950">Consulta Externa Vinculante Ativa:</span> Súmulas e Teses (STF • STJ • TNU • TJGO), julgados anexados pelo gabinete e legislação oficial (Planalto) consultados automaticamente nas execuções; ao final, a minuta mostra o que foi consultado.
                       </div>
                     </div>
                     <span className="text-[10px] font-bold text-teal-700 group-hover:text-teal-900 bg-teal-200/60 px-2 py-0.5 rounded-md whitespace-nowrap">
