@@ -154,6 +154,13 @@ export function trechoDoArtigo(linhas: string[], artigo: string, limite = 2200):
   return { texto, revogado: /\(\s*Revogad[oa]/i.test(partes[0]) && partes.length <= 2 };
 }
 
+// Cópia salva pelo Super Admin (arquivo da lei baixado no navegador): usada quando o Planalto não responde ou bloqueia o servidor. Quem liga o leitor é o server.ts (este arquivo não conhece o banco).
+export type LeitorLocal = (chave: string) => Promise<{ linhas: string[]; salvoEm: number } | null>;
+let leitorLocal: LeitorLocal | null = null;
+export const definirLeitorLocal = (f: LeitorLocal | null) => { leitorLocal = f; };
+const copiasLocais = new Map<string, number>();      // diploma -> data em que a cópia foi salva
+export const chaveDoDiploma = (d: { url: string }) => (d.url.split("/").pop() || "").replace(/\.[a-z]+$/i, "").toLowerCase();
+
 const cache = new Map<string, { em: number; linhas: string[]; url?: string }>();
 const negativos = new Map<string, number>();      // lei que não achei: não fica tentando de novo por 30 min
 const VALIDADE_MS = 12 * 3600_000, NEGATIVO_MS = 30 * 60_000;
@@ -180,8 +187,17 @@ async function linhasDoDiploma(d: Diploma, timeoutMs: number): Promise<string[] 
   if (negativos.has(d.id) && Date.now() - (negativos.get(d.id) as number) < NEGATIVO_MS) return null;
   if (!d.ref) {
     const linhas = await baixarLinhas(d.url, timeoutMs);
-    if (!linhas) { console.warn(`[Legislação] ${d.id}: não consegui consultar o Planalto.`); return null; }
-    guardar(d.id, linhas, d.url); return linhas;
+    if (linhas) { copiasLocais.delete(d.id); guardar(d.id, linhas, d.url); return linhas; }
+    // o Planalto não respondeu (ou bloqueou o servidor): usa a cópia salva pelo gabinete, se houver, e tenta o site de novo em 30 min
+    const loc = leitorLocal ? await leitorLocal(chaveDoDiploma(d)).catch(() => null) : null;
+    if (loc) {
+      copiasLocais.set(d.id, loc.salvoEm); guardar(d.id, loc.linhas, "cópia salva pelo gabinete");
+      const c = cache.get(d.id); if (c) c.em = Date.now() - (VALIDADE_MS - 30 * 60_000);
+      console.warn(`[Legislação] ${d.id}: Planalto indisponível; usando a cópia salva em ${new Date(loc.salvoEm).toLocaleDateString("pt-BR")}.`);
+      return loc.linhas;
+    }
+    negativos.set(d.id, Date.now());      // sem site e sem cópia: não insiste a cada análise (30 min)
+    console.warn(`[Legislação] ${d.id}: não consegui consultar o Planalto.`); return null;
   }
   // lei qualquer: tenta os endereços prováveis, 4 de cada vez, dentro do orçamento de tempo, e só aceita a página cujo cabeçalho é mesmo a lei pedida
   const cand = candidatosDoAto(d.ref), cab = cabecalhoDoAto(d.ref), limite = Date.now() + Math.max(timeoutMs, 6000);
@@ -228,6 +244,8 @@ export async function consultarLegislacao(textos: string[], opts: { maxArtigos?:
         `\n\nDIRETRIZ: ao citar esses dispositivos, confira o número, o caput e os parágrafos com o texto oficial acima; se a citação do rascunho divergir, corrija. O texto oficial traz as marcações de alteração — "(Revogado ...)", "(Redação dada pela Lei ...)", "(Incluído pela Lei ...)": respeite-as, não cite como vigente o que estiver revogado e, quando a redação tiver sido dada ou o dispositivo incluído por lei posterior aos fatos do processo, aplique a redação vigente à época dos fatos e registre a alteração. Para dispositivos que não constam acima, cite com cautela e apenas o que tiver certeza.\n`;
     }
     if (localTxt.length) bloco += `\n\n[LEIS MUNICIPAIS/ESTADUAIS CITADAS — TEXTO NÃO CONSULTADO]: ${localTxt.join("; ")}.\nDIRETRIZ: o sistema não consulta leis locais. Aplique apenas o conteúdo que os autos ou a base de conhecimento do gabinete reproduzirem; não invente o teor, o número de artigo nem a vigência dessas leis e registre na fundamentação, quando necessário, que o texto da lei local não foi conferido.\n`;
+    const copias = diplomas.filter((d) => copiasLocais.has(d.id) && lista.some((c) => c.diploma.id === d.id && baixados.get(d.id)));
+    if (bloco && copias.length) bloco += `\nOBSERVAÇÃO: o site do Planalto não respondeu; ${copias.map((d) => `${d.nome} veio de cópia salva pelo gabinete em ${new Date(copiasLocais.get(d.id) as number).toLocaleDateString("pt-BR")}`).join("; ")}. Essa cópia pode não refletir alterações posteriores: na dúvida sobre a vigência, sinalize a conferência.\n`;
     if (!bloco) return { ...vazio, falhas };
     return { bloco, consultados: linhas.length, naoAchados, falhas, locais: localTxt };
   } catch (e) { console.warn("[Legislação] falha inesperada na consulta; segue sem o bloco:", e); return vazio; }

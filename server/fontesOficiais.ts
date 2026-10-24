@@ -5,9 +5,10 @@ import express from "express";
 import * as he from "he";
 import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
+import { gzipSync, gunzipSync } from "zlib";
 
 export const fontesRouter = express.Router();
-const COL_LEI = "legislacao", COL_RESUMO = "legislacao_resumo";
+const COL_LEI = "legislacao", COL_RESUMO = "legislacao_resumo", COL_TEXTO = "legislacao_texto";
 
 export interface LeiConfig { id: string; nome: string; curto: string; url: string; aliases: RegExp[] }
 const L = (id: string, nome: string, curto: string, url: string, ...aliases: RegExp[]): LeiConfig => ({ id, nome, curto, url, aliases });
@@ -24,6 +25,11 @@ export const LEIS: LeiConfig[] = [
   L("cpp", "Código de Processo Penal (Decreto-Lei 3.689/1941)", "CPP", P + "decreto-lei/del3689compilado.htm", /\bCPP\b/, /C[óo]digo de Processo Penal(?!\s+Militar)/i),
   L("clt", "Consolidação das Leis do Trabalho (Decreto-Lei 5.452/1943)", "CLT", P + "decreto-lei/del5452.htm", /\bCLT\b/, /Consolida[çc][ãa]o das Leis do Trabalho/i),
   L("l8429", "Improbidade Administrativa (Lei 8.429/1992)", "Lei 8.429/92", P + "leis/l8429.htm", /Lei\s*(?:n[º°o.]*\s*)?8\.?429\s*\/\s*(?:19)?92/i, /\bLIA\b/),
+  L("ctn", "Código Tributário Nacional (Lei 5.172/1966)", "CTN", P + "leis/l5172compilado.htm", /\bCTN\b/, /C[óo]digo Tribut[áa]rio Nacional/i, /Lei\s*(?:n[º°o.]*\s*)?5\.?172\s*\/\s*(?:19)?66/i),
+  L("l11343", "Lei de Drogas (Lei 11.343/2006)", "Lei 11.343/06", P + "_ato2004-2006/2006/lei/l11343.htm", /Lei\s*(?:n[º°o.]*\s*)?11\.?343\s*\/\s*(?:20)?06/i, /Lei de Drogas/i),
+  L("ctb", "Código de Trânsito Brasileiro (Lei 9.503/1997)", "CTB", P + "leis/l9503compilado.htm", /\bCTB\b/, /C[óo]digo de Tr[âa]nsito Brasileiro/i, /Lei\s*(?:n[º°o.]*\s*)?9\.?503\s*\/\s*(?:19)?97/i),
+  L("l6015", "Lei de Registros Públicos (Lei 6.015/1973)", "LRP", P + "leis/l6015compilada.htm", /Lei\s*(?:n[º°o.]*\s*)?6\.?015\s*\/\s*(?:19)?73/i, /Lei de Registros P[úu]blicos/i),
+  L("l14905", "Juros e correção (Lei 14.905/2024)", "Lei 14.905/24", P + "_ato2023-2026/2024/lei/l14905.htm", /Lei\s*(?:n[º°o.]*\s*)?14\.?905\s*\/\s*(?:20)?24/i),
   L("l14133", "Licitações e Contratos (Lei 14.133/2021)", "Lei 14.133/21", P + "_ato2019-2022/2021/lei/l14133.htm", /Lei\s*(?:n[º°o.]*\s*)?14\.?133\s*\/\s*(?:20)?21/i),
   L("l6830", "Execução Fiscal (Lei 6.830/1980)", "LEF", P + "leis/l6830.htm", /Lei\s*(?:n[º°o.]*\s*)?6\.?830\s*\/\s*(?:19)?80/i, /\bLEF\b/),
   L("l7347", "Ação Civil Pública (Lei 7.347/1985)", "Lei 7.347/85", P + "leis/l7347orig.htm", /Lei\s*(?:n[º°o.]*\s*)?7\.?347\s*\/\s*(?:19)?85/i),
@@ -99,6 +105,16 @@ async function salvarDoc(col: string, id: string, data: any) {
   await garantirDocs();
   await banco().query("INSERT INTO docs (col,id,data,updated_at) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE data=VALUES(data), updated_at=VALUES(updated_at)", [col, id, JSON.stringify(data), Date.now()]);
 }
+const chaveDaLei = (cfg: LeiConfig) => (cfg.url.split("/").pop() || "").replace(/\.[a-z]+$/i, "").toLowerCase();
+/** Cópia salva do texto da lei (chave = nome do arquivo no Planalto). Usada por legislacaoPlanalto quando o site não responde. */
+export async function lerCopiaLocal(chave: string): Promise<{ linhas: string[]; salvoEm: number } | null> {
+  await garantirDocs();
+  const [rows] = await banco().query<any[]>("SELECT data FROM docs WHERE col=? AND id=?", [COL_TEXTO, chave]);
+  if (!rows[0]) return null;
+  const d = JSON.parse(rows[0].data);
+  if (!d.gz) return null;
+  return { linhas: gunzipSync(Buffer.from(d.gz, "base64")).toString("utf-8").split("\n"), salvoEm: Number(d.salvoEm) || 0 };
+}
 /** Estado compacto de uma lei: só quais artigos estão revogados/vetados (com a nota curta) e o último número. O texto dos artigos NÃO é guardado (não pesa no banco). */
 interface EstadoLei { r: Record<string, string>; v: Record<string, string>; maior: number }
 const BLOQUEIO = /acesso negado|requisi[çc][ãa]o foi bloqueada|access denied|request blocked/i;
@@ -115,6 +131,9 @@ export async function processarHtmlLei(cfg: LeiConfig, texto: string): Promise<R
   for (const k of chaves) { const a = ex.artigos[k]; if (a.r) estado.r[k] = (a.n || "").slice(0, 90); else if (a.v) estado.v[k] = (a.n || "").slice(0, 90); }
   const agora = Date.now();
   await salvarDoc(COL_LEI, cfg.id, { id: cfg.id, baixadoEm: agora, ...estado });
+  // cópia do texto (compactada) para a consulta na hora da minuta quando o Planalto bloqueia o servidor; ~1/5 do tamanho da página
+  const comprimido = gzipSync(Buffer.from(linhas.join("\n"), "utf-8")).toString("base64");
+  await salvarDoc(COL_TEXTO, chaveDaLei(cfg), { id: cfg.id, salvoEm: agora, gz: comprimido });
   const resumo: ResumoLei = { id: cfg.id, nome: cfg.nome, url: cfg.url, baixadoEm: agora, total: ex.total, revogados: ex.revogados, vetados: ex.vetados, maior };
   await salvarDoc(COL_RESUMO, cfg.id, resumo);
   cacheLeis.delete(cfg.id);
