@@ -627,7 +627,7 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ isOpen, onCl
                   <span>Convidar ou Liberar Novo Membro da Equipe</span>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mb-3 leading-relaxed">
-                  Digite o e-mail do assessor, estagiário ou juiz (<strong>Obrigatório: @gmail.com</strong>). Se ele já possuir conta no sistema, será <strong>vinculado imediatamente</strong> a este gabinete; caso contrário, terá o acesso liberado assim que fizer login via Google com este e-mail.
+                  Digite o e-mail do assessor, estagiário ou juiz (<strong>Obrigatório: @gmail.com</strong>). Se ele já possuir conta no sistema, será <strong>vinculado imediatamente</strong> a este gabinete; caso contrário, ele cria o cadastro na tela de entrada e o acesso é liberado pelo Super Admin (ou entra com a senha inicial 12345678, se você liberar por aqui). Quem já tem cadastro e esqueceu a senha: peça ao Super Admin para usar “Redefinir senha”.
                 </p>
 
                 <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-2">
