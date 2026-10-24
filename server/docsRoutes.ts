@@ -99,7 +99,7 @@ const passa = (doc: { id: string; data: any }, [campo, op, alvo]: any[]): boolea
 
 // ---------- a coleção "users" é a tabela de usuários ----------
 const CAMPOS_PRIVILEGIADOS = new Set(["role", "tenantId", "isActive", "isJudge", "judgeTitle", "canUseNativeKey", "allowedUnits", "isUnauthorized"]);
-const CAMPOS_SECRETOS = ["customApiKey", "customApiKeys"];
+const CAMPOS_SECRETOS = ["customApiKey", "customApiKeys", "claudeApiKey"];
 const linhaParaDoc = (r: any, quem: UsuarioSessao) => {
   const d: any = perfilPublico(r);
   if (!quem.superAdmin && quem.uid !== r.id && !(quem.role === "admin" && tenantCanonico(quem.row.tenant_id) === tenantCanonico(r.tenant_id))) for (const k of CAMPOS_SECRETOS) delete d[k];      // chave de API é de cada um

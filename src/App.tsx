@@ -27,6 +27,8 @@ import { LoginCadastro } from "./components/LoginCadastro";
 import { AprovacaoUsuarios } from "./components/AprovacaoUsuarios";
 import { TrocarSenha } from "./components/TrocarSenha";
 import { BancoBadge } from "./components/BancoBadge";
+import { aplicarTema, temaAtual } from "./utils/tema";
+import { TrocaSenhaObrigatoria } from "./components/TrocaSenhaObrigatoria";
 import { PresentationModal } from "./components/PresentationModal";
 import { UserManagerModal } from "./components/UserManagerModal";
 import { UnitManagerModal } from "./components/UnitManagerModal";
@@ -158,6 +160,8 @@ export default function App() {
     recheckInvite
   } = useAuth();
   
+  // só o super admin escolhe o tema; os demais usuários sempre veem o visual Hostinger
+  useEffect(() => { aplicarTema(isSuperAdmin ? temaAtual() : "hostinger"); }, [isSuperAdmin, user?.uid]);
   const [isAdvancedMode, setIsAdvancedMode] = useState<boolean>(false);
   const [isCheckingInvite, setIsCheckingInvite] = useState(false);
   const [hasCopiedEmail, setHasCopiedEmail] = useState(false);
@@ -1543,7 +1547,6 @@ export default function App() {
         <div className="bg-[#17122b] text-white px-5 py-3 flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-[#673de6] flex items-center justify-center"><Scale className="w-4.5 h-4.5 text-white" /></div>
           <span className="font-bold tracking-tight">Assessor Judicial</span>
-          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded bg-white/15">MySQL · Hostinger</span>
         </div>
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="max-w-md w-full bg-white border border-[#e4e5ed] rounded-xl shadow-lg overflow-hidden">
@@ -1571,7 +1574,6 @@ export default function App() {
               <LoginCadastro />
 
               <div className="pt-3 border-t border-[#e4e5ed] text-[11px] text-slate-500 leading-relaxed space-y-1">
-                <p><strong className="text-[#17122b]">Onde ficam os dados:</strong> banco MySQL na Hostinger (cadastros, Histórico e configurações). Não usa Firebase.</p>
                 <p>Novo por aqui? Use "Solicitar cadastro": o administrador precisa aprovar seu acesso.</p>
               </div>
             </div>
@@ -2767,6 +2769,7 @@ export default function App() {
       />
       {isSuperAdmin && <AprovacaoUsuarios />}
       <TrocarSenha />
+      {(userProfile as any)?.mustChangePassword && <TrocaSenhaObrigatoria />}
       <BancoBadge />
       <SuperAdminPanel
         isOpen={isSuperAdminPanelOpen}

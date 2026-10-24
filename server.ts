@@ -9,6 +9,7 @@ import { historyRouter } from './server/historyRoutes';
 import { authRouter, exigirSessao } from './server/authRoutes';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
+import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
 import { getApplicableTaxonomySummary } from './src/data/legalTaxonomy';
@@ -219,6 +220,14 @@ app.use("/api/db/docs", docsRouter);
 app.use("/api/db/retencao", retencaoRouter);
 
 app.get("/api/native-key-info", (req, res) => res.json({ hasNativeKey: !!process.env.GEMINI_API_KEY }));
+app.post("/api/test-claude-key", async (req, res) => {
+    try {
+        const claude = pedidoClaude(req);
+        if (!claude) return res.status(400).json({ success: false, error: "Escolha a Claude para testar." });
+        const r = await gerarComClaude({ chave: claude.chave, modelo: claude.modelo, prompt: "Responda apenas: OK", maxTokens: 10, timeoutMs: 30000 });
+        res.json({ success: true, modelo: r.modelVersion, modelos: MODELOS_CLAUDE });
+    } catch (e: any) { res.status(e?.status && e.status < 600 ? (e.status === 401 ? 200 : e.status) : 500).json({ success: false, error: e?.message || "Falha ao testar a chave da Claude." }); }
+});
 app.post("/api/test-api-key", async (req, res) => {
     try {
         const key = extractApiKey(req);
@@ -837,8 +846,9 @@ app.post("/api/sync-precedents-weekly", async (req, res) => {
 
 app.post("/api/chat-agaia", async (req, res) => {
     try {
+        const claude = pedidoClaude(req);      // IA escolhida pelo usuário: Claude (chave dele) ou Gemini
         const apiKey = extractApiKey(req);
-        if (!apiKey) return res.status(401).json({ error: "Chave da API Gemini ausente." });
+        if (!apiKey && !claude) return res.status(401).json({ error: "Chave da API Gemini ausente." });
         
         const { message, conversationHistory, currentMinute, auditAnalysis, originalProcessText, executiveSummary, customPromptText, cabinetTesesText, isTesesEnabled, paradigmModelText, paradigmModelTitle, isParadigmEnabled } = req.body;
         
@@ -923,7 +933,9 @@ ${cabinetTesesText ? `\n# CADERNO DE TESES E DIRETRIZES DO GABINETE:\n${cabinetT
             }
         };
 
-        const response = await generateWithFallbackAndRetry(options);
+        const response: any = claude
+            ? await gerarComClaude({ chave: claude.chave, modelo: claude.modelo, system: "Você é um AI judiciário que responde apenas com objetos JSON estritos de acordo com o esquema solicitado, sem texto fora do JSON.", prompt: systemPrompt + "\n\n" + userPrompt, maxTokens: 16000 })
+            : await generateWithFallbackAndRetry(options);
         const responseText = response.text || "";
         
         let cleanJson = responseText;
@@ -969,15 +981,16 @@ ${cabinetTesesText ? `\n# CADERNO DE TESES E DIRETRIZES DO GABINETE:\n${cabinetT
 
     } catch (error) {
         console.error("Erro no chat-agaia:", error);
-        res.status(500).json({ error: error.message || "Erro interno ao processar chat." });
+        res.status(error?.claude ? error.status : 500).json({ error: error.message || "Erro interno ao processar chat." });
     }
 });
 
 // AGENTE COPILOTO LATERAL DE GABINETE (CONSULTORIA FORENSE & REDAÇÃO ÁGIL - MODO ECONÔMICO)
 app.post("/api/lateral-agent-chat", async (req, res) => {
     try {
+        const claude = pedidoClaude(req);      // IA escolhida pelo usuário: Claude (chave dele) ou Gemini
         const apiKey = extractApiKey(req);
-        if (!apiKey) {
+        if (!apiKey && !claude) {
             return res.status(401).json({ error: "Chave da API Gemini ausente. Configure sua chave gratuita no menu de configurações." });
         }
 
@@ -1072,7 +1085,9 @@ ${contextSection}`;
             }
         };
 
-        const response = await generateWithFallbackAndRetry(options);
+        const response: any = claude
+            ? await gerarComClaude({ chave: claude.chave, modelo: claude.modelo, prompt: promptText, maxTokens: 2500, temperature: 0.3, timeoutMs: 60000 })
+            : await generateWithFallbackAndRetry(options);
         const replyText = response.text || "Sem resposta do assistente.";
 
         res.json({
@@ -1086,7 +1101,7 @@ ${contextSection}`;
         });
     } catch (error: any) {
         console.error("Erro no lateral-agent-chat:", error);
-        res.status(500).json({ error: error.message || "Erro ao consultar o Agente Copiloto Lateral." });
+        res.status(error?.claude ? error.status : 500).json({ error: error.message || "Erro ao consultar o Agente Copiloto Lateral." });
     }
 });
 

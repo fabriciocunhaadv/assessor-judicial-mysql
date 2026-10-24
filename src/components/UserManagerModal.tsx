@@ -120,8 +120,8 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ isOpen, onCl
     return `Olá!\n\nSeu acesso ao Gabinete Virtual do Assessor Judicial de IA foi liberado pela administração.\n\n` +
       `Para acessar o sistema:\n` +
       `1. Acesse o link: ${currentUrl}\n` +
-      `2. Clique em "Entrar com conta Google" e selecione o e-mail: ${email}\n` +
-      `3. Seu acesso já está pré-configurado e autorizado.\n\n` +
+      `2. Entre com o e-mail: ${email}\n` +
+      `3. Senha inicial: 12345678 (no primeiro acesso o sistema pede para você criar a sua senha; se você já tinha criado uma, use a sua).\n\n` +
       `Atenciosamente,\nAdministração do Gabinete Judicial`;
   };
 
@@ -144,7 +144,8 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ isOpen, onCl
       `Olá! Seu acesso ao Gabinete Virtual foi liberado para o e-mail: *${email}*.\n\n` +
       `Para acessar:\n` +
       `1. Acesse: ${currentUrl}\n` +
-      `2. Clique em "Entrar com conta Google" com a conta *${email}*.\n\n` +
+      `2. Entre com o e-mail *${email}* e a senha inicial *12345678* (se você já criou a sua senha, use a sua).\n` +
+      `3. No primeiro acesso o sistema pede para você criar a sua própria senha.\n\n` +
       `Seu acesso já está pronto!`
     );
     return `https://api.whatsapp.com/send?text=${text}`;

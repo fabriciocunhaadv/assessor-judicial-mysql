@@ -1,15 +1,18 @@
 import React, { useState } from "react";
 import { chamarAuth } from "../lib/sessao";
+import { useAuth } from "../lib/AuthContext";
 import { alternarTema, temaAtual } from "../utils/tema";
 
 interface InfoBanco { motor: string; hospedagem: string; banco?: string; servidor?: string; cadastros?: { tabela: string; porSituacao: Record<string, number> }; tabelas?: { nome: string; descricao: string; linhas: number }[] }
 
 /** Selo fixo que mostra onde ficam os dados (MySQL na Hostinger). O super admin vê o nome do banco, o servidor e a contagem de cada tabela. */
 export const BancoBadge: React.FC = () => {
+  const { isSuperAdmin } = useAuth();
   const [aberto, setAberto] = useState(false), [info, setInfo] = useState<InfoBanco | null>(null), [erro, setErro] = useState("");
   const [tema, setTema] = useState(temaAtual());
   const abrir = async () => { setAberto(true); setErro(""); try { setInfo(await chamarAuth<InfoBanco>("GET", "/banco")); } catch (e: any) { setErro(e.message || "Não foi possível ler as informações do banco."); } };
   const situ: Record<string, string> = { aprovado: "ativos", pendente: "pendentes", recusado: "recusados", desativado: "desativados" };
+  if (!isSuperAdmin) return null;      // selo do banco e botão de tema: só o super administrador
   return (
     <>
       <button id="btn-tema" onClick={() => setTema(alternarTema())} title="Alternar entre o visual Hostinger e o clássico" className="fixed bottom-4 right-44 z-40 px-2.5 py-1.5 rounded-lg bg-white text-[#673de6] border border-[#c9cbd8] text-[11px] font-semibold shadow cursor-pointer hover:bg-[#f5f1ff]">Tema: {tema === "hostinger" ? "Hostinger" : "Clássico"}</button>

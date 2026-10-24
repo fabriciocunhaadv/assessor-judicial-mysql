@@ -185,7 +185,7 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { border-radi
    Só CSS: vale em todo o sistema quando <html> tem a classe .tema-hostinger (ligada em src/utils/tema.ts; o botão "Tema" volta ao visual clássico).
    Paleta do hPanel: roxo #673de6 como cor principal, faixas escuras quase pretas (#17122b e #1d1e20), fundo cinza claro #f4f4f6, cartões brancos bem arredondados e botões em pílula.
    Nenhum componente foi alterado. Variantes translúcidas (ex.: bg-slate-950/80, usadas em fundos de janelas) ficam como estão. */
-.tema-hostinger { --h-roxo:#673de6; --h-roxo-esc:#5025d1; --h-roxo-claro:#ebe4ff; --h-roxo-fraco:#f5f1ff; --h-navy:#1d1e20; --h-navy-fundo:#17122b; --h-navy-2:#2b2c30; --h-fundo:#f4f4f6; --h-linha:#e4e5ed; --h-texto:#1d1e20; }
+.tema-hostinger { --h-roxo:#673de6; --h-roxo-esc:#5025d1; --h-roxo-claro:#ebe4ff; --h-roxo-fraco:#f5f1ff; --h-navy:#24165a; --h-navy-fundo:#1a1040; --h-navy-2:#33227a; --h-fundo:#f4f4f8; --h-linha:#e4e5ed; --h-texto:#1d1e20; }
 .tema-hostinger body { background-color: var(--h-fundo); font-family: 'DM Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; letter-spacing: -0.005em; }
 .tema-hostinger .font-sans { font-family: 'DM Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
 .tema-hostinger [class~="bg-[#f3f4f6]"], .tema-hostinger [class~="bg-slate-100"], .tema-hostinger [class~="bg-gray-100"] { background-color: var(--h-fundo) !important; }
@@ -226,3 +226,26 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { border-radi
 /* tour guiado (react-joyride) */
 .tema-hostinger .react-joyride__tooltip button[data-action="primary"] { background-color: var(--h-roxo) !important; border-radius: 8px !important; }
 .tema-hostinger .react-joyride__tooltip button[data-action="back"], .tema-hostinger .react-joyride__tooltip button[data-action="skip"] { color: var(--h-roxo) !important; }
+
+/* ----- refinamento do tema Hostinger ----- */
+.tema-hostinger body { color: var(--h-texto); }
+/* faixa escura do cabeçalho com degradê roxo, como a barra do hPanel */
+.tema-hostinger [class~="bg-slate-950"], .tema-hostinger [class*=" bg-[#0"]:not([class*="/"]), .tema-hostinger [class^="bg-[#0"]:not([class*="/"]) { background-image: linear-gradient(90deg, #1a1040 0%, #2b1a6b 55%, #3a2290 100%) !important; }
+.tema-hostinger [class~="bg-slate-900"], .tema-hostinger [class~="bg-slate-800"] { background-image: none !important; }
+/* bordas, linhas e cartões mais suaves */
+.tema-hostinger [class~="border-slate-200"], .tema-hostinger [class~="border-slate-100"], .tema-hostinger [class~="border-gray-200"], .tema-hostinger [class~="border-slate-300"] { border-color: var(--h-linha) !important; }
+.tema-hostinger [class~="divide-slate-200"] > * + *, .tema-hostinger [class~="divide-slate-100"] > * + * { border-color: var(--h-linha) !important; }
+.tema-hostinger [class~="bg-white"][class*="rounded-"][class*="border"] { box-shadow: 0 1px 2px rgba(47,28,106,.05); }
+.tema-hostinger [class~="bg-white"][class*="rounded-"][class*="border"]:hover { border-color: #d3c6ff !important; }
+/* tabelas e listas: linha com toque de roxo ao passar o mouse */
+.tema-hostinger tr:hover > td, .tema-hostinger [class~="hover:bg-slate-50"]:hover, .tema-hostinger [class~="hover:bg-slate-100"]:hover { background-color: var(--h-roxo-fraco) !important; }
+/* campos de texto: cantos arredondados e borda clara, no padrão dos formulários do hPanel */
+.tema-hostinger input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), .tema-hostinger textarea, .tema-hostinger select { border-color: #d6d8e3; }
+.tema-hostinger textarea { border-radius: 16px; }
+/* links e etiquetas */
+.tema-hostinger a:not([class*="bg-"]):not([class*="text-white"]) { color: var(--h-roxo); }
+.tema-hostinger a:not([class*="bg-"]):not([class*="text-white"]):hover { color: var(--h-roxo-esc); }
+.tema-hostinger button, .tema-hostinger a { transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .1s ease; }
+.tema-hostinger button:active:not(:disabled) { transform: scale(.985); }
+.tema-hostinger button:focus-visible, .tema-hostinger a:focus-visible { outline: 2px solid var(--h-roxo); outline-offset: 2px; }
+.tema-hostinger h1, .tema-hostinger h2 { letter-spacing: -0.015em; }

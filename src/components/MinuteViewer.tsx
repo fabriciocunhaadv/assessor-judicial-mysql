@@ -63,6 +63,7 @@ import { VersionHistoryView } from "./VersionHistoryView";
 import { FloatingTextSelectionToolbar } from "./FloatingTextSelectionToolbar";
 import { PreAuditCard } from "./PreAuditCard";
 import { getApiHeaders, checkUserAiAccess, requestOpenApiKeyModal, checkResponseForRotatedKey } from "../utils/apiKeyManager";
+import { usaClaude } from "../utils/provedorIA";
 import { useAuth } from "../lib/AuthContext";
 
 interface MinuteViewerProps {
@@ -934,7 +935,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
     const message = promptToUse || chatInput;
     if (!message.trim() || isChatSending) return;
 
-    const access = checkUserAiAccess(userProfile, user?.email);
+    const access = usaClaude() ? { canExecute: true, message: "" } : checkUserAiAccess(userProfile, user?.email);      // com a Claude escolhida, a chave dela vale (a do Gemini não é exigida)
     if (!access.canExecute) {
       requestOpenApiKeyModal(access.message);
       setChatMessages((prev) => [

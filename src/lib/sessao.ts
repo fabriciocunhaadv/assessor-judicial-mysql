@@ -2,7 +2,7 @@
 import { UserProfile } from '../types';
 
 export interface AppUser { uid: string; email: string; displayName: string; photoURL?: string | null; getIdToken: () => Promise<string> }
-export type PerfilServidor = UserProfile & { superAdmin?: boolean };
+export type PerfilServidor = UserProfile & { superAdmin?: boolean; mustChangePassword?: boolean };
 
 const CHAVE = 'assessor_sessao_v1';
 let token: string | null = null;
