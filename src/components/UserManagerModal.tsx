@@ -121,7 +121,7 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ isOpen, onCl
       `Para acessar o sistema:\n` +
       `1. Acesse o link: ${currentUrl}\n` +
       `2. Entre com o e-mail: ${email}\n` +
-      `3. Senha inicial: 12345678 (no primeiro acesso o sistema pede para você criar a sua senha; se você já tinha criado uma, use a sua).\n\n` +
+      `3. Senha inicial: 12345678 (no primeiro acesso o sistema pede para você criar a sua senha).\n\n` +
       `Atenciosamente,\nAdministração do Gabinete Judicial`;
   };
 
@@ -144,7 +144,7 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ isOpen, onCl
       `Olá! Seu acesso ao Gabinete Virtual foi liberado para o e-mail: *${email}*.\n\n` +
       `Para acessar:\n` +
       `1. Acesse: ${currentUrl}\n` +
-      `2. Entre com o e-mail *${email}* e a senha inicial *12345678* (se você já criou a sua senha, use a sua).\n` +
+      `2. Entre com o e-mail *${email}* e a senha inicial *12345678*.\n` +
       `3. No primeiro acesso o sistema pede para você criar a sua própria senha.\n\n` +
       `Seu acesso já está pronto!`
     );
