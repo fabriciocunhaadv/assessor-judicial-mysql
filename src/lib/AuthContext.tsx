@@ -15,6 +15,7 @@ import {
   isPrimaryCabinet
 } from './firestoreUtils';
 import { syncApiKeyWithUserProfile, setNativeKeyAccessState } from '../utils/apiKeyManager';
+import { sincronizarIAComPerfil } from '../utils/provedorIA';
 
 interface AuthContextType {
   user: AppUser | null;
@@ -226,6 +227,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setGlobalTenantId(tenantAtual);
         setUserProfile(p);
         syncApiKeyWithUserProfile(p, u.uid);
+        sincronizarIAComPerfil(p);
         if (tenantAtual !== 'unassigned') {
           desfazer.push(onSnapshot(doc(db, 'tenants', tenantAtual), (snap) => {
             if (snap.exists()) {

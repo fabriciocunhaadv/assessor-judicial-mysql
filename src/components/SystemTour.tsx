@@ -154,6 +154,9 @@ export const SystemTour: React.FC<SystemTourProps> = ({
           <p className="text-sm text-slate-700 leading-relaxed">
             O sistema gerencia com rigor o acesso à IA: a <strong>Chave Nativa Corporativa</strong> é governada com exclusividade pelo <strong>Super Admin</strong>. A esteira conta com <strong>Proteção Ativa de Créditos Faturados</strong>, <strong>Desoneração Cirúrgica da Etapa 2</strong> (sem duplicação desnecessária de tokens e montagem instantânea no servidor) e <strong>Alternância Balanceada de Chaves (Key Pool Rotation)</strong> entre as etapas: a Etapa 2 inicia diretamente pela próxima chave disponível do pool com cota 100% livre. Além disso, a rotação foi <strong>blindada contra abandono prematuro</strong> na esteira (Gemini 3.8 ➔ 3.7 ➔ 3.6 ➔ 3.5 ➔ Latest ➔ Lite). Quando desativada pelo Super Admin, o sistema opera via <strong>Pool Ilimitado de Chaves</strong> (suporte a qualquer quantidade de projetos/chaves com rotação automática por exaustão de cota).
           </p>
+          <p className="text-sm text-slate-700 leading-relaxed">
+            <strong>Nova opção: Claude (Anthropic).</strong> Nesta mesma janela você cadastra a <strong>chave de API da Claude</strong> (não é usuário e senha) e escolhe se o <strong>Chat da minuta</strong> e o <strong>Copiloto</strong> respondem pelo Gemini ou pela Claude. As análises de minuta seguem no Gemini.
+          </p>
         </div>
       ),
       placement: "bottom",
@@ -588,6 +591,7 @@ export const SystemTour: React.FC<SystemTourProps> = ({
       if (!feito("app_tour")) {
         const filteredAppSteps = appSteps.filter((step) => {
           if (step.target === "#btn-header-superadmin" && !isSuperAdmin) return false;
+          if ((step.target === "#btn-banco-info" || step.target === "#btn-tema") && !isSuperAdmin) return false;
           if (step.target === "#btn-header-user-manager" && !isAdmin) return false;
           if (step.target === "#btn-header-minute-auditor" && !isSuperAdmin && !isJudge) return false;
           return true;

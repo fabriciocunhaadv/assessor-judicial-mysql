@@ -1,3 +1,4 @@
+import { ClaudeKeySection } from "./ClaudeKeySection";
 import React, { useState, useEffect } from "react";
 import {
   X,
@@ -837,6 +838,8 @@ export const ApiKeyConfigModal: React.FC<ApiKeyConfigModalProps> = ({
               </div>
             </div>
           )}
+
+          <ClaudeKeySection />
 
           {/* Success Banner */}
           {saveSuccess && (

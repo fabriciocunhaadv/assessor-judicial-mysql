@@ -1,5 +1,6 @@
 import { db, auth } from './firebase';
 import { chamarHistorico } from './historyApi';
+import { chamarAuth } from './sessao';
 import { medirLeitura } from "../utils/medidorColeta";
 import { collection, doc, getDocs, setDoc, deleteDoc, getDoc, updateDoc, query, orderBy, limit, onSnapshot, where, increment, getCountFromServer, writeBatch, startAfter, documentId } from './docstore';
 import { resumoLeve, ehLeve, digitosDoProcesso } from '../utils/historicoLeve';
@@ -1911,32 +1912,9 @@ export const subscribeToAudits = (callback: (audits: AuditedProcessRecord[]) => 
 
 export const inviteUserToTenant = async (email: string, targetTenantId?: string): Promise<void> => {
   if (!auth.currentUser) return;
-  const emailLower = email.trim().toLowerCase();
-  const currentTenant = targetTenantId || globalTenantId || 'gabinete_default';
-  
-  // Create invite record
-  await setDoc(doc(db, 'invites', emailLower), {
-     email: emailLower,
-     tenantId: currentTenant,
-     invitedAt: Date.now()
-  });
-  
-  // Also migrate immediately if they already have an existing user profile
-  try {
-    const q = query(collection(db, 'users'), where('email', '==', emailLower));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      for (const uDoc of snap.docs) {
-        await setDoc(doc(db, 'users', uDoc.id), { 
-          tenantId: currentTenant, 
-          isActive: true,
-          updatedAt: Date.now() 
-        }, { merge: true });
-      }
-    }
-  } catch (e) {
-    console.warn("Could not query existing users during invite:", e);
-  }
+  // Liberar acesso = criar o usuário já aprovado, com a senha inicial padrão (12345678) que é trocada no primeiro acesso.
+  // Se a pessoa já tinha cadastro (pedido pendente, desativada ou de outro gabinete), só é liberada e levada para este gabinete.
+  await chamarAuth('POST', '/convidar', { email: email.trim().toLowerCase(), tenantId: targetTenantId || globalTenantId || 'gabinete_default' });
 };
 
 export const getPendingInvites = async (targetTenantId?: string): Promise<{email: string, tenantId: string, invitedAt: number}[]> => {

@@ -1,3 +1,4 @@
+import { cabecalhosProvedor } from "./provedorIA";
 import { auth } from "../lib/firebase";
 import { saveUserApiKeyToDb, removeUserApiKeyFromDb, updateUserApiKeySettingsInDb, recordKeyRotationEventToDb, globalTenantId } from "../lib/firestoreUtils";
 import { UserProfile, UserApiKeyItem } from "../types";
@@ -686,6 +687,7 @@ export function rotateToNextApiKey(failedKey?: string, uid?: string): { rotated:
 export function getApiHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...cabecalhosProvedor(),      // Claude escolhida para o Chat e o Copiloto (as demais rotas ignoram)
     ...extraHeaders,
   };
 
