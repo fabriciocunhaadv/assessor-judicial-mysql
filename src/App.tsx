@@ -25,6 +25,7 @@ import { SystemManualModal } from "./components/SystemManualModal";
 import { SuperAdminPanel } from "./components/SuperAdminPanel";
 import { LoginCadastro } from "./components/LoginCadastro";
 import { AprovacaoUsuarios } from "./components/AprovacaoUsuarios";
+import { TrocarSenha } from "./components/TrocarSenha";
 import { PresentationModal } from "./components/PresentationModal";
 import { UserManagerModal } from "./components/UserManagerModal";
 import { UnitManagerModal } from "./components/UnitManagerModal";
@@ -2800,6 +2801,7 @@ export default function App() {
         onClose={() => setIsUserModalOpen(false)}
       />
       {isSuperAdmin && <AprovacaoUsuarios />}
+      <TrocarSenha />
       <SuperAdminPanel
         isOpen={isSuperAdminPanelOpen}
         onClose={() => setIsSuperAdminPanelOpen(false)}

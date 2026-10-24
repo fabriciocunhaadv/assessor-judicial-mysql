@@ -271,6 +271,18 @@ export const SystemTour: React.FC<SystemTourProps> = ({
       ),
       placement: "bottom",
     },
+    {
+      target: "#btn-trocar-senha",
+      content: (
+        <div className="text-left font-sans space-y-1.5">
+          <h3 className="font-bold text-md text-slate-800">Trocar minha senha 🔑</h3>
+          <p className="text-sm text-slate-700 leading-relaxed">
+            Aqui você troca a senha de acesso (mínimo de 8 caracteres). Informe a senha atual e a nova duas vezes.
+          </p>
+        </div>
+      ),
+      placement: "right" as const,
+    },
     ...(isSuperAdmin ? [
       {
         target: "#btn-cadastros-aprovacao",

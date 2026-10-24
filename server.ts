@@ -8,6 +8,7 @@ import { petitionRouter } from './server/petitionAdvogadoRoutes';
 import { historyRouter } from './server/historyRoutes';
 import { authRouter } from './server/authRoutes';
 import { docsRouter } from './server/docsRoutes';
+import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
 import { getApplicableTaxonomySummary } from './src/data/legalTaxonomy';
@@ -214,6 +215,7 @@ app.use("/api/advogado-peticao", petitionRouter);
 app.use("/api/db/history", historyRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/db/docs", docsRouter);
+app.use("/api/db/retencao", retencaoRouter);
 
 app.get("/api/native-key-info", (req, res) => res.json({ hasNativeKey: !!process.env.GEMINI_API_KEY }));
 app.post("/api/test-api-key", async (req, res) => {
@@ -6516,6 +6518,7 @@ if (process.env.NODE_ENV !== "production") {
     }).then(vite => {
         app.use(vite.middlewares);
         const server = app.listen(PORT, "0.0.0.0", () => {
+            iniciarRetencaoNoServidor();
             console.log("Server running on http://localhost:" + PORT);
         });
         server.setTimeout(600000);
@@ -6529,6 +6532,7 @@ if (process.env.NODE_ENV !== "production") {
         res.sendFile(path.join(distPath, 'index.html'));
     });
     const server = app.listen(PORT, "0.0.0.0", () => {
+        iniciarRetencaoNoServidor();
         console.log("Server running on port " + PORT);
     });
     server.setTimeout(600000);
