@@ -319,7 +319,7 @@ export const gravarIndiceHistorico = async (_completo: any, _fonte?: string): Pr
 export const apagarIndiceHistorico = async (_id: string): Promise<void> => { /* MySQL: o servidor apaga o resumo junto com o ato */ };
 
 export type EstadoIndiceHistorico = { fase: 'verificando' | 'montando' | 'pronto' | 'falhou'; lidos?: number; erro?: string };
-let _estadoIndice: EstadoIndiceHistorico = { fase: 'verificando' };
+let _estadoIndice: EstadoIndiceHistorico = { fase: 'pronto' };      // MySQL: não há índice a montar no navegador
 export const estadoIndiceHistorico = () => _estadoIndice;
 let _erroReconciliacao = '';
 const mudarEstadoIndice = (e: EstadoIndiceHistorico) => { _estadoIndice = e; try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('assessor-indice-estado', { detail: e })); } catch { /* sem janela */ } };
@@ -1375,28 +1375,8 @@ export const getAllUsers = async (): Promise<UserProfile[]> => {
             role: 'admin',
             tenantId: 'gabinete_default'
           });
-        } else {
-          const defaultJudge: UserProfile = {
-            uid: 'judge_rafael_machado',
-            email: 'repeteco@gmail.com',
-            name: 'Dr. Rafael Machado de Souza',
-            role: 'admin',
-            isActive: true,
-            createdAt: Date.now(),
-            completedTours: [],
-            canUseNativeKey: true,
-            tenantId: 'gabinete_default',
-            isJudge: true,
-            judgeTitle: 'Magistrado Titular',
-            allowedUnits: ['montes_claros', 'fazenda_nova']
-          };
-          filtered.push(defaultJudge);
-
-          // Proactively persist in Firestore
-          try {
-            setDoc(doc(db, 'users', defaultJudge.uid), cleanForFirestore(defaultJudge as any), { merge: true }).catch(() => {});
-          } catch {}
         }
+        // Sem juiz de exemplo: no sistema MySQL a equipe mostra só quem realmente tem cadastro (nenhum perfil padrão é criado ou gravado).
       }
     }
 

@@ -48,6 +48,23 @@ export async function recarregarPerfil(): Promise<PerfilServidor | null> {
   return perfil;
 }
 
+// Toda chamada do app às rotas /api (análises, Lupa, Mesa, Turbo, chat...) leva a sessão num cabeçalho próprio; o servidor recusa quem não tem login.
+if (typeof window !== 'undefined' && !(window as any).__assessorFetchSessao) {
+  (window as any).__assessorFetchSessao = true;
+  const fetchOriginal = window.fetch.bind(window);
+  window.fetch = (entrada: any, opcoes?: RequestInit) => {
+    try {
+      const url = typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.pathname : '';
+      if (token && url.startsWith('/api/') && !url.startsWith('/api/auth/login') && !url.startsWith('/api/auth/register')) {
+        const h = new Headers(opcoes?.headers || {});
+        if (!h.has('X-Assessor-Sessao')) h.set('X-Assessor-Sessao', token);
+        return fetchOriginal(entrada, { ...opcoes, headers: h });
+      }
+    } catch { /* segue sem o cabeçalho */ }
+    return fetchOriginal(entrada, opcoes);
+  };
+}
+
 // ao abrir o sistema: confere a sessão guardada
 token = lerToken();
 void (async () => {
