@@ -1,14 +1,21 @@
 import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { chamarAuth } from "../lib/sessao";
+import { collection, getDocs } from "../lib/docstore";
 
 interface Cadastro { uid: string; name: string; email: string; status: string; role: string; tenantId: string; isJudge: boolean; superAdmin?: boolean; perfilImportado?: { tenantId?: string; role?: string; isJudge?: boolean; judgeTitle?: string }; createdAt: number }
 
 /** Super admin: aprova ou recusa pedidos de cadastro e desativa/reativa usuários. */
 export const AprovacaoUsuarios: React.FC = () => {
   const [aberto, setAberto] = useState(false), [lista, setLista] = useState<Cadastro[]>([]), [ocupado, setOcupado] = useState(false);
+  const [gabinetes, setGabinetes] = useState<{ id: string; nome: string }[]>([{ id: "gabinete_default", nome: "Gabinete principal" }]), [gab, setGab] = useState("gabinete_default");
   const carregar = useCallback(async () => {
     try { setLista((await chamarAuth<{ usuarios: Cadastro[] }>("GET", "/users")).usuarios); } catch (e: any) { toast.error(e.message); }
+    try {      // gabinetes cadastrados, para escolher onde o novo usuário entra
+      const sn = await getDocs(collection(null, "tenants"));
+      const outros = sn.docs.filter((d) => d.id !== "gabinete_default").map((d) => ({ id: d.id, nome: String((d.data() as any).name || d.id) }));
+      setGabinetes([{ id: "gabinete_default", nome: "Gabinete principal" }, ...outros]);
+    } catch { /* fica só o principal */ }
   }, []);
   useEffect(() => { void carregar(); const t = setInterval(() => { void carregar(); }, 60000); return () => clearInterval(t); }, [carregar]);
 
@@ -24,7 +31,7 @@ export const AprovacaoUsuarios: React.FC = () => {
 
   return (
     <>
-      <button id="btn-cadastros-aprovacao" onClick={() => setAberto(true)} className="fixed bottom-4 left-4 z-40 px-3 py-2 rounded-full bg-amber-500 text-slate-950 text-xs font-black shadow-lg cursor-pointer">
+      <button id="btn-cadastros-aprovacao" onClick={() => setAberto(true)} className="fixed bottom-4 left-4 z-40 px-3 py-2 rounded-full bg-[#673de6] text-white text-xs font-bold shadow-lg cursor-pointer hover:bg-[#5025d1]">
         Cadastros{pendentes > 0 ? ` (${pendentes} pendente${pendentes > 1 ? "s" : ""})` : ""}
       </button>
       {aberto && (
@@ -34,6 +41,11 @@ export const AprovacaoUsuarios: React.FC = () => {
               <h2 className="font-bold text-lg">Cadastros de usuários</h2>
               <button onClick={() => setAberto(false)} className="text-slate-400 cursor-pointer">✕</button>
             </div>
+            <label className="flex items-center gap-2 text-xs text-slate-300">Aprovar novos usuários no gabinete:
+              <select value={gab} onChange={(e) => setGab(e.target.value)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100">
+                {gabinetes.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
+              </select>
+            </label>
             {lista.length === 0 && <p className="text-sm text-slate-400">Nenhum cadastro ainda.</p>}
             {lista.map((c) => (
               <div key={c.uid} className="p-3 rounded-xl border border-slate-700 bg-slate-950/60 flex flex-wrap items-center gap-2 text-sm">
@@ -47,8 +59,8 @@ export const AprovacaoUsuarios: React.FC = () => {
                   </button>
                 )}
                 {c.status === "pendente" && <>
-                  <button disabled={ocupado} className={`${btn} bg-emerald-600 text-white`} onClick={() => agir(c, "aprovar", { tenantId: "gabinete_default", role: "user" })}>Aprovar</button>
-                  <button disabled={ocupado} className={`${btn} bg-emerald-800 text-white`} onClick={() => agir(c, "aprovar", { tenantId: "gabinete_default", role: "admin" })}>Aprovar como admin</button>
+                  <button disabled={ocupado} className={`${btn} bg-emerald-600 text-white`} onClick={() => agir(c, "aprovar", { tenantId: gab, role: "user" })}>Aprovar</button>
+                  <button disabled={ocupado} className={`${btn} bg-emerald-800 text-white`} onClick={() => agir(c, "aprovar", { tenantId: gab, role: "admin" })}>Aprovar como admin</button>
                   <button disabled={ocupado} className={`${btn} bg-red-700 text-white`} onClick={() => agir(c, "recusar")}>Recusar</button>
                 </>}
                 {c.status === "aprovado" && !c.superAdmin && (

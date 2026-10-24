@@ -26,6 +26,7 @@ import { SuperAdminPanel } from "./components/SuperAdminPanel";
 import { LoginCadastro } from "./components/LoginCadastro";
 import { AprovacaoUsuarios } from "./components/AprovacaoUsuarios";
 import { TrocarSenha } from "./components/TrocarSenha";
+import { BancoBadge } from "./components/BancoBadge";
 import { PresentationModal } from "./components/PresentationModal";
 import { UserManagerModal } from "./components/UserManagerModal";
 import { UnitManagerModal } from "./components/UnitManagerModal";
@@ -1538,78 +1539,42 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4 font-sans selection:bg-amber-500 selection:text-slate-950">
-        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative">
-          {/* Noble top accent border */}
-          <div className="h-1.5 w-full bg-gradient-to-r from-amber-500 via-yellow-400 to-emerald-500" />
-          
-          <div className="p-8 text-center space-y-6">
-            <div className="relative mx-auto w-20 h-20">
-              <div className="w-20 h-20 mx-auto bg-gradient-to-br from-amber-500/20 via-slate-800 to-emerald-950/40 border border-amber-400/40 rounded-2xl flex items-center justify-center shadow-xl transform -rotate-3 transition hover:rotate-0">
-                <Scale className="w-10 h-10 text-amber-400" />
+      <div className="min-h-screen bg-[#f2f3f6] flex flex-col font-sans selection:bg-[#673de6] selection:text-white">
+        <div className="bg-[#2f1c6a] text-white px-5 py-3 flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-[#673de6] flex items-center justify-center"><Scale className="w-4.5 h-4.5 text-white" /></div>
+          <span className="font-bold tracking-tight">Assessor Judicial</span>
+          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded bg-white/15">MySQL · Hostinger</span>
+        </div>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white border border-[#e4e5ed] rounded-xl shadow-lg overflow-hidden">
+            <div className="p-7 space-y-5">
+              <div className="space-y-1.5">
+                <h1 className="text-2xl font-extrabold text-[#1d1e20] tracking-tight">Entrar no sistema</h1>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  Ambiente para Magistrados(as) Titulares e Assessores, com auditoria de minutas e clonagem de paradigmas.
+                </p>
               </div>
-              <div className="absolute -bottom-1 -right-1 bg-amber-400 text-slate-950 p-1 rounded-full shadow-md">
-                <Crown className="w-3.5 h-3.5" />
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/80 border border-amber-400/50 text-amber-300 text-[10px] font-black uppercase tracking-wider shadow-2xs">
-                <Crown className="w-3 h-3 text-amber-300" />
-                <span>Gabinete Judicial & Assessoria Inteligente</span>
-              </div>
-              <h1 className="text-2xl font-extrabold text-white tracking-tight">Assessor Judicial</h1>
-              <p className="text-slate-400 text-xs leading-relaxed max-w-sm mx-auto">
-                Ambiente de alta governança jurídica. Acesso integrado para Magistrados(as) Titulares e Assessores com auditoria de minutas e clonagem de paradigmas.
-              </p>
-            </div>
 
-            {authError && (
-              <div className="p-3 bg-red-950/70 border border-red-500/40 rounded-xl text-left text-xs text-red-200 space-y-1">
-                <div className="flex items-center justify-between font-bold text-red-300">
-                  <div className="flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                    <span>Aviso de Acesso</span>
-                  </div>
-                  <button onClick={clearAuthError} className="text-red-400 hover:text-red-200 text-xs cursor-pointer">✕</button>
-                </div>
-                <p className="text-[11px] text-red-300 leading-snug">{authError}</p>
-                {authError.includes("unauthorized-domain") && (
-                  <div className="mt-2 pt-2 border-t border-red-500/30 text-[11px] text-slate-300 space-y-1.5">
-                    <p className="font-semibold text-amber-300">Domínio para autorizar no Firebase Console:</p>
-                    <div className="flex items-center gap-2 bg-slate-900/90 px-2.5 py-1.5 rounded-lg border border-slate-700 font-mono text-[10px] text-amber-200 break-all select-all">
-                      <span className="truncate">{window.location.hostname}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(window.location.hostname);
-                          toast.success("Domínio copiado para a área de transferência!");
-                        }}
-                        className="ml-auto px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[10px] font-sans font-medium cursor-pointer shrink-0"
-                      >
-                        Copiar
-                      </button>
+              {authError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-left text-xs text-red-800 space-y-1">
+                  <div className="flex items-center justify-between font-bold">
+                    <div className="flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                      <span>Aviso de Acesso</span>
                     </div>
+                    <button onClick={clearAuthError} className="text-red-400 hover:text-red-700 text-xs cursor-pointer">✕</button>
                   </div>
-                )}
-              </div>
-            )}
+                  <p className="text-[12px] leading-snug">{authError}</p>
+                </div>
+              )}
 
-            <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-left space-y-2 text-[11px] text-slate-300">
-              <div className="flex items-center gap-2 text-amber-300 font-bold">
-                <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Perfil Premium do Magistrado & Equipe</span>
+              <LoginCadastro />
+
+              <div className="pt-3 border-t border-[#e4e5ed] text-[11px] text-slate-500 leading-relaxed space-y-1">
+                <p><strong className="text-[#2f1c6a]">Onde ficam os dados:</strong> banco MySQL na Hostinger (cadastros, Histórico e configurações). Não usa Firebase.</p>
+                <p>Novo por aqui? Use "Solicitar cadastro": o administrador precisa aprovar seu acesso.</p>
               </div>
-              <p className="text-slate-400 text-[10px] leading-snug">
-                Identificação nobre de magistrados, auditoria analítica de minutas (Função Ouro) e isolamento institucional de regras decisórias.
-              </p>
             </div>
-
-            <LoginCadastro />
-
-            <p className="text-[10px] text-slate-500 mt-4 block">
-              Acesso seguro e autenticado. Dados processados em conformidade institucional.
-            </p>
           </div>
         </div>
       </div>
@@ -2802,6 +2767,7 @@ export default function App() {
       />
       {isSuperAdmin && <AprovacaoUsuarios />}
       <TrocarSenha />
+      <BancoBadge />
       <SuperAdminPanel
         isOpen={isSuperAdminPanelOpen}
         onClose={() => setIsSuperAdminPanelOpen(false)}

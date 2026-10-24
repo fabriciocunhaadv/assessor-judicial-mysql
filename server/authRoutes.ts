@@ -3,7 +3,7 @@
 import express from "express";
 import crypto from "crypto";
 import { SignJWT, jwtVerify } from "jose";
-import { banco } from "./historyRoutes";
+import { banco, garantirEsquema } from "./historyRoutes";
 
 export const authRouter = express.Router();
 
@@ -113,6 +113,26 @@ authRouter.post("/login", rota(async (req, res) => {
   if (r.status !== "aprovado") throw erro(403, "Acesso não autorizado. Fale com o administrador.");
   falhas.delete(chave);
   res.json({ token: await criarToken(r.id), perfil: perfilPublico(r) });
+}));
+
+/** Onde estão os dados: todos veem o motor e a hospedagem; o super admin vê também o nome do banco, o servidor e quanto há em cada tabela. */
+authRouter.get("/banco", rota(async (req, res) => {
+  const u = await autenticarSessao(req);
+  const base = { motor: "MySQL", hospedagem: "Hostinger" };
+  if (!u.superAdmin) return void res.json(base);
+  await garantirEsquema().catch(() => {});
+  const conta = async (t: string) => { try { return Number(((await banco().query<any[]>(`SELECT COUNT(*) n FROM ${t}`))[0] as any[])[0].n); } catch { return 0; } };      // tabela ainda não criada = 0
+  const [cad] = await banco().query<any[]>("SELECT status, COUNT(*) n FROM users GROUP BY status");
+  res.json({
+    ...base, banco: process.env.MYSQL_DATABASE || "", servidor: process.env.MYSQL_HOST || "localhost",
+    cadastros: { tabela: "users", porSituacao: Object.fromEntries(cad.map((r) => [r.status, Number(r.n)])) },
+    tabelas: [
+      { nome: "users", descricao: "cadastros e logins", linhas: await conta("users") },
+      { nome: "history", descricao: "minutas completas do Histórico", linhas: await conta("history") },
+      { nome: "history_index", descricao: "resumos leves da lista do Histórico", linhas: await conta("history_index") },
+      { nome: "docs", descricao: "prompts, teses, paradigmas, agenda, gabinetes e demais configurações", linhas: await conta("docs") },
+    ],
+  });
 }));
 
 authRouter.get("/me", rota(async (req, res) => { const u = await autenticarSessao(req); res.json({ perfil: perfilPublico(u.row) }); }));

@@ -1,7 +1,7 @@
-// Endereço de acesso que vai nos convites de novos usuários: o endereço oficial do sistema (judicial.assessor.net.br).
+// Endereço de acesso que vai nos convites de novos usuários: o endereço oficial do sistema (judicial-mysql.assessor.net.br).
 // Em qualquer outro endereço (pré-visualização, localhost, moldura de teste) usa o mesmo endereço oficial.
-const PRINCIPAL = "https://judicial.assessor.net.br";
-const ENDERECOS_OFICIAIS = new Set(["judicial.assessor.net.br"]);
+const PRINCIPAL = "https://judicial-mysql.assessor.net.br";
+const ENDERECOS_OFICIAIS = new Set(["judicial-mysql.assessor.net.br"]);
 
 export function linkDeAcesso(): string {
   try {
