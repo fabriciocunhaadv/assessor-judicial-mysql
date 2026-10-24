@@ -69,6 +69,8 @@ import { MonitorErrosPanel } from './MonitorErrosPanel';
 import { MonitorOperacaoPanel } from './MonitorOperacaoPanel';
 import { db } from '../lib/firebase';
 import { linkDeAcesso } from '../utils/linkAcesso';
+import { ChavesResumo } from './ChavesResumo';
+import { chamarAuth } from '../lib/sessao';
 import { 
   getAllTenantsWithMetrics, 
   updateTenantStatus, 
@@ -1138,6 +1140,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
       showErrorToast("Erro ao atualizar status de juiz: " + (err.message || String(err)));
       await loadAllData();
     }
+  };
+
+  const handleResetPassword = async (user: UserProfile) => {
+    if (!window.confirm(`Redefinir a senha de ${(user as any).name || user.email} para a senha inicial (12345678)? A pessoa será obrigada a criar outra no próximo acesso.`)) return;
+    try { await chamarAuth("POST", `/users/${user.uid}/acao`, { acao: "redefinir_senha" }); window.alert("Senha redefinida para 12345678. Peça para a pessoa entrar com essa senha e criar a dela."); }
+    catch (e: any) { window.alert("Não foi possível redefinir a senha: " + (e?.message || e)); }
   };
 
   const handleToggleNativeKey = async (user: UserProfile) => {
@@ -2417,6 +2425,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                               >
                                 {u.canUseNativeKey ? '🟢 IA Liberada' : '⚪ Própria/Bloq'}
                               </button>
+                              <ChavesResumo user={u} />
                             </div>
                           </div>
 
@@ -2437,6 +2446,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                               <Building className="w-3 h-3 text-indigo-400" />
                               Mudar Gabinete
                             </button>
+                            {!(u as any).superAdmin && <button
+                              onClick={() => handleResetPassword(u)}
+                              className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                            >
+                              Redefinir senha
+                            </button>}
                             <button
                               onClick={() => handleToggleUserRole(u)}
                               className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
@@ -2549,6 +2564,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                                   >
                                     {u.canUseNativeKey ? '🟢 Liberada' : '⚪ Própria / Bloq'}
                                   </button>
+                                  <div className="mt-1.5"><ChavesResumo user={u} /></div>
                                 </td>
 
                                 {/* Status */}
@@ -2587,6 +2603,16 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                                       <Building className="w-3 h-3 text-indigo-400" />
                                       Mudar Gabinete
                                     </button>
+
+                                    {!(u as any).superAdmin && (
+                                      <button
+                                        onClick={() => handleResetPassword(u)}
+                                        title="Redefinir a senha para a inicial (12345678)"
+                                        className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                                      >
+                                        Redefinir senha
+                                      </button>
+                                    )}
 
                                     {/* Toggle Role */}
                                     <button
