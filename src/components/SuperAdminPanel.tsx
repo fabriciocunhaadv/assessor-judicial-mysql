@@ -1279,7 +1279,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
       }
 
       const res = await restoreGlobalDatabaseSnapshot(parsed);
-      showSuccessToast(`Snapshot "${parsed.reason || parsed.id}" importado e restaurado com sucesso! (${res.restoredTenants} gabinetes, ${res.restoredUsers} usuários restaurados)`);
+      showSuccessToast(`Snapshot "${parsed.reason || parsed.id}" importado! ${res.restoredTenants} gabinetes, ${res.restoredUsers} perfis de usuários, ${res.restoredPrompts} prompts e ${res.restoredHistories} minutas do Histórico${res.failedHistories ? ` (${res.failedHistories} minutas NÃO entraram — veja o console)` : ''}. No arquivo: ${parsed.summary?.totalHistoriesCount ?? 0} minutas.`);
       await loadAllData();
     } catch (err: any) {
       showErrorToast("Erro ao importar arquivo de snapshot: " + (err.message || String(err)));

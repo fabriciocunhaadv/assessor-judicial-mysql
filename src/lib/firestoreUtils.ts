@@ -3408,7 +3408,7 @@ export const deleteGlobalDatabaseSnapshot = async (snapshotId: string, meta?: { 
 export const restoreGlobalDatabaseSnapshot = async (
   snapshotInput: GlobalDatabaseSnapshot,
   options?: { targetTenantOnly?: string }
-): Promise<{ restoredTenants: number; restoredUsers: number; restoredHistories: number; restoredPrompts: number }> => {
+): Promise<{ restoredTenants: number; restoredUsers: number; restoredHistories: number; restoredPrompts: number; failedHistories: number }> => {
   const snapshot = (await fetchFullGlobalDatabaseSnapshot(snapshotInput)) || snapshotInput;
 
   if (!snapshot || !snapshot.data) {
@@ -3424,6 +3424,34 @@ export const restoreGlobalDatabaseSnapshot = async (
   let restoredUsers = 0;
   let restoredHistories = 0;
   let restoredPrompts = 0;
+  let failedHistories = 0;
+
+  // Atos do Histórico em lotes limitados por TAMANHO (minutas com texto dos autos são grandes). Se um lote for recusado, tenta um por um e conta o que não entrou.
+  const gravarAtos = async (tId: string, lista: SavedAnalysis[]) => {
+    let lote: SavedAnalysis[] = [], bytes = 0;
+    const enviarLote = async () => {
+      const atuais = lote; lote = []; bytes = 0;
+      if (!atuais.length) return;
+      try {
+        const b = writeBatch(db);
+        for (const h of atuais) b.set(doc(db, `gabinetes/${tId}/history`, h.id), cleanForFirestore({ ...h, tenant: tId }), { merge: true });
+        await b.commit();
+        restoredHistories += atuais.length;
+      } catch (e) {
+        for (const h of atuais) {
+          try { await setDoc(doc(db, `gabinetes/${tId}/history`, h.id), cleanForFirestore({ ...h, tenant: tId }), { merge: true }); restoredHistories++; }
+          catch (e2) { failedHistories++; console.warn('[Restauração] ato não importado', h.id, e2); }
+        }
+      }
+    };
+    for (const h of lista) {
+      if (!h || !h.id) continue;
+      const tam = JSON.stringify(h).length;
+      if (lote.length && (bytes + tam > 3_000_000 || lote.length >= 10)) await enviarLote();
+      lote.push(h); bytes += tam;
+    }
+    await enviarLote();
+  };
 
   const targetTenant = options?.targetTenantOnly;
 
@@ -3525,11 +3553,7 @@ export const restoreGlobalDatabaseSnapshot = async (
 
       // History
       if (Array.isArray(cab.history)) {
-        for (let i = 0; i < cab.history.length; i += 20) {      // em lotes: milhares de atos não viram milhares de chamadas
-          const lote = writeBatch(db);
-          for (const h of cab.history.slice(i, i + 20)) { lote.set(doc(db, `gabinetes/${tId}/history`, h.id), cleanForFirestore({ ...h, tenant: tId }), { merge: true }); restoredHistories++; }
-          await lote.commit();
-        }
+        await gravarAtos(tId, cab.history);
       }
 
       // Knowledge
@@ -3548,7 +3572,17 @@ export const restoreGlobalDatabaseSnapshot = async (
     }
   }
 
-  return { restoredTenants, restoredUsers, restoredHistories, restoredPrompts };
+  // 6. Dados antigos da raiz (coleções history, prompts, knowledge e audits fora de qualquer gabinete): vão para o gabinete principal
+  const legado = snapshot.data.legacyData;
+  if (legado && !targetTenant) {
+    const principal = 'gabinete_default';
+    if (Array.isArray(legado.history)) await gravarAtos(principal, legado.history);
+    if (Array.isArray(legado.prompts)) for (const p of legado.prompts) { if (!p?.id) continue; await setDoc(doc(db, `gabinetes/${principal}/prompts`, p.id), cleanForFirestore({ ...p, tenant: principal }), { merge: true }); restoredPrompts++; }
+    if (Array.isArray(legado.knowledge)) for (const k of legado.knowledge) { if (k?.id) await setDoc(doc(db, `gabinetes/${principal}/knowledge`, k.id), cleanForFirestore({ ...k, tenant: principal }), { merge: true }); }
+    if (Array.isArray(legado.audits)) for (const a of legado.audits) { if (a?.id) await setDoc(doc(db, `gabinetes/${principal}/audits`, a.id), cleanForFirestore({ ...a, tenant: principal }), { merge: true }); }
+  }
+
+  return { restoredTenants, restoredUsers, restoredHistories, restoredPrompts, failedHistories };
 };
 
 /**
