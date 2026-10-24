@@ -8,7 +8,14 @@ export interface BindingPrecedent {
   sourceUrl: string;
   tags: string[];
   area: "Direito Administrativo / Servidor" | "Direito do Consumidor" | "Direito Bancário" | "Processo Civil / Execução" | "Fazenda Pública" | "Geral";
+  /** De onde veio o item: base interna do sistema ou documento anexado por usuário (texto extraído por IA). Sem esse campo = base interna. */
+  origem?: "curadoria_interna" | "anexo_pdf";
+  sourceFile?: string;
+  importedAt?: string;
+  anexadoPor?: string;
 }
+/** Conferência manual do item na fonte oficial, feita pelo Super Admin (por precedente). */
+export type Conferencias = Record<string, { por: string; em: number; nota?: string }>;
 
 export const BINDING_SOURCES = [
   {
@@ -548,14 +555,15 @@ export function searchBindingPrecedents(query: string, filterTribunal?: "ALL" | 
  * relatórios e tipo de ação com as bases oficiais vinculantes do STF, STJ, TNU e TJGO,
  * retornando automaticamente todos os precedentes aplicáveis para alimentação do prompt.
  */
-export function matchApplicableBindingPrecedents(contextText: string): BindingPrecedent[] {
+export function matchApplicableBindingPrecedents(contextText: string, extra: BindingPrecedent[] = []): BindingPrecedent[] {
   if (!contextText || typeof contextText !== "string" || contextText.trim().length === 0) {
     return [];
   }
 
   const normalized = contextText.toLowerCase();
   const matched: BindingPrecedent[] = [];
-  const allList = getAllBindingPrecedents();
+  // `extra`: precedentes anexados (guardados no MySQL); no servidor a lista local do navegador não existe
+  const allList = [...extra, ...getAllBindingPrecedents().filter((p) => !extra.some((e) => e.id === p.id))];
 
   for (const precedent of allList) {
     let score = 0;

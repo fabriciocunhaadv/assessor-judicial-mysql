@@ -110,7 +110,7 @@ export const SystemTour: React.FC<SystemTourProps> = ({
             <span>Súmulas Vinculantes, TJGO & Grounding ao Vivo ⚖️</span>
           </h3>
           <p className="text-sm text-slate-700 leading-relaxed">
-            Em todas as análises, o sistema aplica um motor híbrido inteligente: consulta o catálogo nativo de Súmulas (STF, STJ, TNU) e <strong>Informativos do TJGO</strong>, com sincronização semanal automatizada (ou manual para Super Admin) e <strong>importação integral de novos informativos em PDF</strong> com leitura contínua de 100% das páginas e particionamento em lotes sequenciais. O controle de <strong>Grounding ao Vivo</strong> (pesquisa em tempo real em <em>transparencia.tjgo.jus.br</em>, STJ e STF) é gerenciado com segurança pelo Super Admin.
+            Em todas as análises, o sistema aplica um motor híbrido inteligente: consulta a base de Súmulas (STF, STJ, TNU) e <strong>Informativos do TJGO</strong> do gabinete, mais os <strong>documentos que você anexa em PDF</strong> (guardados no banco MySQL, com leitura de 100% das páginas). Cada item mostra a origem e se foi <strong>conferido na fonte oficial</strong> pelo Super Admin; a IA é orientada a não inventar numeração e a pedir conferência dos itens não conferidos. A <strong>Pesquisa ao Vivo (Grounding)</strong> é controlada pelo Super Admin e o sistema avisa quando a busca falha ou vem sem fontes.
           </p>
         </div>
       ),

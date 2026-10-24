@@ -33,6 +33,7 @@ import {
   getLastPrecedentsSync,
   setLastPrecedentsSync,
   getAllBindingPrecedents,
+  Conferencias,
 } from "../utils/bindingPrecedents";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
 import { getApiHeaders } from "../utils/apiKeyManager";
@@ -60,32 +61,16 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
   const [isUploadingPdf, setIsUploadingPdf] = useState<boolean>(false);
   const [pdfUploadStatus, setPdfUploadStatus] = useState<string | null>(null);
   const [serverPrecedents, setServerPrecedents] = useState<BindingPrecedent[]>([]);
+  const [conferencias, setConferencias] = useState<Conferencias>({});
+  const [soConferidos, setSoConferidos] = useState(false);
   const itemsPerPage = 5;
 
   // Carregamento e checagem da rotina de sincronização automática semanal (1 vez por semana)
   useEffect(() => {
     if (!isOpen) return;
 
-    // Buscar precedentes customizados do servidor diretamente para memória do componente
-    fetch("/api/custom-precedents")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && Array.isArray(data.precedents) && data.precedents.length > 0) {
-          setServerPrecedents(data.precedents);
-          addCustomBindingPrecedents(data.precedents);
-          setPrecedentsVersion((v) => v + 1);
-        }
-      })
-      .catch((err) => console.warn("Não foi possível carregar custom precedents:", err));
-
-    // Rotina semanal: se passou mais de 7 dias da última sincronização, executa automaticamente
-    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-    const lastSync = getLastPrecedentsSync();
-    const now = Date.now();
-
-    if (!lastSync || now - lastSync > ONE_WEEK_MS) {
-      handleTriggerSync(false);
-    }
+    // Os precedentes anexados e as conferências ficam no banco (MySQL); não há importação automática dos tribunais
+    recarregarLista();
   }, [isOpen]);
 
   useEffect(() => {
@@ -99,37 +84,40 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
     setIsGroundingEnabled(nextVal);
   };
 
-  const handleTriggerSync = async (isManual = false) => {
+  const recarregarLista = async (avisar = false) => {
     setIsSyncing(true);
     try {
-      const res = await fetch("/api/sync-precedents-weekly", {
-        method: "POST",
-        headers: getApiHeaders(),
-      });
+      const res = await fetch("/api/custom-precedents", { headers: getApiHeaders() });
       const data = await res.json();
       if (data.success) {
-        const now = Date.now();
-        setLastPrecedentsSync(now);
-        setLastSyncDate(now);
-        if (Array.isArray(data.precedents) && data.precedents.length > 0) {
-          setServerPrecedents(data.precedents);
-          addCustomBindingPrecedents(data.precedents);
-          setPrecedentsVersion((v) => v + 1);
-        }
-        if (isManual) {
-          setSyncMessage(`✅ Sincronização concluída: ${data.addedCount || 0} novos informativos/súmulas indexados com sucesso!`);
-          setTimeout(() => setSyncMessage(null), 5000);
-        }
-      }
+        const agora = Date.now();
+        setLastPrecedentsSync(agora); setLastSyncDate(agora);
+        setServerPrecedents(Array.isArray(data.precedents) ? data.precedents : []);
+        setConferencias(data.conferencias || {});
+        setPrecedentsVersion((v) => v + 1);
+        if (avisar) { setSyncMessage(`✅ Lista atualizada a partir do banco: ${data.count || 0} anexo(s) e ${Object.keys(data.conferencias || {}).length} item(ns) conferido(s).`); setTimeout(() => setSyncMessage(null), 5000); }
+      } else throw new Error(data.error || "Falha ao ler a lista");
     } catch (err: any) {
-      console.error("Erro na sincronização de precedentes:", err);
-      if (isManual) {
-        setSyncMessage(`❌ Erro ao sincronizar: ${err?.message || "Falha de rede"}`);
-        setTimeout(() => setSyncMessage(null), 5000);
-      }
-    } finally {
-      setIsSyncing(false);
-    }
+      if (avisar) { setSyncMessage(`❌ Não consegui atualizar: ${err?.message || "Falha de rede"}`); setTimeout(() => setSyncMessage(null), 5000); }
+    } finally { setIsSyncing(false); }
+  };
+  const alternarConferencia = async (item: BindingPrecedent) => {
+    const conferir = !conferencias[item.id];
+    const nota = conferir ? (window.prompt("Conferido na fonte oficial. Observação (opcional, ex.: link ou data da consulta):", "") ?? null) : "";
+    if (nota === null) return;
+    try {
+      const r = await fetch("/api/precedentes/conferir", { method: "POST", headers: getApiHeaders(), body: JSON.stringify({ id: item.id, conferido: conferir, nota }) });
+      const d = await r.json(); if (!d.success) throw new Error(d.error);
+      setConferencias(d.conferencias || {});
+    } catch (e: any) { setSyncMessage(`❌ ${e?.message || "Não consegui gravar a conferência."}`); setTimeout(() => setSyncMessage(null), 5000); }
+  };
+  const excluirAnexo = async (item: BindingPrecedent) => {
+    if (!window.confirm(`Excluir "${item.number}" da base? Isso vale para todos os usuários.`)) return;
+    try {
+      const r = await fetch(`/api/precedentes/${encodeURIComponent(item.id)}`, { method: "DELETE", headers: getApiHeaders() });
+      const d = await r.json(); if (!d.success) throw new Error(d.error);
+      await recarregarLista();
+    } catch (e: any) { setSyncMessage(`❌ ${e?.message || "Não consegui excluir."}`); setTimeout(() => setSyncMessage(null), 5000); }
   };
 
   const handleUploadPrecedentPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -217,10 +205,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
     for (const p of serverPrecedents) {
       if (p && p.id) map.set(p.id, p);
     }
-    // 2. Precedentes do localStorage
-    for (const p of fromStorage) {
-      if (p && p.id && !map.has(p.id)) map.set(p.id, p);
-    }
+    // (a cópia antiga guardada no navegador não entra mais: o banco é a fonte única)
     // 3. Precedentes nativos do sistema
     for (const p of CORE_BINDING_PRECEDENTS) {
       if (p && p.id && !map.has(p.id)) map.set(p.id, p);
@@ -250,6 +235,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
       } else if (selectedTribunal !== "ALL" && item.tribunal !== selectedTribunal) {
         return false;
       }
+      if (soConferidos && !conferencias[item.id]) return false;
       if (!q) return true;
       return (
         item.number.toLowerCase().includes(q) ||
@@ -259,13 +245,14 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
         item.area.toLowerCase().includes(q)
       );
     });
-  }, [allCombinedPrecedents, searchQuery, selectedTribunal]);
+  }, [allCombinedPrecedents, searchQuery, selectedTribunal, soConferidos, conferencias]);
 
   const totalPages = Math.ceil(filteredPrecedents.length / itemsPerPage) || 1;
   const paginatedPrecedents = filteredPrecedents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const handleCopy = (item: BindingPrecedent) => {
-    const textToCopy = `[${item.tribunal} • ${item.number}]: ${item.title}\n"${item.statement}"\n(Fonte Vinculante: ${item.sourceUrl})`;
+    const c = conferencias[item.id];
+    const textToCopy = `[${item.tribunal} • ${item.number}]: ${item.title}\n"${item.statement}"\n(Fonte: ${item.sourceUrl}) ${c ? `[Conferido na fonte em ${new Date(c.em).toLocaleDateString("pt-BR")}]` : "[NÃO CONFERIDO: confirme o enunciado na fonte oficial antes de citar]"}`;
     navigator.clipboard.writeText(textToCopy);
     setCopiedId(item.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -292,11 +279,11 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
                 </h2>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-mono text-[10px] font-bold border border-emerald-300 dark:border-emerald-700 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Alimentação Automática Semanal
+                  Base interna + anexos • conferência manual
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
-                Repositório oficial indexado com Tribunais Superiores e Informativos de Jurisprudência do TJGO (transparencia.tjgo.jus.br) com subsunção automática em todas as minutas judiciais.
+                Base de precedentes do gabinete: itens da base interna e documentos anexados por PDF. Os marcados como “Conferido” foram verificados na fonte oficial pelo Super Administrador; os demais devem ser conferidos antes de citar.
               </p>
             </div>
           </div>
@@ -313,7 +300,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
         <div className="shrink-0 px-4 sm:px-6 py-2 bg-emerald-50/80 dark:bg-emerald-950/30 border-b border-emerald-200/80 dark:border-emerald-900/50 flex items-center gap-2.5 sm:gap-3">
           <Cpu className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <div className="text-[11px] sm:text-xs text-emerald-900 dark:text-emerald-200 leading-snug">
-            <strong>Execução 100% Automática:</strong> O backend cruza os fatos dos autos com STF, STJ, TNU e os Informativos de Jurisprudência do TJGO, aplicando as súmulas e teses cabíveis diretamente na minuta com custo zero de busca externa.
+            <strong>Aplicação automática:</strong> O backend cruza os fatos dos autos com os itens desta lista (incluindo os anexados), indicando à IA a situação de cada um (conferido ou não) e proibindo-a de inventar numeração. Aplica as súmulas e teses cabíveis diretamente na minuta com custo zero de busca externa.
           </div>
         </div>
 
@@ -323,7 +310,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
             <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
             <div className="text-[11px] sm:text-xs text-blue-950 dark:text-blue-200 leading-snug">
               <strong>Pesquisa Web ao Vivo (Grounding):</strong> {isSuperAdmin ? (
-                "Opção para pesquisar jurisprudência em tempo real na web dos tribunais. Mantenha desativado para máxima economia de créditos."
+                "Opção para pesquisar jurisprudência em tempo real na web (busca do Google na chave do Gemini, que pode ser tarifada e depender do plano da chave). Se a busca falhar ou vier sem fontes, o sistema avisa ao fim da análise. Mantenha desativado para economizar."
               ) : (
                 "Desativada por padrão para economia de créditos. Apenas o Super Administrador possui permissão para habilitar a busca externa tarifada."
               )}
@@ -382,17 +369,17 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
             {/* Botão Super Admin: Sincronizar Agora */}
             {isSuperAdmin && (
               <button
-                onClick={() => handleTriggerSync(true)}
+                onClick={() => recarregarLista(true)}
                 disabled={isSyncing}
                 className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition shadow-2xs cursor-pointer ${
                   isSyncing 
                     ? "bg-indigo-50 text-indigo-400 border-indigo-200 cursor-not-allowed" 
                     : "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-600 active:scale-98"
                 }`}
-                title="Executar rotina de alimentação automática de Súmulas e Informativos do TJGO/STJ/STF a qualquer tempo"
+                title="Recarregar a lista a partir do banco de dados"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-                <span>{isSyncing ? "Sincronizando..." : "⚡ Sincronizar Agora"}</span>
+                <span>{isSyncing ? "Atualizando..." : "Atualizar lista"}</span>
                 <span className="text-[9px] font-mono uppercase bg-indigo-700/80 px-1 py-0.2 rounded text-indigo-100">Super Admin</span>
               </button>
             )}
@@ -402,7 +389,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
           <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             <span>
-              <strong>Alimentação semanal:</strong> {lastSyncDate ? `Última em ${new Date(lastSyncDate).toLocaleDateString('pt-BR')} às ${new Date(lastSyncDate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : "Automática semanal"}
+              <strong>Lista do banco:</strong> {lastSyncDate ? `Última em ${new Date(lastSyncDate).toLocaleDateString('pt-BR')} às ${new Date(lastSyncDate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : "Automática semanal"}
             </span>
           </div>
         </div>
@@ -456,6 +443,9 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1 sm:pb-0">
+            <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 whitespace-nowrap cursor-pointer pr-1" title="Mostrar só os itens conferidos na fonte oficial">
+              <input type="checkbox" checked={soConferidos} onChange={(e) => { setSoConferidos(e.target.checked); setCurrentPage(1); }} /> Só conferidos
+            </label>
             <Filter className="w-3.5 h-3.5 text-slate-400 mr-0.5 shrink-0" />
             {(["ALL", "TJGO", "STF", "STJ", "TNU", "CUSTOM"] as const).map((trib) => (
               <button
@@ -515,6 +505,15 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
                     }`}>
                       {item.tribunal}
                     </span>
+                    {conferencias[item.id] ? (
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1" title={`Conferido na fonte oficial por ${conferencias[item.id].por} em ${new Date(conferencias[item.id].em).toLocaleDateString("pt-BR")}${conferencias[item.id].nota ? " — " + conferencias[item.id].nota : ""}`}>
+                        <Check className="w-3 h-3" /> Conferido em {new Date(conferencias[item.id].em).toLocaleDateString("pt-BR")}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300" title="Ainda não conferido na fonte oficial: confira o enunciado antes de citar.">
+                        {(item as any).origem === "anexo_pdf" ? "Anexo • extraído por IA • conferir" : "Base interna • conferir na fonte"}
+                      </span>
+                    )}
                     {(item as any).sourceFile && (
                       <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700 flex items-center gap-1">
                         <FileUp className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -547,6 +546,14 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
                       )}
                     </button>
 
+                    {isSuperAdmin && (
+                      <button onClick={() => alternarConferencia(item)} className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium cursor-pointer hover:bg-slate-50" title="Marcar que você conferiu este item na fonte oficial">
+                        {conferencias[item.id] ? "Desfazer conferência" : "Marcar conferido"}
+                      </button>
+                    )}
+                    {isSuperAdmin && ((item as any).origem === "anexo_pdf" || String(item.id).startsWith("custom-")) && (
+                      <button onClick={() => excluirAnexo(item)} className="px-2.5 py-1 rounded-lg bg-white border border-red-300 text-red-700 text-xs font-medium cursor-pointer hover:bg-red-50" title="Excluir este anexo da base (vale para todos)">Excluir</button>
+                    )}
                     <a
                       href={item.sourceUrl}
                       target="_blank"
@@ -616,7 +623,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
           <div className="flex items-center gap-2 text-center sm:text-left">
             <Globe className="w-4 h-4 text-emerald-500 shrink-0" />
             <span className="text-[11px] sm:text-xs">
-              Fonte: <strong>tesesesumulas.com.br</strong> (STF, STJ e TNU)
+              Referência: <strong>tesesesumulas.com.br</strong> e portais dos tribunais — confira sempre na fonte oficial
             </span>
           </div>
           <button
