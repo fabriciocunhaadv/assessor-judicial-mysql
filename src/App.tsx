@@ -1540,7 +1540,7 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen bg-[#f2f3f6] flex flex-col font-sans selection:bg-[#673de6] selection:text-white">
-        <div className="bg-[#2f1c6a] text-white px-5 py-3 flex items-center gap-2.5">
+        <div className="bg-[#17122b] text-white px-5 py-3 flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-[#673de6] flex items-center justify-center"><Scale className="w-4.5 h-4.5 text-white" /></div>
           <span className="font-bold tracking-tight">Assessor Judicial</span>
           <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded bg-white/15">MySQL · Hostinger</span>
@@ -1571,7 +1571,7 @@ export default function App() {
               <LoginCadastro />
 
               <div className="pt-3 border-t border-[#e4e5ed] text-[11px] text-slate-500 leading-relaxed space-y-1">
-                <p><strong className="text-[#2f1c6a]">Onde ficam os dados:</strong> banco MySQL na Hostinger (cadastros, Histórico e configurações). Não usa Firebase.</p>
+                <p><strong className="text-[#17122b]">Onde ficam os dados:</strong> banco MySQL na Hostinger (cadastros, Histórico e configurações). Não usa Firebase.</p>
                 <p>Novo por aqui? Use "Solicitar cadastro": o administrador precisa aprovar seu acesso.</p>
               </div>
             </div>

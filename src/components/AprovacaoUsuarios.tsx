@@ -36,21 +36,21 @@ export const AprovacaoUsuarios: React.FC = () => {
       </button>
       {aberto && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setAberto(false)}>
-          <div className="bg-slate-900 text-slate-100 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-auto p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white text-[#1d1e20] border border-[#e4e5ed] rounded-3xl w-full max-w-3xl max-h-[85vh] overflow-auto p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center">
               <h2 className="font-bold text-lg">Cadastros de usuários</h2>
-              <button onClick={() => setAberto(false)} className="text-slate-400 cursor-pointer">✕</button>
+              <button onClick={() => setAberto(false)} className="text-slate-500 cursor-pointer">✕</button>
             </div>
-            <label className="flex items-center gap-2 text-xs text-slate-300">Aprovar novos usuários no gabinete:
-              <select value={gab} onChange={(e) => setGab(e.target.value)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100">
+            <label className="flex items-center gap-2 text-xs text-slate-600">Aprovar novos usuários no gabinete:
+              <select value={gab} onChange={(e) => setGab(e.target.value)} className="bg-white border border-[#c9cbd8] rounded-lg px-2 py-1 text-[#1d1e20]">
                 {gabinetes.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
               </select>
             </label>
             {lista.length === 0 && <p className="text-sm text-slate-400">Nenhum cadastro ainda.</p>}
             {lista.map((c) => (
-              <div key={c.uid} className="p-3 rounded-xl border border-slate-700 bg-slate-950/60 flex flex-wrap items-center gap-2 text-sm">
+              <div key={c.uid} className="p-3 rounded-2xl border border-[#e4e5ed] bg-[#f4f4f6] flex flex-wrap items-center gap-2 text-sm">
                 <div className="flex-1 min-w-[200px]">
-                  <div className="font-semibold">{c.name} <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300">{rotulo[c.status] || c.status}</span></div>
+                  <div className="font-semibold">{c.name} <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#ebe4ff] text-[#5025d1]">{rotulo[c.status] || c.status}</span></div>
                   <div className="text-xs text-slate-400">{c.email} · {new Date(c.createdAt).toLocaleDateString("pt-BR")}</div>
                 </div>
                 {c.status === "pendente" && c.perfilImportado && (
@@ -64,9 +64,9 @@ export const AprovacaoUsuarios: React.FC = () => {
                   <button disabled={ocupado} className={`${btn} bg-red-700 text-white`} onClick={() => agir(c, "recusar")}>Recusar</button>
                 </>}
                 {c.status === "aprovado" && !c.superAdmin && (
-                  <button disabled={ocupado} className={`${btn} bg-slate-700 text-white`} onClick={() => agir(c, "desativar")}>Desativar</button>
+                  <button disabled={ocupado} className={`${btn} bg-[#1d1e20] text-white`} onClick={() => agir(c, "desativar")}>Desativar</button>
                 )}
-                {(c.status === "desativado" || c.status === "recusado") && <button disabled={ocupado} className={`${btn} bg-slate-700 text-white`} onClick={() => agir(c, "reativar", { tenantId: c.tenantId !== "unassigned" ? c.tenantId : "gabinete_default" })}>Reativar</button>}
+                {(c.status === "desativado" || c.status === "recusado") && <button disabled={ocupado} className={`${btn} bg-[#1d1e20] text-white`} onClick={() => agir(c, "reativar", { tenantId: c.tenantId !== "unassigned" ? c.tenantId : "gabinete_default" })}>Reativar</button>}
               </div>
             ))}
           </div>
