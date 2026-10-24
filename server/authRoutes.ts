@@ -62,12 +62,23 @@ export const perfilPublico = (r: any) => ({
 });
 
 /** Confere o token e o cadastro no banco A CADA chamada (desativar um usuário vale na hora). */
+/** Porteiro das rotas /api que não são de login nem do banco (análises, Lupa, Mesa, Turbo, chat...): sem sessão válida, nada roda (e a chave do Gemini do servidor não fica exposta). */
+export const exigirSessao: express.RequestHandler = async (req: any, res, next) => {
+  if (req.path.startsWith("/auth") || req.path.startsWith("/db/") || req.path === "/native-key-info") return next();      // essas rotas conferem a sessão sozinhas (ou só informam se existe chave do servidor)
+  try {
+    if (!req.headers["x-assessor-sessao"]) throw erro(401, "login necessário");
+    req.usuarioSessao = await autenticarSessao(req);
+    next();
+  } catch (e: any) { res.status(e?.status || 500).json({ erro: mensagemDeErro(e), error: mensagemDeErro(e) }); }
+};
+
 export async function autenticarSessao(req: express.Request): Promise<UsuarioSessao> {
   await garantirUsuarios();
-  const h = String(req.headers.authorization || "");
-  if (!h.startsWith("Bearer ")) throw erro(401, "login necessário");
+  const h = String(req.headers.authorization || ""), proprio = String(req.headers["x-assessor-sessao"] || "");
+  const token = proprio || (h.startsWith("Bearer ") ? h.slice(7) : "");      // as demais rotas usam Authorization para chaves do Gemini; por isso há um cabeçalho próprio da sessão
+  if (!token) throw erro(401, "login necessário");
   let uid: string;
-  try { uid = String((await jwtVerify(h.slice(7), segredo())).payload.sub); } catch (e: any) { if (e?.status) throw e; throw erro(401, "sessão inválida ou vencida"); }
+  try { uid = String((await jwtVerify(token, segredo())).payload.sub); } catch (e: any) { if (e?.status) throw e; throw erro(401, "sessão inválida ou vencida"); }
   const [rows] = await banco().query<any[]>("SELECT * FROM users WHERE id=?", [uid]);
   const r = rows[0];
   if (!r || r.status !== "aprovado") throw erro(401, "acesso não autorizado");

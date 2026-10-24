@@ -1,6 +1,7 @@
 import { estadoIndiceHistorico, EstadoIndiceHistorico } from "../lib/firestoreUtils";
 import toast from "react-hot-toast";
 import { AvisoRetencao, EtiquetaValidade } from "./EtiquetaValidade";
+import { BancoOrigem } from "./BancoOrigem";
 import React, { useState, useEffect, useRef } from "react";
 import {
   X,
@@ -449,8 +450,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                 <h2 className="text-sm sm:text-base font-bold text-slate-900 leading-tight truncate">Histórico & Dossiês</h2>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold flex items-center gap-1 border border-emerald-200 whitespace-nowrap shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
-                  <span className="hidden sm:inline">Banco Conectado</span>
-                  <span className="sm:hidden">Online</span>
+                  <span className="hidden sm:inline">MySQL · Hostinger</span>
+                  <span className="sm:hidden">MySQL</span>
                 </span>
               </div>
             </div>
@@ -586,6 +587,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
           )}
         </div>
 
+        <BancoOrigem tabela="history" descricao="As minutas e dossiês desta lista são lidos desse banco e tudo o que você salva, marca como lançado ou exclui é gravado nele." />
         <AvisoRetencao />
 
         {/* List Content */}

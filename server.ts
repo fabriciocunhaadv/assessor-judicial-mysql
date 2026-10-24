@@ -6,7 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { petitionRouter } from './server/petitionAdvogadoRoutes';
 import { historyRouter } from './server/historyRoutes';
-import { authRouter } from './server/authRoutes';
+import { authRouter, exigirSessao } from './server/authRoutes';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
@@ -211,6 +211,7 @@ const PORT = 3000;
 app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
+app.use("/api", exigirSessao);      // tudo em /api exige login (exceto /api/auth e a informação /api/native-key-info)
 app.use("/api/advogado-peticao", petitionRouter);
 app.use("/api/db/history", historyRouter);
 app.use("/api/auth", authRouter);
@@ -2504,8 +2505,10 @@ Retorne estritamente em JSON com o formato:
 });
 
 function isRequestNativeAllowed(req: any): boolean {
+    // a chave do servidor só vale para quem o super admin liberou (conferido no banco MySQL pela sessão), e não por um cabeçalho qualquer
     const isNativeHeader = req.headers['x-use-native-key'] === 'true';
-    return isNativeHeader;
+    const u = req.usuarioSessao;
+    return isNativeHeader && !!u && (u.superAdmin || !!u.row?.can_use_native_key);
 }
 
 function extractApiKey(req) {
@@ -2848,7 +2851,7 @@ async function generateWithFallbackAndRetry(options) {
                     httpOptions: {
                         timeout: modelTimeoutMs + 10000,      // nosso temporizador dispara antes e registra o erro corretamente
                         headers: {
-                            'User-Agent': 'aistudio-build'
+                            'User-Agent': 'assessor-judicial'
                         }
                     }
                 });
