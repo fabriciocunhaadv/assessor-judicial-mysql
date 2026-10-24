@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { doc, onSnapshot, collection } from 'firebase/firestore';
+import { doc, onSnapshot, collection } from './docstore';
 import { db } from './firebase';
 import { auth, entrar, recarregarPerfil, chamarAuth, AppUser } from './sessao';
 import { UserProfile, JudicialUnit, DEFAULT_UNITS } from '../types';
@@ -212,17 +212,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isSuperAdmin, user]);
 
   useEffect(() => {
-    // Login próprio: o perfil (papel, gabinete, unidades) vem do MySQL junto com a sessão.
+    // Login próprio: o perfil (papel, gabinete, unidades) vem do MySQL junto com a sessão; o resto é atualizado por consulta leve.
+    let desfazer: Array<() => void> = [];
+    const limpar = () => { desfazer.forEach((f) => { try { f(); } catch { /* já parado */ } }); desfazer = []; };
     const unsubscribeAuth = auth.onChange((u) => {
+      limpar();
       setUser(u);
       setAuthError(null);
       const p = auth.perfil;
       if (u && p) {
         const savedSuperTenant = localStorage.getItem(SUPERADMIN_TENANT_KEY);
-        setGlobalTenantId(p.superAdmin && savedSuperTenant ? savedSuperTenant : (p.tenantId || 'unassigned'));
+        const tenantAtual = p.superAdmin && savedSuperTenant ? savedSuperTenant : (p.tenantId || 'unassigned');
+        setGlobalTenantId(tenantAtual);
         setUserProfile(p);
-        if (!isPrimaryCabinet(p.tenantId)) setTenantName(null); else setTenantName('Gabinete Principal (Dr. Rafael Machado)');
         syncApiKeyWithUserProfile(p, u.uid);
+        if (tenantAtual !== 'unassigned') {
+          desfazer.push(onSnapshot(doc(db, 'tenants', tenantAtual), (snap) => {
+            if (snap.exists()) {
+              const t: any = snap.data();
+              setTenantName(t.name || null);
+              setIsTenantSuspended(t.status === 'suspended' || t.status === 'maintenance');
+              setTenantSuspensionReason(t.suspendedReason || (t.status === 'maintenance' ? 'Gabinete em manutenção técnica programada.' : 'Acesso ao Gabinete temporariamente suspenso pela administração.'));
+            } else {
+              setIsTenantSuspended(false);
+              setTenantSuspensionReason(null);
+              setTenantName(isPrimaryCabinet(tenantAtual) ? 'Gabinete Principal (Dr. Rafael Machado)' : null);
+            }
+          }, (e) => console.warn('Falha ao ler o gabinete:', e)));
+          desfazer.push(subscribeToUnits((units) => {
+            if (units && units.length > 0) {
+              setDynamicUnits(units);
+              setActiveUnitState(prev => units.find(x => x.id === prev.id) || (localStorage.setItem(ACTIVE_UNIT_KEY, units[0].id), units[0]));
+            } else setDynamicUnits(DEFAULT_UNITS);
+          }));
+          // mudanças feitas pelo administrador no perfil (papel, unidades, ativação) chegam sem precisar sair e entrar de novo
+          desfazer.push(onSnapshot(doc(db, 'users', u.uid), (snap) => {
+            if (snap.exists()) setUserProfile((prev) => ({ ...(prev || {}), ...(snap.data() as any), tenantId: (snap.data() as any).tenantId && (snap.data() as any).tenantId !== 'unassigned' ? (snap.data() as any).tenantId : prev?.tenantId } as UserProfile));
+          }, (e) => console.warn('Falha ao ler o perfil:', e)));
+        }
       } else {
         setUserProfile(null);
         syncApiKeyWithUserProfile(null);
@@ -231,7 +258,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setLoading(false);
     });
-    return unsubscribeAuth;
+    return () => { limpar(); unsubscribeAuth(); };
   }, []);
 
   // When activeTenantId changes dynamically for Super Admin, re-bind units listener

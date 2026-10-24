@@ -3,7 +3,7 @@
 // pede o diagnóstico da IA e DECIDE se aceita ou recusa cada ajuste sugerido. Nada é corrigido sozinho.
 // Privacidade: nunca grava o texto dos autos; números de processo, CPF/CNPJ, e-mails e chaves são mascarados antes de gravar.
 import { medirLeitura } from "./medidorColeta";
-import { collection, doc, getDocs, setDoc, updateDoc, increment, arrayUnion } from "firebase/firestore";
+import { collection, doc, getDocs, setDoc, updateDoc, increment, arrayUnion } from '../lib/docstore';
 import { db, auth } from "../lib/firebase";
 import { globalTenantId } from "../lib/firestoreUtils";
 

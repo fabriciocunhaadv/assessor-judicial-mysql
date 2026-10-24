@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, setDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy, limit } from "firebase/firestore";
+import { collection, doc, getDocs, setDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy, limit } from '../lib/docstore';
 import { db, auth } from "../lib/firebase";
 import { SupportTicket, TicketMessage, TicketStatus, TicketStatusHistoryItem, UserProfile } from "../types";
 import { safeGetItem, safeSetItem } from "./safeStorage";

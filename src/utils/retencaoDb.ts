@@ -1,6 +1,6 @@
 // RETENÇÃO DO HISTÓRICO (parte que fala com o banco): lê e grava a configuração (settings/retencao_historico) e apaga os atos vencidos.
 // A exclusão roda no navegador de quem abre o sistema: cada usuário apaga as próprias minutas vencidas e o super admin apaga todas (é o que as regras do banco permitem).
-import { collection, deleteDoc, doc, getDoc, getDocs, limit, query, setDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, limit, query, setDoc, where } from '../lib/docstore';
 import toast from "react-hot-toast";
 import { db, auth } from "../lib/firebase";
 import { deleteHistoryFromDb, ehDonoDoAto, ehSuperAdminHistorico, garantirIndiceHistorico, indiceHistoricoPath } from "../lib/firestoreUtils";

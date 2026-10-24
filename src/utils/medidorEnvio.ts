@@ -1,6 +1,6 @@
 // MEDIDOR de leitura (envio): soma na memória, grava no máximo a cada 5 minutos em gabinetes/{gabinete}/medidor_leitura/{dia}_{usuário}
 // e lê as medições dos últimos dias para o painel do super admin. Melhor esforço: nunca derruba nem atrasa o sistema.
-import { collection, doc, getDocs, increment, setDoc } from "firebase/firestore";
+import { collection, doc, getDocs, increment, setDoc } from '../lib/docstore';
 import { db, auth } from "../lib/firebase";
 import { globalTenantId } from "../lib/firestoreUtils";
 import { listaDeGabinetes } from "./monitorErros";

@@ -10,7 +10,7 @@ import {
   query,
   orderBy,
   limit
-} from "firebase/firestore";
+} from '../lib/docstore';
 import { InitialPetitionRecord, InitialPetitionRepetitiveTemplate } from "../types";
 
 const PETITIONS_HISTORY_COLLECTION = "initial_petitions_history";

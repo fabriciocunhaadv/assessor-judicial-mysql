@@ -1,7 +1,7 @@
 import { db, auth } from './firebase';
 import { chamarHistorico } from './historyApi';
 import { medirLeitura } from "../utils/medidorColeta";
-import { collection, doc, getDocs, setDoc, deleteDoc, getDoc, updateDoc, query, orderBy, limit, onSnapshot, where, increment, getCountFromServer, writeBatch, startAfter, documentId } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, deleteDoc, getDoc, updateDoc, query, orderBy, limit, onSnapshot, where, increment, getCountFromServer, writeBatch, startAfter, documentId } from './docstore';
 import { resumoLeve, ehLeve, digitosDoProcesso } from '../utils/historicoLeve';
 import { CustomPrompt, GenerationResult, CabinetTesesData, ProjudiGuideData, UserProfile, UserRole, ChatMessage, MinuteData, SavedAnalysis, ApiUsageMetadata, SystemBroadcast, MinuteVersion, AuditedProcessRecord, CabinetCalendarSettings, SaaSTenant, CabinetBackupSnapshot, GlobalDatabaseSnapshot, CabinetFullPartitionData, CabinetMonthlyTokenUsage, ExecutionModuleType, ModuleTokenUsageStats } from '../types';
 import { JudgeParadigmModel } from '../data/defaultParadigms';
