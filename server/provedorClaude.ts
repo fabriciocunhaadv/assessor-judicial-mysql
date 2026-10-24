@@ -18,6 +18,7 @@ export function pedidoClaude(req: express.Request): { chave: string; modelo: str
 }
 
 /** Mesmo formato de retorno que o Gemini usa nas rotas (text, usageMetadata, modelVersion), para o resto da rota não mudar. */
+// `temperature` é aceito na chamada mas NÃO é enviado: os modelos Claude atuais recusam o parâmetro ("`temperature` is deprecated for this model").
 export async function gerarComClaude(o: { chave: string; modelo: string; system?: string; prompt: string; maxTokens: number; temperature?: number; timeoutMs?: number }): Promise<{ text: string; usageMetadata: { promptTokenCount: number; candidatesTokenCount: number; totalTokenCount: number }; modelVersion: string }> {
   if (!o.chave || o.chave.length < 20) throw Object.assign(new Error("Chave da Claude ausente. Cadastre a sua em Chave API › Claude (Anthropic)."), { status: 401, claude: true });
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), o.timeoutMs || 120000);
@@ -25,7 +26,7 @@ export async function gerarComClaude(o: { chave: string; modelo: string; system?
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST", signal: ctl.signal,
       headers: { "content-type": "application/json", "x-api-key": o.chave, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: o.modelo, max_tokens: o.maxTokens, ...(o.temperature !== undefined ? { temperature: o.temperature } : {}), ...(o.system ? { system: o.system } : {}), messages: [{ role: "user", content: o.prompt }] }),
+      body: JSON.stringify({ model: o.modelo, max_tokens: o.maxTokens, ...(o.system ? { system: o.system } : {}), messages: [{ role: "user", content: o.prompt }] }),
     });
     const j: any = await r.json().catch(() => ({}));
     if (!r.ok) {
