@@ -11,7 +11,7 @@ const erro = (status: number, msg: string) => Object.assign(new Error(msg), { st
 const LIMITE_COLECAO = 20000;
 
 let pronto: Promise<void> | null = null;
-const garantirDocs = (): Promise<void> => (pronto ||= (async () => {
+export const garantirDocs = (): Promise<void> => (pronto ||= (async () => {
   await garantirUsuarios();
   await garantirEsquema();      // tabelas do Histórico (a pasta history do armazém usa)
   // só CRIA o que falta; nunca altera nem apaga dados
@@ -41,7 +41,7 @@ const podeLer = (u: UsuarioSessao, col: string): boolean => {
 };
 const podeEscrever = (u: UsuarioSessao, col: string): boolean => {
   const seg = col.split("/");
-  if (seg[0] === "tenants" || seg[0] === "system_snapshots" || seg[0] === "perfis_importados") return u.superAdmin;
+  if (seg[0] === "tenants" || seg[0] === "system_snapshots" || seg[0] === "perfis_importados" || seg[0] === "precedentes" || seg[0] === "precedentes_conferencia") return u.superAdmin;      // precedentes: quem anexa passa pela rota própria; aqui só o super admin
   if (seg[0] === "settings") return u.superAdmin;
   return podeLer(u, col);
 };

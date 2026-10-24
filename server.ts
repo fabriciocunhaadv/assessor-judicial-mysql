@@ -10,6 +10,7 @@ import { authRouter, exigirSessao } from './server/authRoutes';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
+import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
 import { getApplicableTaxonomySummary } from './src/data/legalTaxonomy';
@@ -573,34 +574,32 @@ app.post("/api/generate-synopsis", async (req, res) => {
 // ==========================================
 // REPOSITÓRIO VINCULANTE & INGESTÃO AUTOMÁTICA
 // ==========================================
-const CUSTOM_PRECEDENTS_FILE = path.join(process.cwd(), "data", "custom_precedents.json");
+// Precedentes anexados ficam no MySQL (server/precedentesDb.ts); antes iam para um arquivo do servidor que uma nova implantação podia apagar.
+const loadServerCustomPrecedents = (): Promise<any[]> => listarPrecedentes();
 
-function loadServerCustomPrecedents(): any[] {
+app.get("/api/custom-precedents", async (_req, res) => {
     try {
-        if (fs.existsSync(CUSTOM_PRECEDENTS_FILE)) {
-            const raw = fs.readFileSync(CUSTOM_PRECEDENTS_FILE, "utf-8");
-            const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) ? parsed : [];
-        }
-    } catch (e) {
-        console.error("Erro ao ler custom_precedents.json:", e);
-    }
-    return [];
-}
+        const [list, conferencias] = await Promise.all([listarPrecedentes(), listarConferencias()]);
+        res.json({ success: true, count: list.length, precedents: list, conferencias });
+    } catch (e: any) { res.status(500).json({ success: false, error: "Não consegui ler os precedentes do banco." }); }
+});
 
-function saveServerCustomPrecedents(items: any[]): void {
+// Só o Super Admin confere itens na fonte oficial e exclui anexos.
+app.post("/api/precedentes/conferir", async (req: any, res) => {
     try {
-        const dir = path.dirname(CUSTOM_PRECEDENTS_FILE);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(CUSTOM_PRECEDENTS_FILE, JSON.stringify(items, null, 2), "utf-8");
-    } catch (e) {
-        console.error("Erro ao gravar custom_precedents.json:", e);
-    }
-}
-
-app.get("/api/custom-precedents", (_req, res) => {
-    const list = loadServerCustomPrecedents();
-    res.json({ success: true, count: list.length, precedents: list });
+        if (!req.usuarioSessao?.superAdmin) return res.status(403).json({ success: false, error: "Somente o Super Administrador confere precedentes." });
+        const id = String(req.body?.id || "").trim();
+        if (!id) return res.status(400).json({ success: false, error: "Precedente não informado." });
+        await marcarConferencia(id, req.body?.conferido !== false, req.usuarioSessao.email, String(req.body?.nota || ""));
+        res.json({ success: true, conferencias: await listarConferencias() });
+    } catch (e: any) { res.status(500).json({ success: false, error: "Não consegui gravar a conferência." }); }
+});
+app.delete("/api/precedentes/:id", async (req: any, res) => {
+    try {
+        if (!req.usuarioSessao?.superAdmin) return res.status(403).json({ success: false, error: "Somente o Super Administrador exclui precedentes anexados." });
+        await apagarPrecedente(String(req.params.id));
+        res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ success: false, error: "Não consegui excluir o precedente." }); }
 });
 
 app.post("/api/parse-precedents-pdf", async (req, res) => {
@@ -713,7 +712,7 @@ Estrutura de cada objeto:
         }
 
         if (allParsed.length > 0) {
-            const current = loadServerCustomPrecedents();
+            const current = await loadServerCustomPrecedents();
             const existingKeys = new Set(current.map(c => ((c.number || '') + ' ' + (c.title || '')).toLowerCase().trim()));
             const existingIds = new Set(current.map(c => c.id));
 
@@ -725,7 +724,9 @@ Estrutura de cada objeto:
                     id: item.id && !existingIds.has(item.id) ? item.id : autoId,
                     number: cleanNum,
                     sourceFile: fileName || "Documento anexado",
-                    importedAt: new Date().toISOString()
+                    importedAt: new Date().toISOString(),
+                    origem: "anexo_pdf",      // texto extraído por IA de um documento anexado: precisa ser conferido na fonte
+                    anexadoPor: (req as any).usuarioSessao?.email || ""
                 };
             }).filter(item => {
                 const key = ((item.number || '') + ' ' + (item.title || '')).toLowerCase().trim();
@@ -747,7 +748,7 @@ Estrutura de cada objeto:
             }
 
             const updated = [...newValid, ...current];
-            saveServerCustomPrecedents(updated);
+            await gravarPrecedentes(newValid);
 
             return res.json({
                 success: true,
@@ -771,76 +772,22 @@ Estrutura de cada objeto:
     }
 });
 
-app.post("/api/sync-precedents-weekly", async (req, res) => {
+// Antes este botão gravava 4 precedentes escritos à mão no código e dizia que a base tinha sido "alimentada" pelos tribunais. Não existe fonte oficial conectada:
+// agora ele só devolve o que está no banco, sem inventar nada.
+app.post("/api/sync-precedents-weekly", async (_req, res) => {
     try {
-        const curatedWeeklyPrecedents = [
-            {
-                id: "tjgo-inf-2026-01",
-                tribunal: "TJGO",
-                type: "informativo_tjgo",
-                number: "Informativo TJGO 2026 • Juizados Especiais Cíveis",
-                title: "Dano Moral por Interrupção de Fornecimento de Energia Sem Prévia Notificação",
-                statement: "A interrupção indevida do fornecimento de energia elétrica pela concessionária (Equatorial Goiás) sem notificação formal e específica com prazo razoável configura falha na prestação do serviço e gera dano moral in re ipsa, independente de prova do prejuízo material.",
-                sourceUrl: "https://transparencia.tjgo.jus.br/jurisprudencia",
-                tags: ["energia eletrica", "equatorial", "corte indevido", "dano moral", "consumidor", "aviso previo"],
-                area: "Direito do Consumidor",
-                updatedAt: new Date().toISOString()
-            },
-            {
-                id: "tjgo-inf-2026-02",
-                tribunal: "TJGO",
-                type: "informativo_tjgo",
-                number: "Informativo TJGO 2026 • Turmas Recursais",
-                title: "Empréstimo Não Contratado por Idoso e Fraude Digital (RMC / RCC)",
-                statement: "Nas ações em que o consumidor idoso ou hipervulnerável nega a contratação de empréstimo sob a modalidade de cartão de crédito consignado (RMC/RCC), incumbe à instituição financeira o ônus de comprovar a disponibilização regular e o consentimento esclarecido, sendo nula a contratação viciada com repetição do indébito e condenação por dano moral.",
-                sourceUrl: "https://transparencia.tjgo.jus.br/jurisprudencia",
-                tags: ["rmc", "rcc", "consignado", "banco", "idoso", "hipervulneravel", "fraude bancaria"],
-                area: "Direito Bancário",
-                updatedAt: new Date().toISOString()
-            },
-            {
-                id: "tjgo-sumula-32",
-                tribunal: "TJGO",
-                type: "sumula",
-                number: "Súmula 32 TJGO",
-                title: "Honorários Sucumbenciais nos Juizados Especiais Cíveis",
-                statement: "No rito da Lei nº 9.099/95, a condenação ao pagamento de custas e honorários advocatícios sucumbenciais tem cabimento unicamente em segundo grau de jurisdição e exclusivamente em desfavor do recorrente vencido.",
-                sourceUrl: "https://www.tjgo.jus.br/sumulas",
-                tags: ["honorarios", "juizado especial", "recorrente vencido", "lei 9099", "custas"],
-                area: "Direito Processual Civil",
-                updatedAt: new Date().toISOString()
-            },
-            {
-                id: "stj-tema-1061-atualizado",
-                tribunal: "STJ",
-                type: "tese_repetitivo",
-                number: "Tema Repetitivo 1061 STJ",
-                title: "Ônus Probatório da Autenticidade da Assinatura em Contrato Bancário Impugnado",
-                statement: "Na hipótese em que o consumidor/autor impugnar a autenticidade da assinatura constante de contrato bancário juntado ao processo pela instituição financeira, caberá a esta o ônus de provar a sua autenticidade (CPC, art. 429, II), inclusive arcando com a perícia grafotécnica.",
-                sourceUrl: "https://scon.stj.jus.br/SCON/jurisprudencia",
-                tags: ["assinatura impugnada", "banco", "onus da prova", "pericia grafotecnica", "art 429 cpc"],
-                area: "Direito Bancário",
-                updatedAt: new Date().toISOString()
-            }
-        ];
-
-        const current = loadServerCustomPrecedents();
-        const existingIds = new Set(current.map(c => c.id));
-        const newToAdd = curatedWeeklyPrecedents.filter(p => !existingIds.has(p.id));
-        const updated = [...newToAdd, ...current];
-        saveServerCustomPrecedents(updated);
-
+        const [list, conferencias] = await Promise.all([listarPrecedentes(), listarConferencias()]);
         res.json({
             success: true,
-            syncDate: Date.now(),
-            count: updated.length,
-            addedCount: newToAdd.length,
-            precedents: updated,
-            message: `Alimentação automatizada concluída com sucesso! ${newToAdd.length} novo(s) precedente(s) e informativos do TJGO/STJ indexados.`
+            addedCount: 0,
+            total: list.length,
+            precedents: list,
+            conferencias,
+            message: "Lista atualizada a partir do banco. Não há importação automática dos tribunais: use \"Anexar PDF\" e confira os itens na fonte oficial."
         });
     } catch (err: any) {
-        console.error("Erro no sync-precedents-weekly:", err);
-        res.status(500).json({ error: err.message || "Erro na sincronização de precedentes." });
+        console.error("Erro ao atualizar a lista de precedentes:", err);
+        res.status(500).json({ error: "Não consegui ler os precedentes do banco." });
     }
 });
 
@@ -4463,11 +4410,14 @@ if (!res.headersSent) {
 }
 
 const combinedContextForPrecedents = [safeProcessText || "", accumulatedPdfText || "", actType || "", actSubtype || "", specificInstructions || "", customPromptText || "", paradigmModelText || ""].join(" ");
-const matchedPrecedents = matchApplicableBindingPrecedents(combinedContextForPrecedents);
+const precedentesAnexados = await listarPrecedentes().catch(() => [] as any[]);
+const conferenciasPrecedentes = await listarConferencias().catch(() => ({} as Record<string, any>));
+const matchedPrecedents = matchApplicableBindingPrecedents(combinedContextForPrecedents, precedentesAnexados);
 const taxonomySummary = getApplicableTaxonomySummary(combinedContextForPrecedents);
 
 let liveGroundingPrecedents = "";
 let liveGroundingSources: Array<{ title: string; url: string }> = [];
+let groundingFalha = "";
 
 const isNativeAllowed = isRequestNativeAllowed(req);
 
@@ -4519,6 +4469,7 @@ Retorne de 1 a 3 precedentes oficiais aplicáveis (informando o tribunal, númer
         }
     } catch (gErr: any) {
         console.log("[Assessor Judicial] Camada de Grounding ao vivo finalizou com fallback:", gErr?.message || gErr);
+        groundingFalha = String(gErr?.message || gErr || "erro desconhecido").slice(0, 200);
     }
 }
 
@@ -4708,8 +4659,13 @@ Sua missão é:
 
 if (matchedPrecedents.length > 0) {
     stage2SystemInstruction += `\n\n[ALIMENTAÇÃO AUTOMÁTICA DE SÚMULAS, TESES VINCULANTES E INFORMATIVOS (STF • STJ • TNU • TJGO)]:\n` +
-        matchedPrecedents.map((p, idx) => `${idx + 1}. [${p.tribunal} • ${p.number} - ${p.title}]: "${p.statement}" (Fonte: ${p.sourceUrl})`).join("\n") +
-        `\nDIRETRIZ JURISPRUDENCIAL VINCULANTE: Harmonize a fundamentação e o dispositivo com as súmulas/teses vinculantes superiores e do TJGO.\n`;
+        matchedPrecedents.map((p, idx) => {
+            const c = conferenciasPrecedentes[p.id];
+            const situacao = c ? `CONFERIDO na fonte oficial por ${c.por} em ${new Date(c.em).toLocaleDateString("pt-BR")}` : ((p as any).origem === "anexo_pdf" ? "NÃO CONFERIDO — texto extraído por IA de documento anexado" : "NÃO CONFERIDO — base interna");
+            return `${idx + 1}. [${p.tribunal} • ${p.number} - ${p.title}] (${situacao}): "${p.statement}" (Fonte: ${p.sourceUrl})`;
+        }).join("\n") +
+        `\nDIRETRIZ JURISPRUDENCIAL VINCULANTE: Harmonize a fundamentação e o dispositivo com as súmulas/teses vinculantes superiores e do TJGO.\n` +
+        `REGRA DE FIDELIDADE: cite número de súmula, tema ou informativo SOMENTE se constar da lista acima ou se você tiver certeza absoluta; nunca invente numeração nem transcreva enunciado de memória. Para item marcado "NÃO CONFERIDO", cite com cautela e acrescente ao final do raciocínio a recomendação de conferir o enunciado na fonte oficial antes de assinar o ato.\n`;
 }
 
 if (liveGroundingPrecedents) {
@@ -6272,6 +6228,9 @@ if (parsed.minute) {
 }
 
 parsed.groundingSources = liveGroundingSources;
+// Estado da pesquisa ao vivo, para a tela avisar quando ela foi ligada mas não trouxe fontes (antes falhava em silêncio)
+parsed.groundingStatus = !isGroundingEnabled ? "desligado" : groundingFalha ? "falhou" : (liveGroundingPrecedents ? (liveGroundingSources.length > 0 ? "ok" : "sem_fontes") : "sem_resultado");
+if (groundingFalha) parsed.groundingMensagem = groundingFalha;
 if (liveGroundingSources && liveGroundingSources.length > 0 && parsed.auditAnalysis?.preAudit) {
     const curStatus = parsed.auditAnalysis.preAudit.precedentsStatus || "Precedentes validados";
     parsed.auditAnalysis.preAudit.precedentsStatus = `${curStatus} • ${liveGroundingSources.length} precedente(s) consultado(s) ao vivo via Grounding oficial (TJGO • STJ • STF).`;
