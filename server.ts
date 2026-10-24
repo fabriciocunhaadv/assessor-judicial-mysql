@@ -800,15 +800,30 @@ app.post("/api/sync-precedents-weekly", async (_req, res) => {
     }
 });
 
-// Diagnóstico (quais leis o servidor consegue consultar agora no Planalto; não devolve conteúdo)
-app.get("/api/legislacao-status", async (_req, res) => {
-    try { const r = await diagnosticoLegislacao(); res.json({ ok: r.filter((x) => x.ok).length, total: r.length, diplomas: r }); }
-    catch (e: any) { res.status(500).json({ error: e?.message || "falha no diagnóstico" }); }
-});
+// Diagnósticos abertos (sem login) da consulta à legislação: só dizem se o servidor alcança o Planalto e mostram o começo de um artigo de lei pública.
+// Como disparam acessos ao site do Planalto, têm limite de uso por endereço e o resultado do status fica em memória por 5 minutos.
+const usoDiagnostico = new Map<string, number[]>();
+const limiteDiagnostico = (req: any, res: any): boolean => {
+    const ip = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim(), agora = Date.now();
+    const lista = (usoDiagnostico.get(ip) || []).filter((t) => agora - t < 60_000);
+    if (lista.length >= 20) { res.status(429).json({ error: "Muitas consultas; aguarde um minuto." }); return false; }
+    lista.push(agora); usoDiagnostico.set(ip, lista); if (usoDiagnostico.size > 500) usoDiagnostico.clear(); return true;
+};
+let statusLegislacao: { em: number; corpo: any } | null = null;
 // Teste manual: /api/legislacao-teste?q=art. 6º da Lei 8.987/1995 → mostra se a lei foi reconhecida e localizada no Planalto
 app.get("/api/legislacao-teste", async (req, res) => {
+    if (!limiteDiagnostico(req, res)) return;
     try { res.json(await testarLegislacao(String(req.query.q || "").slice(0, 600))); }
     catch (e: any) { res.status(500).json({ error: e?.message || "falha no teste" }); }
+});
+app.get("/api/legislacao-status", async (req, res) => {
+    if (!limiteDiagnostico(req, res)) return;
+    try {
+        if (!statusLegislacao || Date.now() - statusLegislacao.em > 5 * 60_000 || req.query.novo === "1") {
+            const r = await diagnosticoLegislacao(); statusLegislacao = { em: Date.now(), corpo: { ok: r.filter((x) => x.ok).length, total: r.length, diplomas: r } };
+        }
+        res.json(statusLegislacao.corpo);
+    } catch (e: any) { res.status(500).json({ error: e?.message || "falha no diagnóstico" }); }
 });
 
 app.post("/api/chat-agaia", async (req, res) => {

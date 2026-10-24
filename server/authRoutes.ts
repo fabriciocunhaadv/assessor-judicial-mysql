@@ -66,7 +66,7 @@ export const perfilPublico = (r: any) => ({
 /** Confere o token e o cadastro no banco A CADA chamada (desativar um usuário vale na hora). */
 /** Porteiro das rotas /api que não são de login nem do banco (análises, Lupa, Mesa, Turbo, chat...): sem sessão válida, nada roda (e a chave do Gemini do servidor não fica exposta). */
 export const exigirSessao: express.RequestHandler = async (req: any, res, next) => {
-  if (req.path.startsWith("/auth") || req.path.startsWith("/db/") || req.path === "/native-key-info") return next();      // essas rotas conferem a sessão sozinhas (ou só informam se existe chave do servidor)
+  if (req.path.startsWith("/auth") || req.path.startsWith("/db/") || req.path === "/native-key-info" || req.path === "/legislacao-status" || req.path === "/legislacao-teste") return next();      // diagnósticos só de leitura da consulta ao Planalto (texto de lei pública; com limite de uso em server.ts)      // essas rotas conferem a sessão sozinhas (ou só informam se existe chave do servidor)
   try {
     if (!req.headers["x-assessor-sessao"]) throw erro(401, "login necessário");
     req.usuarioSessao = await autenticarSessao(req);
