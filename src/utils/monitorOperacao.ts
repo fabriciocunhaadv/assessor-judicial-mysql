@@ -2,7 +2,7 @@
 // Cada operação grava um registro enxuto em gabinetes/{gabinete}/ops_events (sem partes, sem texto dos autos) e passa por regras que apontam anomalias, por exemplo
 // "prompt Criminal usado numa unidade de Juizado Cível". O super admin vê tudo no painel "Monitor de operação" e copia o pedido de correção para o Claude.
 import { medirLeitura } from "./medidorColeta";
-import { collection, doc, getDocs, setDoc } from "firebase/firestore";
+import { collection, doc, getDocs, setDoc } from '../lib/docstore';
 import { db, auth } from "../lib/firebase";
 import { globalTenantId } from "../lib/firestoreUtils";
 import { mascarar, listaDeGabinetes } from "./monitorErros";

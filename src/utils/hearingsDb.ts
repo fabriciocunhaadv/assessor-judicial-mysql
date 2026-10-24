@@ -1,7 +1,7 @@
 import { HearingRecord, HearingType } from '../types';
 import { medirLeitura } from "./medidorColeta";
 import { db, auth } from '../lib/firebase';
-import { collection, doc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy } from '../lib/docstore';
 import { globalTenantId, cleanForFirestore, getActiveUnitId } from '../lib/firestoreUtils';
 import { safeGetItem, safeSetItem } from './safeStorage';
 

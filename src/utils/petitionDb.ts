@@ -8,7 +8,7 @@ import {
   serverTimestamp,
   query,
   orderBy
-} from "firebase/firestore";
+} from '../lib/docstore';
 
 export interface SavedPetition {
   id: string;

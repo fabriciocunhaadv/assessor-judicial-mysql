@@ -1,10 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { onAuthStateChanged, User, signInWithPopup } from 'firebase/auth';
-import { doc, onSnapshot, collection } from 'firebase/firestore';
-import { auth, db, googleProvider, microsoftProvider } from './firebase';
+import { doc, onSnapshot, collection } from './docstore';
+import { db } from './firebase';
+import { auth, entrar, recarregarPerfil, chamarAuth, AppUser } from './sessao';
 import { UserProfile, JudicialUnit, DEFAULT_UNITS } from '../types';
 import { 
-  syncUserProfile, 
   subscribeToUnits, 
   saveUnitsToDb, 
   updateUserTours, 
@@ -18,7 +17,7 @@ import {
 import { syncApiKeyWithUserProfile, setNativeKeyAccessState } from '../utils/apiKeyManager';
 
 interface AuthContextType {
-  user: User | null;
+  user: AppUser | null;
   userProfile: UserProfile | null;
   isAdmin: boolean;
   isSuperAdmin: boolean;
@@ -38,7 +37,7 @@ interface AuthContextType {
   allTenants: SuperAdminTenantInfo[];
   allUnitsForSuperAdmin: SuperAdminTenantUnit[];
   setSuperAdminActiveTenant: (tenantId: string, unitId?: string) => Promise<void>;
-  signIn: (providerType?: 'google' | 'microsoft') => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   completeTour: (tourId: string) => Promise<void>;
   resetTours: () => Promise<void>;
@@ -67,7 +66,7 @@ const AuthContext = createContext<AuthContextType>({
   allTenants: [],
   allUnitsForSuperAdmin: [],
   setSuperAdminActiveTenant: async () => {},
-  signIn: async () => {},
+  signIn: async (_e: string, _s: string) => {},
   signOut: async () => {},
   completeTour: async () => {},
   resetTours: async () => {},
@@ -81,7 +80,7 @@ const ACTIVE_UNIT_KEY = "agaia_active_unit_id";
 const SUPERADMIN_TENANT_KEY = "agaia_superadmin_active_tenant";
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -105,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [allTenants, setAllTenants] = useState<SuperAdminTenantInfo[]>([]);
   const [allUnitsForSuperAdmin, setAllUnitsForSuperAdmin] = useState<SuperAdminTenantUnit[]>([]);
 
-  const isSuperAdmin = (user?.email || '').toLowerCase() === 'fabriciocunha.adv@gmail.com';
+  const isSuperAdmin = Boolean((userProfile as any)?.superAdmin);
   const isAdmin = userProfile?.role === 'admin' || isSuperAdmin;
   const isJudge = Boolean(userProfile?.isJudge);
   const isDeactivated = Boolean(userProfile && userProfile.isActive === false && !isSuperAdmin);
@@ -213,149 +212,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isSuperAdmin, user]);
 
   useEffect(() => {
-    let unsubscribeUnits: (() => void) | null = null;
-    let unsubscribeProfile: (() => void) | null = null;
-    let unsubscribeProfileEmail: (() => void) | null = null;
-    let unsubscribeTenant: (() => void) | null = null;
-
-    const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
+    // Login próprio: o perfil (papel, gabinete, unidades) vem do MySQL junto com a sessão; o resto é atualizado por consulta leve.
+    let desfazer: Array<() => void> = [];
+    const limpar = () => { desfazer.forEach((f) => { try { f(); } catch { /* já parado */ } }); desfazer = []; };
+    const unsubscribeAuth = auth.onChange((u) => {
+      limpar();
       setUser(u);
       setAuthError(null);
-      
-      if (unsubscribeProfile) {
-        unsubscribeProfile();
-        unsubscribeProfile = null;
-      }
-      if (unsubscribeProfileEmail) {
-        unsubscribeProfileEmail();
-        unsubscribeProfileEmail = null;
-      }
-      if (unsubscribeUnits) {
-        unsubscribeUnits();
-        unsubscribeUnits = null;
-      }
-      if (unsubscribeTenant) {
-        unsubscribeTenant();
-        unsubscribeTenant = null;
-      }
-
-      if (u) {
-        try {
-          const initialProfile = await syncUserProfile(u);
-          const isSuper = (u.email || '').toLowerCase() === 'fabriciocunha.adv@gmail.com';
-          const savedSuperTenant = localStorage.getItem(SUPERADMIN_TENANT_KEY);
-          const currentTenantId = isSuper && savedSuperTenant 
-            ? savedSuperTenant 
-            : (initialProfile.tenantId || 'unassigned');
-          
-          setGlobalTenantId(currentTenantId);
-          setUserProfile(initialProfile);
-
-          if (!initialProfile.isUnauthorized && currentTenantId !== 'unassigned') {
-            syncApiKeyWithUserProfile(initialProfile, u.uid);
-
-            // Listen to tenant status
-            unsubscribeTenant = onSnapshot(doc(db, 'tenants', currentTenantId), (tenantSnap) => {
-              if (tenantSnap.exists()) {
-                const tData = tenantSnap.data();
-                setTenantName(tData.name || null);
-                const isSuspended = tData.status === 'suspended' || tData.status === 'maintenance';
-                setIsTenantSuspended(isSuspended);
-                setTenantSuspensionReason(tData.suspendedReason || (tData.status === 'maintenance' ? 'Gabinete em manutenção técnica programada.' : 'Acesso ao Gabinete temporariamente suspenso pela administração SaaS.'));
-              } else {
-                setIsTenantSuspended(false);
-                setTenantSuspensionReason(null);
-                setTenantName(isPrimaryCabinet(currentTenantId) ? 'Gabinete Principal (Dr. Rafael Machado)' : null);
-              }
-            }, (error) => { console.warn('Snapshot error on tenant status:', error); 
-              if (error.code === 'resource-exhausted' || (error.message && error.message.includes('Quota limit'))) {
-                setAuthError("Aviso: A quota gratuita diária do Firebase foi excedida. Você precisará habilitar o plano pago (Blaze) ou aguardar o reset diário para ler do banco. Tente novamente mais tarde.");
-              }
- });
-
-            // Load units based on current tenant
-            unsubscribeUnits = subscribeToUnits((units) => {
-              if (units && units.length > 0) {
-                setDynamicUnits(units);
-                setActiveUnitState(prev => {
-                  const stillExists = units.find(unit => unit.id === prev.id);
-                  if (stillExists) return prev;
-                  localStorage.setItem(ACTIVE_UNIT_KEY, units[0].id);
-                  return units[0];
-                });
-              } else {
-                setDynamicUnits(DEFAULT_UNITS);
-              }
-              setLoading(false);
-            });
-
-            const uEmail = (u.email || '').toLowerCase().trim();
-            if (uEmail && uEmail !== u.uid) {
-              unsubscribeProfileEmail = onSnapshot(doc(db, 'users', uEmail), (snapEmail) => {
-                if (snapEmail.exists()) {
-                  const emailData = snapEmail.data() as UserProfile;
-                  setUserProfile((prev) => {
-                    if (!prev) return emailData;
-                    const nextProfile = {
-                      ...prev,
-                      canUseNativeKey: emailData.canUseNativeKey !== undefined ? emailData.canUseNativeKey : prev.canUseNativeKey,
-                      isActive: emailData.isActive !== undefined ? emailData.isActive : prev.isActive,
-                      role: emailData.role || prev.role,
-                      tenantId: (prev.tenantId && prev.tenantId !== 'unassigned') ? prev.tenantId : (emailData.tenantId || prev.tenantId)
-                    };
-                    syncApiKeyWithUserProfile(nextProfile, u.uid);
-                    return nextProfile;
-                  });
-                }
-              }, (err) => console.warn('Snapshot error on email profile:', err));
+      const p = auth.perfil;
+      if (u && p) {
+        const savedSuperTenant = localStorage.getItem(SUPERADMIN_TENANT_KEY);
+        const tenantAtual = p.superAdmin && savedSuperTenant ? savedSuperTenant : (p.tenantId || 'unassigned');
+        setGlobalTenantId(tenantAtual);
+        setUserProfile(p);
+        syncApiKeyWithUserProfile(p, u.uid);
+        if (tenantAtual !== 'unassigned') {
+          desfazer.push(onSnapshot(doc(db, 'tenants', tenantAtual), (snap) => {
+            if (snap.exists()) {
+              const t: any = snap.data();
+              setTenantName(t.name || null);
+              setIsTenantSuspended(t.status === 'suspended' || t.status === 'maintenance');
+              setTenantSuspensionReason(t.suspendedReason || (t.status === 'maintenance' ? 'Gabinete em manutenção técnica programada.' : 'Acesso ao Gabinete temporariamente suspenso pela administração.'));
+            } else {
+              setIsTenantSuspended(false);
+              setTenantSuspensionReason(null);
+              setTenantName(isPrimaryCabinet(tenantAtual) ? 'Gabinete Principal (Dr. Rafael Machado)' : null);
             }
-
-            // Realtime listener for any updates to user's profile
-            unsubscribeProfile = onSnapshot(doc(db, 'users', u.uid), (snapshot) => {
-              if (snapshot.exists()) {
-                const updatedProfile = snapshot.data() as UserProfile;
-                if (!isSuper || !savedSuperTenant) {
-                  setGlobalTenantId(updatedProfile.tenantId || 'gabinete_default');
-                }
-                setUserProfile(prev => {
-                  if (!prev) return updatedProfile;
-                  return {
-                    ...updatedProfile,
-                    canUseNativeKey: updatedProfile.canUseNativeKey !== undefined ? updatedProfile.canUseNativeKey : prev.canUseNativeKey,
-                    tenantId: (updatedProfile.tenantId && updatedProfile.tenantId !== 'unassigned') ? updatedProfile.tenantId : prev.tenantId
-                  };
-                });
-                syncApiKeyWithUserProfile(updatedProfile, u.uid);
-              }
-            }, (error) => { console.warn('Snapshot error on user profile:', error); 
-              if (error.code === 'resource-exhausted' || (error.message && error.message.includes('Quota limit'))) {
-                setAuthError("Aviso: A quota gratuita diária do Firebase foi excedida. Você precisará habilitar o plano pago (Blaze) ou aguardar o reset diário para ler do banco. Tente novamente mais tarde.");
-              }
-            });
-          }
-        } catch (error: any) {
-          console.warn("Notice during profile sync:", error);
-          setAuthError(error.message || "Erro ao carregar perfil do usuário.");
-        } finally {
-          setLoading(false);
+          }, (e) => console.warn('Falha ao ler o gabinete:', e)));
+          desfazer.push(subscribeToUnits((units) => {
+            if (units && units.length > 0) {
+              setDynamicUnits(units);
+              setActiveUnitState(prev => units.find(x => x.id === prev.id) || (localStorage.setItem(ACTIVE_UNIT_KEY, units[0].id), units[0]));
+            } else setDynamicUnits(DEFAULT_UNITS);
+          }));
+          // mudanças feitas pelo administrador no perfil (papel, unidades, ativação) chegam sem precisar sair e entrar de novo
+          desfazer.push(onSnapshot(doc(db, 'users', u.uid), (snap) => {
+            if (snap.exists()) setUserProfile((prev) => ({ ...(prev || {}), ...(snap.data() as any), tenantId: (snap.data() as any).tenantId && (snap.data() as any).tenantId !== 'unassigned' ? (snap.data() as any).tenantId : prev?.tenantId } as UserProfile));
+          }, (e) => console.warn('Falha ao ler o perfil:', e)));
         }
       } else {
         setUserProfile(null);
         syncApiKeyWithUserProfile(null);
         setIsTenantSuspended(false);
         setTenantSuspensionReason(null);
-        setLoading(false);
       }
       setLoading(false);
     });
-
-    return () => {
-      if (unsubscribeUnits) unsubscribeUnits();
-      if (unsubscribeProfile) unsubscribeProfile();
-      if (unsubscribeProfileEmail) unsubscribeProfileEmail();
-      if (unsubscribeTenant) unsubscribeTenant();
-      unsubscribeAuth();
-    };
+    return () => { limpar(); unsubscribeAuth(); };
   }, []);
 
   // When activeTenantId changes dynamically for Super Admin, re-bind units listener
@@ -380,23 +283,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [activeTenantId, isSuperAdmin, user]);
 
-  const signIn = async (providerType: 'google' | 'microsoft' = 'google') => {
-    try {
-      setAuthError(null);
-      const provider = providerType === 'microsoft' ? microsoftProvider : googleProvider;
-      await signInWithPopup(auth, provider);
-    } catch (error: any) {
-      console.warn("Notice during sign in:", error);
-      if (error.code === 'auth/operation-not-allowed') {
-        if (providerType === 'microsoft') {
-          setAuthError("O provedor Microsoft não está ativado. Acesse o Firebase Console > Authentication > Sign-in method e ative a opção 'Microsoft' para liberar o acesso, ou utilize a opção de entrar com Google (ela funciona para a maioria dos e-mails institucionais).");
-        } else {
-          setAuthError("O provedor de login não está ativado no Firebase Console.");
-        }
-      } else {
-        setAuthError(error.message || `Erro ao conectar com ${providerType === 'microsoft' ? 'Microsoft' : 'Google'}.`);
-      }
-    }
+  const signIn = async (email: string, password: string) => {
+    setAuthError(null);
+    try { await entrar(email, password); }
+    catch (error: any) { setAuthError(error.message || "Erro ao entrar."); throw error; }
   };
 
   const completeTour = async (tourId: string) => {
@@ -404,7 +294,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const current = userProfile.completedTours || [];
       if (!current.includes(tourId)) {
         const updated = [...current, tourId];
-        await updateUserTours(userProfile.uid, updated);
+        await chamarAuth('PATCH', '/me', { completedTours: updated });
         setUserProfile({ ...userProfile, completedTours: updated });
       }
     }
@@ -412,7 +302,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetTours = async () => {
     if (userProfile) {
-      await updateUserTours(userProfile.uid, []);
+      await chamarAuth('PATCH', '/me', { completedTours: [] });
       setUserProfile({ ...userProfile, completedTours: [] });
     }
   };
@@ -433,8 +323,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     setLoading(true);
     try {
-      const refreshedProfile = await syncUserProfile(user);
-      setUserProfile(refreshedProfile);
+      const refreshedProfile = await recarregarPerfil();
+      if (refreshedProfile) setUserProfile(refreshedProfile);
     } catch (err: any) {
       console.warn("Notice during recheck invite:", err);
     } finally {

@@ -273,6 +273,20 @@ export const SystemTour: React.FC<SystemTourProps> = ({
     },
     ...(isSuperAdmin ? [
       {
+        target: "#btn-cadastros-aprovacao",
+        content: (
+          <div className="text-left font-sans space-y-1.5">
+            <h3 className="font-bold text-md text-amber-800">Cadastros de Usuários (Exclusivo Super Admin) 🔐</h3>
+            <p className="text-sm text-slate-700 leading-relaxed">
+              O acesso agora é por <strong>e-mail e senha</strong>. Quem pede cadastro na tela de entrada fica <strong>pendente</strong> até você aprovar (como usuário ou administrador), recusar, desativar ou reativar aqui. A desativação vale na hora.
+            </p>
+          </div>
+        ),
+        placement: "right" as const,
+      }
+    ] : []),
+    ...(isSuperAdmin ? [
+      {
         target: "#btn-header-petition-module",
         content: (
           <div className="text-left font-sans space-y-1.5">

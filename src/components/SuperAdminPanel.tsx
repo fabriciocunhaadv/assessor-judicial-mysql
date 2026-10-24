@@ -64,7 +64,7 @@ import {
   Sliders,
   Bot
 } from 'lucide-react';
-import { collection, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc, deleteDoc } from '../lib/docstore';
 import { MonitorErrosPanel } from './MonitorErrosPanel';
 import { MonitorOperacaoPanel } from './MonitorOperacaoPanel';
 import { db } from '../lib/firebase';
@@ -225,7 +225,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
     if (inspectingTenant) {
       const fetchUnits = async () => {
         try {
-          const { getDoc, doc } = await import('firebase/firestore');
+          const { getDoc, doc } = await import('../lib/docstore');
           const { db } = await import('../lib/firebase');
           const snap = await getDoc(doc(db, `gabinetes/${inspectingTenant.id}/settings`, 'units'));
           if (snap.exists()) {
