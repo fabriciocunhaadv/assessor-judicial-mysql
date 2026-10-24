@@ -110,7 +110,7 @@ export const SystemTour: React.FC<SystemTourProps> = ({
             <span>Súmulas Vinculantes, TJGO & Grounding ao Vivo ⚖️</span>
           </h3>
           <p className="text-sm text-slate-700 leading-relaxed">
-            Em todas as análises, o sistema aplica um motor híbrido inteligente: consulta a base de Súmulas (STF, STJ, TNU) e <strong>Informativos do TJGO</strong> do gabinete, mais os <strong>documentos que você anexa em PDF</strong> (guardados no banco MySQL, com leitura de 100% das páginas). Cada item mostra a origem e se foi <strong>conferido na fonte oficial</strong> pelo Super Admin; a IA é orientada a não inventar numeração e a pedir conferência dos itens não conferidos. A <strong>Pesquisa ao Vivo (Grounding)</strong> é controlada pelo Super Admin e o sistema avisa quando a busca falha ou vem sem fontes.
+            Em todas as análises, o sistema aplica um motor híbrido inteligente: consulta a base de Súmulas (STF, STJ, TNU) e <strong>Informativos do TJGO</strong> do gabinete, mais os <strong>documentos que você anexa em PDF</strong> (guardados no banco MySQL, com leitura de 100% das páginas). Cada item mostra a origem e se foi <strong>conferido na fonte oficial</strong> pelo Super Admin; a IA é orientada a não inventar numeração e a pedir conferência dos itens não conferidos. A <strong>Pesquisa ao Vivo (Grounding)</strong> é controlada pelo Super Admin e o sistema avisa quando a busca falha ou vem sem fontes. Para a <strong>legislação</strong>, o Super Admin importa as leis do <strong>Planalto</strong> (com artigos revogados e vetados marcados): a minuta avisa em vermelho quando cita dispositivo revogado, vetado ou inexistente.
           </p>
         </div>
       ),

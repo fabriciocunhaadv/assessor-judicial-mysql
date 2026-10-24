@@ -211,6 +211,9 @@ export interface GenerationResult {
   };
   /** Movimentações citadas na minuta que não constam dos carimbos dos autos (conferência automática, sem IA). */
   avisoLocalizacao?: { movsInexistentes: number[]; conferidas: number };
+  /** Artigos citados na minuta que o Planalto marca como revogados, vetados ou inexistentes (conferência automática). */
+  alertasLegislacao?: { lei: string; artigo: string; tipo: "revogado" | "vetado" | "inexistente" | "cpc1973"; nota?: string }[];
+  legislacaoConferida?: string[];
   autosReduzidos?: {
     tokensOriginais: number;
     paginasTotal: number;

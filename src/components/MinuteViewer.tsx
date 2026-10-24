@@ -1612,6 +1612,17 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             {result?.gigante && <AvisoGigante info={result.gigante} />}
             {result?.autosReduzidos && <AvisoAutosReduzidos info={result.autosReduzidos} />}
             {result?.coberturaLeitura && <AvisoCoberturaLeitura info={result.coberturaLeitura} />}
+            {result?.alertasLegislacao && result.alertasLegislacao.length > 0 && (
+              <div data-testid="alerta-legislacao" className="max-w-4xl mx-auto rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900 space-y-1">
+                <strong>Conferir a legislação citada (Planalto):</strong>
+                <ul className="list-disc list-inside">
+                  {result.alertasLegislacao.map((a, i) => (
+                    <li key={i}>{a.tipo === "cpc1973" ? (a.nota || "Referência ao CPC de 1973.") : <>art. {a.artigo} ({a.lei}): <strong>{a.tipo === "revogado" ? "REVOGADO" : a.tipo === "vetado" ? "VETADO" : "inexistente"}</strong>{a.nota ? ` (${a.nota})` : ""}</>}</li>
+                  ))}
+                </ul>
+                <span>Corrija a minuta antes de assinar (a conferência é automática e pode errar; confirme no texto oficial).</span>
+              </div>
+            )}
             {result?.avisoLocalizacao && result.avisoLocalizacao.movsInexistentes.length > 0 && (
               <div data-testid="aviso-localizacao" className="max-w-4xl mx-auto rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                 <strong>Conferir localização:</strong> a minuta cita {result.avisoLocalizacao.movsInexistentes.map((n) => `Mov. ${n}`).join(", ")}, que não aparece(m) nos carimbos dos autos enviados. Confira antes de usar.

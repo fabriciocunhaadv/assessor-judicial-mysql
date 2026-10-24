@@ -10,6 +10,7 @@ import { authRouter, exigirSessao } from './server/authRoutes';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
+import { fontesRouter, verificarCitacoes, avisoDispositivosRevogados } from './server/fontesOficiais';
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
@@ -219,6 +220,7 @@ app.use("/api/db/history", historyRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/db/docs", docsRouter);
 app.use("/api/db/retencao", retencaoRouter);
+app.use("/api/fontes", fontesRouter);
 
 app.get("/api/native-key-info", (req, res) => res.json({ hasNativeKey: !!process.env.GEMINI_API_KEY }));
 app.post("/api/test-claude-key", async (req, res) => {
@@ -4668,6 +4670,9 @@ if (matchedPrecedents.length > 0) {
         `REGRA DE FIDELIDADE: cite número de súmula, tema ou informativo SOMENTE se constar da lista acima ou se você tiver certeza absoluta; nunca invente numeração nem transcreva enunciado de memória. Para item marcado "NÃO CONFERIDO", cite com cautela e acrescente ao final do raciocínio a recomendação de conferir o enunciado na fonte oficial antes de assinar o ato.\n`;
 }
 
+// Leis conferidas no Planalto: revogados e vetados das leis que o processo menciona + regra de só citar dispositivo vigente
+try { stage2SystemInstruction += await avisoDispositivosRevogados(combinedContextForPrecedents); } catch { /* sem base de leis: segue sem o aviso */ }
+
 if (liveGroundingPrecedents) {
     stage2SystemInstruction += `\n\n[PESQUISA OFICIAL AO VIVO VIA GROUNDING (TJGO • STJ • STF)]:\n${liveGroundingPrecedents}\n\nDIRETRIZ DE INCORPORAÇÃO DO GROUNDING: Incorpore os precedentes oficiais e teses atualizadas obtidos na pesquisa ao vivo acima diretamente na fundamentação jurídica.\n`;
 }
@@ -6399,6 +6404,12 @@ if (wasRotated && rotatedKey) {
     if ((stage1Response as any)?.autosReduzidos) parsed.autosReduzidos = (stage1Response as any).autosReduzidos;
     if (alertaInjecao) parsed.alertaInjecao = alertaInjecao;
     if (coberturaLeitura) parsed.coberturaLeitura = coberturaLeitura;
+    try {      // artigos citados que o Planalto mostra como revogados, vetados ou inexistentes
+        const mn = parsed?.minute || {};
+        const vc = await verificarCitacoes([mn.relatorio, mn.fundamentacao, mn.dispositivo].filter((x: any) => typeof x === "string").join("\n"));
+        if (vc.alertas.length > 0) parsed.alertasLegislacao = vc.alertas;
+        parsed.legislacaoConferida = vc.leisConferidas;
+    } catch { /* a conferência nunca derruba a minuta */ }
     try {
         const vl = verificarLocalizacoes(parsed?.minute || parsed, (accumulatedPdfText || "") + "\n" + (safeProcessText || ""));
         if (vl && vl.movsInexistentes.length > 0) parsed.avisoLocalizacao = vl;
