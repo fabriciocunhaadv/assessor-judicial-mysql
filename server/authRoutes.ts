@@ -20,9 +20,10 @@ export const garantirUsuarios = (): Promise<void> => (usuariosPronto ||= (async 
     id CHAR(36) NOT NULL PRIMARY KEY, email VARCHAR(190) NOT NULL, name VARCHAR(190) NOT NULL, password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(24) NOT NULL DEFAULT 'user', status VARCHAR(16) NOT NULL DEFAULT 'pendente', tenant_id VARCHAR(64) NOT NULL DEFAULT '',
     is_judge TINYINT(1) NOT NULL DEFAULT 0, judge_title VARCHAR(190) NOT NULL DEFAULT '', can_use_native_key TINYINT(1) NOT NULL DEFAULT 0,
-    allowed_units TEXT NULL, completed_tours TEXT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
+    allowed_units TEXT NULL, completed_tours TEXT NULL, extras LONGTEXT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
     UNIQUE KEY ux_users_email (email), KEY ix_users_status (status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  try { await b.query("ALTER TABLE users ADD COLUMN extras LONGTEXT NULL"); } catch { /* coluna já existe */ }
   // cria o super admin só se NÃO existir (nunca altera um existente)
   const email = (process.env.SUPERADMIN_EMAIL || "").toLowerCase().trim(), senha = process.env.SUPERADMIN_PASSWORD || "";
   if (email && senha) {
@@ -41,7 +42,8 @@ const confereSenha = (s: string, h: string) => {
 const segredo = () => { const s = process.env.SESSION_SECRET || ""; if (s.length < 32) throw erro(500, "SESSION_SECRET não configurada (mínimo 32 caracteres)."); return new TextEncoder().encode(s); };
 const criarToken = (uid: string) => new SignJWT({}).setProtectedHeader({ alg: "HS256" }).setSubject(uid).setIssuedAt().setExpirationTime("7d").sign(segredo());
 
-const perfilPublico = (r: any) => ({
+export const perfilPublico = (r: any) => ({
+  ...(r.extras ? JSON.parse(r.extras) : {}),
   uid: r.id, email: r.email, name: r.name, role: r.role === "super_admin" ? "admin" : r.role, superAdmin: r.role === "super_admin", isActive: r.status === "aprovado",
   isJudge: !!r.is_judge, judgeTitle: r.judge_title || "", tenantId: r.tenant_id || "unassigned", canUseNativeKey: !!r.can_use_native_key,
   allowedUnits: r.allowed_units ? JSON.parse(r.allowed_units) : [], completedTours: r.completed_tours ? JSON.parse(r.completed_tours) : [], createdAt: Number(r.created_at),
