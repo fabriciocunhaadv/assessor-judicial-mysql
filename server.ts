@@ -1610,7 +1610,7 @@ function conferenciasPorCodigo(minuta: string, autos: string): AlertaAuditoria[]
     }
     const autosSoDigitos = autos.replace(/\D/g, "");      // o OCR às vezes separa o número com espaços ou muda a pontuação
     const cnjMin = [...new Set(minuta.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/g) || [])], cnjAut = [...new Set(autos.slice(0, 60000).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/g) || [])];
-    if (cnjMin.length && cnjAut.length && !cnjMin.some((c) => autos.includes(c) || autosSoDigitos.includes(c.replace(/\D/g, "")))) out.push(mk("bloqueante", "adstricao", "Autos não correspondem à minuta", `O número do processo da minuta (${cnjMin[0]}) não aparece nos autos enviados (${cnjAut[0]}).`, "Conferir se os autos anexados são do processo da minuta.", "Cabeçalho da minuta", cnjMin[0], `Processo nos autos: ${cnjAut[0]}`));
+    if (cnjMin.length && cnjAut.length && !cnjMin.some((c) => autos.includes(c) || autosSoDigitos.includes(c.replace(/\D/g, "")))) out.push(mk("informativo", "adstricao", `Número do processo da minuta (${cnjMin[0]}) não aparece nos autos`, `A minuta traz o número ${cnjMin[0]}, que não consta no texto dos autos enviados, cujo número é ${cnjAut[0]}. Pode ser apenas referência a processo relacionado, ou a minuta pode ter sido preparada para outro processo. Atenção, Excelência: confirme se a minuta e os autos anexados são do mesmo processo (compare o cabeçalho da minuta com a capa dos autos).`, "Conferir se os autos anexados são do processo da minuta.", `Minuta, no trecho: “${contexto(minuta, cnjMin[0], 40)}”`, contexto(minuta, cnjMin[0], 90), `Capa/autos: processo ${cnjAut[0]}`));
     const A = autos.replace(/\s+/g, " ");
     const poucos = <T,>(xs: T[], n = 5) => xs.slice(0, n);
     const datas = [...new Set(minuta.match(/\b\d{2}\/\d{2}\/\d{4}\b/g) || [])].filter((d) => !A.includes(d));
@@ -1952,7 +1952,7 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
             (alertasFinais.length ? `Foram apontados ${alertasFinais.length} ponto(s) com prova nos autos (${nBloq} bloqueante(s)). Veja cada apontamento, com o trecho da minuta e o trecho dos autos.` : "Nenhum apontamento com prova nos autos foi encontrado nesta conferência.");
 
         // A nota segue a análise da IA (a mesma que escreve o resumo). Só uma trava de coerência: com ressalva à vista (apontamento de atenção/bloqueante, confirmado ou não), não pode ser 100.
-        const temRessalva = alertasFinais.some((x) => x.severity !== "informativo") || naoConfirmados.some((x) => x.severity !== "informativo");
+        const temRessalva = alertasFinais.some((x) => x.origem === "ia" && x.severity !== "informativo") || naoConfirmados.some((x) => x.severity !== "informativo");      // conferências por código são observações: destacadas, mas não tiram ponto
         const notaIa = typeof parsed.score === "number" && Number.isFinite(parsed.score) ? Math.max(0, Math.min(100, Math.round(parsed.score))) : null;
         const scoreFinal = notaIa === null ? nota.score : temRessalva ? Math.min(notaIa, 99) : notaIa;
         const veredictoFinal = scoreFinal >= 100 ? { v: "Aprovada sem Ressalvas", c: "emerald" } : scoreFinal >= 75 ? { v: "Aprovada com Ressalvas", c: "indigo" } : scoreFinal >= 50 ? { v: "Requer Correções Obrigatórias", c: "amber" } : { v: "Crítica / Risco de Nulidade", c: "rose" };
