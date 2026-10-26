@@ -4,7 +4,7 @@
 // O cliente (src/lib/docstore.ts) fala a mesma "língua" do Firestore, então os módulos quase não mudam.
 import express from "express";
 import { banco, garantirEsquema, gravarAtoDoTenant, apagarAtoDoTenant } from "./historyRoutes";
-import { autenticarSessao, mensagemDeErro, garantirUsuarios, perfilPublico, tenantCanonico, UsuarioSessao } from "./authRoutes";
+import { autenticarSessao, mensagemDeErro, garantirUsuarios, perfilPublico, tenantCanonico, podeUsarPeticao360, UsuarioSessao } from "./authRoutes";
 
 export const docsRouter = express.Router();
 const erro = (status: number, msg: string) => Object.assign(new Error(msg), { status });
@@ -33,8 +33,11 @@ const normalizarCol = (col: string): string => {
 const PRIVADAS = new Set(["history_index"]);      // o resumo leve é interno da API do Histórico
 /** A pasta "history" de um gabinete é a tabela do Histórico (backups, restauração e métricas leem e gravam por aqui). Devolve o gabinete ou null. */
 const gabineteDoHistorico = (col: string): string | null => { const m = /^gabinetes\/([^/]+)\/history$/.exec(col); return m ? m[1] : null; };
+const COL_PETICOES = "initial_petitions_history", COL_MODELOS_PETICAO = "initial_petition_templates";
+const donoDaPeticao = (u: UsuarioSessao, d: any) => u.superAdmin || String(d?.createdByEmail || "").toLowerCase() === String(u.email || "").toLowerCase();
 const podeLer = (u: UsuarioSessao, col: string): boolean => {
   const seg = col.split("/");
+  if (seg[0] === COL_PETICOES || seg[0] === COL_MODELOS_PETICAO) return podeUsarPeticao360(u);      // módulo Petição & Defesa 360°: só quem o Super Admin liberou
   if (seg[0] === "gabinetes") return !PRIVADAS.has(seg[2]) && (u.superAdmin || seg[1] === tenantCanonico(u.row.tenant_id));
   if (seg[0] === "system_snapshots" || seg[0] === "perfis_importados") return u.superAdmin;      // perfis importados têm chaves de API: só o super admin
   return true;
@@ -100,6 +103,7 @@ const passa = (doc: { id: string; data: any }, [campo, op, alvo]: any[]): boolea
 // ---------- a coleção "users" é a tabela de usuários ----------
 const CAMPOS_PRIVILEGIADOS = new Set(["role", "tenantId", "isActive", "isJudge", "judgeTitle", "canUseNativeKey", "allowedUnits", "isUnauthorized"]);
 const CAMPOS_SECRETOS = ["customApiKey", "customApiKeys", "claudeApiKey"];
+const CAMPOS_SO_SUPER_ADMIN = ["peticao360", "uidsAntigos"];
 const linhaParaDoc = (r: any, quem: UsuarioSessao) => {
   const d: any = perfilPublico(r);
   if (!quem.superAdmin && quem.uid !== r.id && !(quem.role === "admin" && tenantCanonico(quem.row.tenant_id) === tenantCanonico(r.tenant_id))) for (const k of CAMPOS_SECRETOS) delete d[k];      // chave de API é de cada um
@@ -146,6 +150,8 @@ async function escreverUsuario(quem: UsuarioSessao, id: string, tipo: string, da
   const proprios = new Set(["uid", "email", "name", "role", "superAdmin", "isActive", "isJudge", "judgeTitle", "tenantId", "canUseNativeKey", "allowedUnits", "completedTours", "createdAt", "id", "updatedAt"]);
   const extras = Object.fromEntries(Object.entries(novo).filter(([k]) => !proprios.has(k)));
   const extrasAntes = Object.fromEntries(Object.entries(atual).filter(([k]) => !proprios.has(k)));
+  // permissões que só o Super Admin concede (módulo Petição 360° e vínculo do histórico antigo): ninguém as muda no próprio cadastro nem no de outro
+  if (!quem.superAdmin) { const guardado = r.extras ? JSON.parse(r.extras) : {}; for (const k of CAMPOS_SO_SUPER_ADMIN) { if (guardado[k] !== undefined) extras[k] = guardado[k]; else delete extras[k]; } }
   if (!iguais(extras, extrasAntes)) {
     // quem não é dono da conta nem administrador não pode ter apagado as chaves de API que nem enxergou
     for (const k of CAMPOS_SECRETOS) if (atual[k] === undefined && r.extras) { const guardado = JSON.parse(r.extras); if (guardado[k] !== undefined && extras[k] === undefined) extras[k] = guardado[k]; }
@@ -167,7 +173,8 @@ const carregarColecao = async (u: UsuarioSessao, col: string): Promise<{ id: str
   const gh = gabineteDoHistorico(col);
   if (gh) { const [h] = await banco().query<any[]>("SELECT id, data FROM history WHERE tenant=? LIMIT ?", [gh, LIMITE_COLECAO]); return h.map((r) => ({ id: r.id, data: JSON.parse(r.data) })); }
   const [rows] = await banco().query<any[]>("SELECT id, data FROM docs WHERE col=? LIMIT ?", [col, LIMITE_COLECAO]);
-  return rows.map((r) => ({ id: r.id, data: JSON.parse(r.data) }));
+  const todos = rows.map((r) => ({ id: r.id, data: JSON.parse(r.data) }));
+  return col === COL_PETICOES ? todos.filter((d) => donoDaPeticao(u, d.data)) : todos;      // petições: cada pessoa vê só as próprias (o Super Admin vê todas)
 };
 
 docsRouter.post("/get", rota(async (req, res, u) => {
@@ -178,7 +185,8 @@ docsRouter.post("/get", rota(async (req, res, u) => {
   if (col === "users") { const [r] = await banco().query<any[]>("SELECT * FROM users WHERE id=?", [id]); return void res.json(r.length ? { existe: true, data: linhaParaDoc(r[0], u) } : { existe: false }); }
   const gh = gabineteDoHistorico(col);
   const [rows] = gh ? await banco().query<any[]>("SELECT data FROM history WHERE tenant=? AND id=?", [gh, id]) : await banco().query<any[]>("SELECT data FROM docs WHERE col=? AND id=?", [col, id]);
-  res.json(rows.length ? { existe: true, data: JSON.parse(rows[0].data) } : { existe: false });
+  const achado = rows.length ? JSON.parse(rows[0].data) : null;
+  res.json(achado && (col !== COL_PETICOES || donoDaPeticao(u, achado)) ? { existe: true, data: achado } : { existe: false });
 }));
 
 /** { col, where: [[campo, op, valor]], orderBy: [[campo, "asc"|"desc"]], limit, startAfterId, contar } */
@@ -204,6 +212,7 @@ docsRouter.post("/assinatura", rota(async (req, res, u) => {
   const col = normalizarCol(req.body?.col);
   if (!podeLer(u, col)) throw erro(403, "sem permissão");
   if (col === "users") { const [r] = await banco().query<any[]>("SELECT COUNT(*) n, COALESCE(MAX(updated_at),0) m FROM users"); return void res.json({ n: Number(r[0].n), m: Number(r[0].m) }); }
+  if (col === COL_PETICOES && !u.superAdmin) { const meus = await carregarColecao(u, col); return void res.json({ n: meus.length, m: meus.reduce((x, d) => Math.max(x, Number(d.data?.updatedAt) || 0), 0) }); }      // não revela quantas petições os outros têm
   const gh = gabineteDoHistorico(col);
   const [r] = gh ? await banco().query<any[]>("SELECT COUNT(*) n, COALESCE(MAX(atualizado_em),0) m FROM history WHERE tenant=?", [gh]) : await banco().query<any[]>("SELECT COUNT(*) n, COALESCE(MAX(updated_at),0) m FROM docs WHERE col=?", [col]);
   res.json({ n: Number(r[0].n), m: Number(r[0].m) });
@@ -221,6 +230,13 @@ docsRouter.post("/escrever", rota(async (req, res, u) => {
     if (!podeEscrever(u, col)) throw erro(403, "sem permissão para gravar em " + col);
     return { col, id, tipo: o.tipo as string, data: o.data };
   });
+  // petições: só se grava, altera ou apaga o que é do próprio autor, e o autor gravado é sempre o usuário logado
+  for (const a of alvos) {
+    if (a.col !== COL_PETICOES || u.superAdmin) continue;
+    const [ex] = await banco().query<any[]>("SELECT data FROM docs WHERE col=? AND id=?", [a.col, a.id]);
+    if (ex.length && !donoDaPeticao(u, JSON.parse(ex[0].data))) throw erro(403, "esta petição é de outro usuário");
+    if (a.tipo === "set" || a.tipo === "merge") a.data = { ...(a.data || {}), createdByEmail: u.email };
+  }
   for (const a of alvos) {
     if (a.col === "users") { await escreverUsuario(u, a.id, a.tipo, a.data); continue; }
     const gh = gabineteDoHistorico(a.col);

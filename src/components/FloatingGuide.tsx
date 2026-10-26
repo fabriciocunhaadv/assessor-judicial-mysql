@@ -74,7 +74,8 @@ export const FloatingGuide: React.FC<FloatingGuideProps> = ({
     }
   };
   const [hasApiKey, setHasApiKey] = useState<boolean>(() => hasCustomApiKey());
-  const { isSuperAdmin, isAdmin } = useAuth();
+  const { isSuperAdmin, isAdmin, userProfile } = useAuth();
+  const podePeticao = isSuperAdmin || !!(userProfile as any)?.peticao360;      // módulo Petição & Defesa 360°: Super Admin e quem ele liberou
 
   useEffect(() => {
     const updateApiKey = () => {
@@ -381,8 +382,8 @@ export const FloatingGuide: React.FC<FloatingGuideProps> = ({
           </button>
         )}
         
-        {/* 6. Botão Aba Lateral de Petição & Defesa 360° (Exclusivo Super Admin) */}
-        {isSuperAdmin && onOpenPetitionPanel && (
+        {/* 6. Botão Aba Lateral de Petição & Defesa 360° (Super Admin e quem ele liberou) */}
+        {podePeticao && onOpenPetitionPanel && (
           <button
             id="btn-floating-petition-initial"
             onClick={onOpenPetitionPanel}
@@ -489,7 +490,7 @@ export const FloatingGuide: React.FC<FloatingGuideProps> = ({
             )}
 
             {/* Acesso Rápido ao Módulo Petição & Defesa 360° */}
-            {isSuperAdmin && onOpenPetitionPanel && (
+            {podePeticao && onOpenPetitionPanel && (
               <div className="p-3 rounded-xl bg-gradient-to-r from-indigo-950/60 to-purple-950/60 border border-indigo-500/40 text-indigo-200 shadow-xs space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">

@@ -1159,6 +1159,16 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
     } catch (e: any) { window.alert("Não foi possível alterar o nome: " + (e?.message || e)); }
   };
 
+  // libera ou revoga o módulo Petição & Defesa 360° para o usuário escolhido (o servidor só aceita do Super Admin)
+  const handleTogglePeticao = async (user: UserProfile) => {
+    const liberar = !(user as any).peticao360;
+    if (!window.confirm(liberar ? `Liberar o módulo Petição & Defesa 360° para ${(user as any).name || user.email}? Ela passa a ver o módulo e só as próprias petições.` : `Revogar o acesso de ${(user as any).name || user.email} ao módulo Petição & Defesa 360°? As petições dela continuam guardadas.`)) return;
+    try {
+      await chamarAuth("POST", `/users/${user.uid}/acao`, { acao: "modulo_peticao", liberado: liberar });
+      setGlobalUsers(prev => prev.map(u => u.uid === user.uid ? ({ ...u, peticao360: liberar } as any) : u));
+    } catch (e: any) { window.alert("Não foi possível alterar o acesso: " + (e?.message || e)); }
+  };
+
   const handleResetPassword = async (user: UserProfile) => {
     if (!window.confirm(`Redefinir a senha de ${(user as any).name || user.email} para a senha inicial (12345678)? A pessoa será obrigada a criar outra no próximo acesso.`)) return;
     try { await chamarAuth("POST", `/users/${user.uid}/acao`, { acao: "redefinir_senha" }); window.alert("Senha redefinida para 12345678. Peça para a pessoa entrar com essa senha e criar a dela."); }
@@ -2463,6 +2473,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                               <Building className="w-3 h-3 text-indigo-400" />
                               Mudar Gabinete
                             </button>
+                            {!(u as any).superAdmin && (
+                              <button
+                                onClick={() => handleTogglePeticao(u)}
+                                className={`px-2 py-1 border rounded-lg text-[11px] font-medium transition cursor-pointer ${(u as any).peticao360 ? "bg-emerald-950/40 border-emerald-500/50 text-emerald-300" : "bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300"}`}
+                              >
+                                {(u as any).peticao360 ? "Petição 360° ✓ liberada" : "Liberar Petição 360°"}
+                              </button>
+                            )}
                             <button
                               onClick={() => setVinculoHistorico(u)}
                               className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
@@ -2639,6 +2657,15 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                                       Mudar Gabinete
                                     </button>
 
+                                    {!(u as any).superAdmin && (
+                                      <button
+                                        onClick={() => handleTogglePeticao(u)}
+                                        title="Liberar ou revogar o módulo Petição & Defesa 360° para este usuário"
+                                        className={`px-2 py-1 border rounded-lg text-[11px] font-medium transition cursor-pointer ${(u as any).peticao360 ? "bg-emerald-950/40 border-emerald-500/50 text-emerald-300" : "bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300"}`}
+                                      >
+                                        {(u as any).peticao360 ? "Petição 360° ✓ liberada" : "Liberar Petição 360°"}
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => setVinculoHistorico(u)}
                                       title="Ligar a este usuário as minutas do sistema antigo (outro id ou e-mail)"

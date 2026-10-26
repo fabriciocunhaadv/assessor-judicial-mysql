@@ -2974,7 +2974,7 @@ export default function App() {
       />
 
       <InitialPetitionPanel
-        isOpen={isSuperAdmin && isPetitionPanelOpen}
+        isOpen={(isSuperAdmin || !!(userProfile as any)?.peticao360) && isPetitionPanelOpen}
         onClose={() => setIsPetitionPanelOpen(false)}
         currentUserEmail={user?.email || userProfile?.email || ""}
       />

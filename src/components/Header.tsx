@@ -359,19 +359,19 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 )}
 
-                {isSuperAdmin && onOpenPetitionPanel && (
+                {(isSuperAdmin || (userProfile as any)?.peticao360) && onOpenPetitionPanel && (
                   <button
                     id="btn-header-petition-module"
                     onClick={onOpenPetitionPanel}
                     className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-gradient-to-r from-indigo-950/90 to-purple-950/90 hover:from-indigo-900 hover:to-purple-900 text-indigo-200 font-bold text-xs transition cursor-pointer border border-indigo-500/30 text-left w-full shadow-sm"
-                    title="Módulo Petição & Defesa 360° (Inicial, Contestação e Recursos - Exclusivo Super Admin)"
+                    title="Módulo Petição & Defesa 360° (Inicial, Contestação e Recursos - liberado pelo Super Admin)"
                   >
                     <div className="flex items-center gap-2">
                       <Scale className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                       <span>Petição & Defesa 360°</span>
                     </div>
                     <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
-                      Super Admin
+                      {isSuperAdmin ? "Super Admin" : "Liberado"}
                     </span>
                   </button>
                 )}
@@ -1074,7 +1074,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
                   )}
 
-                  {isSuperAdmin && onOpenPetitionPanel && (
+                  {(isSuperAdmin || (userProfile as any)?.peticao360) && onOpenPetitionPanel && (
                     <button
                       onClick={() => handleAction(onOpenPetitionPanel)}
                       className="w-full p-2.5 rounded-xl bg-gradient-to-r from-indigo-950 via-purple-950 to-indigo-900 hover:from-indigo-900 hover:to-purple-900 text-indigo-200 font-bold text-xs flex items-center justify-between border border-indigo-500/40 transition"
@@ -1084,7 +1084,7 @@ export const Header: React.FC<HeaderProps> = ({
                         <span>Módulo Petição & Defesa 360°</span>
                       </div>
                       <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
-                        Super Admin
+                        {isSuperAdmin ? "Super Admin" : "Liberado"}
                       </span>
                     </button>
                   )}
