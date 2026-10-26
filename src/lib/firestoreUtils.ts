@@ -617,8 +617,12 @@ export const lerCriadorDoAto = async (id: string): Promise<{ existe: boolean; cr
 let _superAdminAtivo = false;
 /** O super admin tem permissão para tudo (inclusive excluir minuta de qualquer usuário). O App informa aqui quem está logado. */
 export const definirSuperAdminHistorico = (v: boolean) => { _superAdminAtivo = !!v; };
+/** Ids do sistema antigo que o Super Admin vinculou ao usuário logado: as minutas com esses ids são dele (aparecem em "Minhas" e ele pode excluí-las). */
+let _idsAntigos = new Set<string>();
+export const definirIdsAntigosHistorico = (ids: any) => { _idsAntigos = new Set(Array.isArray(ids) ? ids.map(String) : []); };
+export const ehIdAntigoHistorico = (id: string | undefined | null): boolean => !!id && _idsAntigos.has(id);
 export const ehDonoDoAto = (createdBy: string | undefined | null, uid: string | undefined | null): boolean =>
-  _superAdminAtivo || !createdBy || createdBy === "anonymous" || (!!uid && createdBy === uid);
+  _superAdminAtivo || !createdBy || createdBy === "anonymous" || (!!uid && createdBy === uid) || _idsAntigos.has(createdBy);
 
 export const deleteHistoryFromDb = async (id: string, opcoes?: { forcar?: boolean }): Promise<void> => {
   if (!auth.currentUser || !id) return;

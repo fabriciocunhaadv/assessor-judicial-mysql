@@ -16,6 +16,7 @@ import {
 } from './firestoreUtils';
 import { syncApiKeyWithUserProfile, setNativeKeyAccessState } from '../utils/apiKeyManager';
 import { sincronizarIAComPerfil } from '../utils/provedorIA';
+import { definirIdsAntigosHistorico } from './firestoreUtils';
 
 interface AuthContextType {
   user: AppUser | null;
@@ -228,6 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserProfile(p);
         syncApiKeyWithUserProfile(p, u.uid);
         sincronizarIAComPerfil(p);
+        definirIdsAntigosHistorico((p as any)?.uidsAntigos);      // histórico do sistema antigo vinculado a este usuário
         if (tenantAtual !== 'unassigned') {
           desfazer.push(onSnapshot(doc(db, 'tenants', tenantAtual), (snap) => {
             if (snap.exists()) {

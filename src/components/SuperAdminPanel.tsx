@@ -71,6 +71,7 @@ import { db } from '../lib/firebase';
 import { linkDeAcesso } from '../utils/linkAcesso';
 import { ChavesResumo } from './ChavesResumo';
 import { ChavesDoUsuarioModal } from './ChavesDoUsuarioModal';
+import { VinculoHistoricoModal } from './VinculoHistoricoModal';
 import { chamarAuth } from '../lib/sessao';
 import { 
   getAllTenantsWithMetrics, 
@@ -249,6 +250,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
 
   // Global Users State
   const [globalUsers, setGlobalUsers] = useState<UserProfile[]>([]);
+  const [vinculoHistorico, setVinculoHistorico] = useState<UserProfile | null>(null);      // Super Admin vincula o histórico antigo a um usuário
   const [chavesDoUsuario, setChavesDoUsuario] = useState<UserProfile | null>(null);      // Super Admin gerencia as chaves de IA de outro usuário
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -2462,6 +2464,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                               Mudar Gabinete
                             </button>
                             <button
+                              onClick={() => setVinculoHistorico(u)}
+                              className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                            >
+                              Histórico
+                            </button>
+                            <button
                               onClick={() => setChavesDoUsuario(u)}
                               className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
                             >
@@ -2611,7 +2619,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
 
                                 {/* Actions */}
                                 <td className="p-3.5 text-right">
-                                  <div className="flex items-center justify-end gap-1.5">
+                                  <div className="flex flex-wrap items-center justify-end gap-1.5 max-w-[340px] ml-auto">
                                     
                                     {/* Transfer Tenant Button */}
                                     <button
@@ -2631,6 +2639,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                                       Mudar Gabinete
                                     </button>
 
+                                    <button
+                                      onClick={() => setVinculoHistorico(u)}
+                                      title="Ligar a este usuário as minutas do sistema antigo (outro id ou e-mail)"
+                                      className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                                    >
+                                      Histórico
+                                    </button>
                                     <button
                                       onClick={() => setChavesDoUsuario(u)}
                                       title="Cadastrar, alterar ou remover as chaves de IA deste usuário"
@@ -6252,6 +6267,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
         </div>
       )}
 
+      {vinculoHistorico && (
+        <VinculoHistoricoModal usuario={vinculoHistorico} onClose={() => setVinculoHistorico(null)} onSalvo={() => { void loadAllData(); }} />
+      )}
       {chavesDoUsuario && (
         <ChavesDoUsuarioModal usuario={chavesDoUsuario} onClose={() => setChavesDoUsuario(null)} onSalvo={() => { void loadAllData(); }} />
       )}
