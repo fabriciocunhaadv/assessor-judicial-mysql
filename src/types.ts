@@ -733,6 +733,8 @@ export interface AssessorDraftAuditResult {
   scoreCalculo?: { regra: string[]; notaDoModelo: number | null };
   /** Apontamentos da IA descartados por não trazerem prova literal nos autos/minuta. */
   apontamentosDescartados?: number;
+  /** Pontos da IA sem prova literal: aparecem para conferência, mas não entram na nota. */
+  apontamentosNaoConfirmados?: { severity: string; title: string; description: string; location: string }[];
   etapas?: { fichaDosAutos: boolean };
   avisoModelo?: { fraco: boolean; modelo: string; mensagem: string };
   holisticSynopsis?: string;

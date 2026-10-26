@@ -2649,6 +2649,15 @@ ${reAuditNotes}`
                 </div>
               )}
 
+              {Boolean(auditResult.apontamentosNaoConfirmados?.length) && (
+                <div data-testid="nao-confirmados" className="p-3 rounded-xl border border-amber-500/50 bg-amber-950/40 text-amber-100 text-xs space-y-1.5">
+                  <strong>A IA levantou {auditResult.apontamentosNaoConfirmados!.length} ponto(s) que não deu para provar por citação literal.</strong> Não entram na nota, mas vale conferir nos autos antes de aprovar:
+                  <ul className="list-disc pl-4 space-y-1">
+                    {auditResult.apontamentosNaoConfirmados!.map((x, i) => <li key={i}><span className="font-bold uppercase text-[10px]">{x.severity}</span> {x.title}{x.description ? `: ${x.description}` : ""}{x.location ? ` (${x.location})` : ""}</li>)}
+                  </ul>
+                </div>
+              )}
+
               {/* SCORE CARD & VERDICT BANNER */}
               <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-amber-500/40 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
                 

@@ -1619,19 +1619,23 @@ function conferenciasPorCodigo(minuta: string, autos: string): AlertaAuditoria[]
 }
 
 /** Valida os apontamentos da IA: cada um precisa de prova literal (trecho da minuta e/ou dos autos que realmente existam). Sem prova, é descartado. */
-function validarAlertasIa(brutos: any[], minuta: string, autos: string): { validos: AlertaAuditoria[]; descartados: number } {
-    const validos: AlertaAuditoria[] = []; let descartados = 0;
+function validarAlertasIa(brutos: any[], minuta: string, autos: string): { validos: AlertaAuditoria[]; descartados: number; naoConfirmados: { severity: string; title: string; description: string; location: string }[] } {
+    const validos: AlertaAuditoria[] = []; let descartados = 0; const naoConfirmados: { severity: string; title: string; description: string; location: string }[] = [];
     for (const a of Array.isArray(brutos) ? brutos : []) {
         const sev = ["bloqueante", "atencao", "informativo"].includes(a?.severity) ? a.severity : "atencao";
         const tipo = ["contradicao", "omissao", "sem_lastro", "forma"].includes(a?.tipoProva) ? a.tipoProva : (a?.autosTrecho && a?.minutaTrecho ? "contradicao" : "");
         const mT = String(a?.minutaTrecho || "").trim(), aT = String(a?.autosTrecho || "").trim();
         const okMin = mT ? citacaoExiste(mT, minuta) : false, okAut = aT ? citacaoExiste(aT, autos) : false;
         const prova = tipo === "contradicao" ? okMin && okAut : tipo === "omissao" ? okAut : tipo === "sem_lastro" ? okMin : tipo === "forma" ? okMin : false;
-        if (!prova || !String(a?.title || "").trim()) { descartados++; continue; }
+        if (!prova || !String(a?.title || "").trim()) {
+            descartados++;
+            if (String(a?.title || "").trim() && naoConfirmados.length < 8) naoConfirmados.push({ severity: sev, title: String(a.title).slice(0, 200), description: String(a?.description || "").slice(0, 600), location: String(a?.location || "").slice(0, 200) });      // fica à vista, mas não entra na nota
+            continue;
+        }
         const fix = String(a?.suggestedFix || a?.recommendation || "");
         validos.push({ type: TIPO_POR_SEVERIDADE[sev], severity: sev, pillar: String(a?.pillar || "provas"), title: String(a.title).slice(0, 200), description: String(a?.description || "").slice(0, 1500), recommendation: fix.slice(0, 1200), suggestedFix: fix.slice(0, 1200), location: String(a?.location || "").slice(0, 200), tipoProva: tipo, minutaTrecho: mT.slice(0, 600), autosTrecho: aT.slice(0, 600), origem: "ia" });
     }
-    return { validos, descartados };
+    return { validos, descartados, naoConfirmados };
 }
 
 /** Nota por regra: parte de 100 e desconta só por apontamento com prova. Cada pilar tem a sua nota. */
@@ -1932,7 +1936,7 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
 
         // Só vale apontamento com prova literal; o resto é descartado e contado. Mais as conferências por código (sem IA).
         const minutaAudit = String(draftText || "");
-        const { validos, descartados } = validarAlertasIa(parsed.criticalAlerts, minutaAudit, safeProcessText);
+        const { validos, descartados, naoConfirmados } = validarAlertasIa(parsed.criticalAlerts, minutaAudit, safeProcessText);
         const alertasFinais: AlertaAuditoria[] = [...conferenciasPorCodigo(minutaAudit, safeProcessText), ...validos];
         const nota = calcularNotaAuditoria(alertasFinais);
         const nBloq = alertasFinais.filter((x) => x.severity === "bloqueante").length;
@@ -1943,10 +1947,15 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
         const feedback = (typeof parsed.assessorFeedbackMessage === "string" && parsed.assessorFeedbackMessage.trim()) ||
             (alertasFinais.length ? `Foram apontados ${alertasFinais.length} ponto(s) com prova nos autos (${nBloq} bloqueante(s)). Veja cada apontamento, com o trecho da minuta e o trecho dos autos.` : "Nenhum apontamento com prova nos autos foi encontrado nesta conferência.");
 
+        // A nota só conta apontamento com prova literal. Se a IA levantou ponto GRAVE que não deu para provar por citação, a faixa não pode dizer "aprovada": pede conferência (a nota não muda).
+        const modeloDiverge = typeof parsed.score === "number" && parsed.score <= 60 && nota.score >= 90;      // a IA deu nota baixa, mas nenhum apontamento dela passou na prova literal
+        const graveNaoConfirmado = naoConfirmados.some((x) => x.severity === "bloqueante") || modeloDiverge;
+        if (graveNaoConfirmado) { nota.score = Math.min(nota.score, 70); nota.explicacao.push("A IA apontou problema grave que não deu para provar por citação literal (ou deu nota bem menor): a nota fica limitada a 70 até a conferência."); }
         const finalResult: any = {
             score: nota.score,
-            verdict: nota.verdict,
-            verdictColor: nota.verdictColor,
+            verdict: graveNaoConfirmado ? "Conferir antes de aprovar" : nota.verdict,
+            verdictColor: graveNaoConfirmado ? "amber" : nota.verdictColor,
+            apontamentosNaoConfirmados: naoConfirmados,
             summary: resumoIa || (alertasFinais.length ? `Conferência concluída: ${alertasFinais.length} apontamento(s) com prova, ${nBloq} bloqueante(s).` : "Conferência concluída: nenhum apontamento com prova nos autos."),
             scoreCalculo: { regra: nota.explicacao, notaDoModelo: typeof parsed.score === "number" ? Math.round(parsed.score) : null },
             // blocos que a IA não devolveu ficam ausentes ("não avaliado"); nada é preenchido com frase pronta
