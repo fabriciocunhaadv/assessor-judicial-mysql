@@ -166,7 +166,7 @@ export default function App() {
   } = useAuth();
   
   // só o super admin escolhe o tema; os demais usuários sempre veem o visual Hostinger
-  useEffect(() => { aplicarTema(isSuperAdmin ? temaAtual() : "hostinger"); }, [isSuperAdmin, user?.uid]);
+  useEffect(() => { aplicarTema(isSuperAdmin ? temaAtual() : "classico"); }, [isSuperAdmin, user?.uid]);
   const [isAdvancedMode, setIsAdvancedMode] = useState<boolean>(false);
   const [isCheckingInvite, setIsCheckingInvite] = useState(false);
   const [hasCopiedEmail, setHasCopiedEmail] = useState(false);
@@ -1663,32 +1663,32 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#f7f6fd] flex font-sans selection:bg-[#673de6] selection:text-white">
+      <div className="min-h-screen bg-slate-50 flex font-sans selection:bg-emerald-600 selection:text-white">
         {/* Lado esquerdo (telas grandes): apresentação clara, no estilo dos sistemas jurídicos modernos */}
-        <div className="hidden lg:flex flex-1 flex-col justify-between p-12 relative overflow-hidden" style={{ background: "linear-gradient(135deg, #ebe4ff 0%, #f5f1ff 45%, #e2ecff 100%)" }}>
+        <div className="hidden lg:flex flex-1 flex-col justify-between p-12 relative overflow-hidden" style={{ background: "linear-gradient(135deg, #d1fae5 0%, #ecfdf5 45%, #e0f2fe 100%)" }}>
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-[#673de6] flex items-center justify-center shadow-md"><Scale className="w-5 h-5 text-white" /></div>
-            <span className="text-xl font-extrabold tracking-tight text-[#24165a]">Assessor Judicial</span>
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center shadow-md"><Scale className="w-5 h-5 text-white" /></div>
+            <span className="text-xl font-extrabold tracking-tight text-slate-900">Assessor Judicial</span>
           </div>
           <div className="space-y-6 max-w-lg">
-            <h2 className="text-4xl font-extrabold leading-tight tracking-tight text-[#24165a]">Minutas melhores, com a lei e a jurisprudência conferidas.</h2>
-            <p className="text-base text-[#4b4d63] leading-relaxed">Leitura completa dos autos, súmulas e teses aplicadas, artigos conferidos no texto oficial e histórico do gabinete em um só lugar.</p>
+            <h2 className="text-4xl font-extrabold leading-tight tracking-tight text-slate-900">Minutas melhores, com a lei e a jurisprudência conferidas.</h2>
+            <p className="text-base text-slate-600 leading-relaxed">Leitura completa dos autos, súmulas e teses aplicadas, artigos conferidos no texto oficial e histórico do gabinete em um só lugar.</p>
             <div className="space-y-3">
               {[["Autos lidos por inteiro", "PDFs grandes, com OCR por IA e leitura em lotes."], ["Legislação conferida", "Artigos revogados ou inexistentes viram aviso na minuta."], ["Gabinete organizado", "Prompts, teses, paradigmas e histórico de cada gabinete."]].map(([t, d]) => (
-                <div key={t} className="flex items-start gap-3 bg-white/80 border border-[#e0d6ff] rounded-2xl px-4 py-3 shadow-sm">
-                  <span className="mt-0.5 w-6 h-6 rounded-full bg-[#673de6] text-white text-xs font-bold flex items-center justify-center shrink-0">✓</span>
-                  <div><p className="text-sm font-bold text-[#24165a]">{t}</p><p className="text-xs text-[#62647c] leading-snug">{d}</p></div>
+                <div key={t} className="flex items-start gap-3 bg-white/80 border border-emerald-100 rounded-2xl px-4 py-3 shadow-sm">
+                  <span className="mt-0.5 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shrink-0">✓</span>
+                  <div><p className="text-sm font-bold text-slate-900">{t}</p><p className="text-xs text-slate-500 leading-snug">{d}</p></div>
                 </div>
               ))}
             </div>
           </div>
-          <p className="text-xs text-[#62647c]">Ambiente para Magistrados(as) Titulares e Assessores.</p>
-          <div className="absolute -right-24 -bottom-24 w-80 h-80 rounded-full bg-[#673de6]/10 pointer-events-none" />
+          <p className="text-xs text-slate-500">Ambiente para Magistrados(as) Titulares e Assessores.</p>
+          <div className="absolute -right-24 -bottom-24 w-80 h-80 rounded-full bg-emerald-600/10 pointer-events-none" />
         </div>
         <div className="flex-1 flex flex-col items-center justify-center p-5 sm:p-8">
           <div className="lg:hidden flex items-center gap-2.5 mb-6">
-            <div className="w-9 h-9 rounded-xl bg-[#673de6] flex items-center justify-center"><Scale className="w-4.5 h-4.5 text-white" /></div>
-            <span className="font-extrabold tracking-tight text-[#24165a] text-lg">Assessor Judicial</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center"><Scale className="w-4.5 h-4.5 text-white" /></div>
+            <span className="font-extrabold tracking-tight text-slate-900 text-lg">Assessor Judicial</span>
           </div>
           <div className="max-w-md w-full bg-white border border-[#e4e5ed] rounded-3xl shadow-xl overflow-hidden">
             <div className="p-7 sm:p-9 space-y-5">

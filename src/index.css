@@ -283,3 +283,12 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { border-radi
 .tema-hostinger [data-janela="clara"] :is([class*="hover:bg-slate-8"], [class*="hover:bg-slate-7"], [class*="hover:bg-indigo-9"], [class*="hover:bg-purple-9"]):hover, .tema-hostinger [data-janela="clara"] :is([class*="hover:from-"]):hover { background-color: var(--h-roxo-claro) !important; background-image: none !important; }
 .tema-hostinger [data-janela="clara"] [class*="hover:text-white"]:hover:not([class*="bg-"]) { color: #1d1e20 !important; }
 .tema-hostinger header [class~="xl:flex"][class*="bg-[#080d14]"] { background-color: #36279a !important; border-color: rgba(255,255,255,.14) !important; }
+
+/* ===== VISUAL ORIGINAL (padrão): as cores roxas dos componentes novos (Cadastros, Trocar senha, selo do banco etc.) seguem o verde do sistema original quando o tema Hostinger está desligado ===== */
+html:not(.tema-hostinger) [class~="bg-[#673de6]"], html:not(.tema-hostinger) [class~="bg-[#4a2bb3]"] { background-color: #059669 !important; }
+html:not(.tema-hostinger) [class~="hover:bg-[#5025d1]"]:hover { background-color: #047857 !important; }
+html:not(.tema-hostinger) [class~="text-[#673de6]"], html:not(.tema-hostinger) [class~="text-[#5025d1]"] { color: #047857 !important; }
+html:not(.tema-hostinger) [class~="border-[#673de6]"], html:not(.tema-hostinger) [class~="focus:border-[#673de6]"]:focus { border-color: #059669 !important; }
+html:not(.tema-hostinger) [class~="bg-[#f5f1ff]"], html:not(.tema-hostinger) [class~="hover:bg-[#f5f1ff]"]:hover { background-color: #ecfdf5 !important; }
+html:not(.tema-hostinger) [class~="bg-[#ebe4ff]"] { background-color: #d1fae5 !important; }
+html:not(.tema-hostinger) [class~="bg-[#17122b]"], html:not(.tema-hostinger) [class~="bg-[#17122b]/90"] { background-color: #0b111a !important; }

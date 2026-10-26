@@ -1,9 +1,9 @@
-// Tema visual do sistema: "hostinger" (padrão, roxo e claro, no estilo do hPanel) ou "classico" (visual anterior). A escolha fica neste navegador.
+// Tema visual do sistema: "classico" (padrão: o visual original) ou "hostinger" (roxo, no estilo do hPanel; opcional, só o super admin liga). A escolha fica neste navegador.
 export type Tema = "hostinger" | "classico";
-const CHAVE = "assessor_tema_v1";
+const CHAVE = "assessor_tema_v2";
 
 export const temaAtual = (): Tema => {
-  try { return localStorage.getItem(CHAVE) === "classico" ? "classico" : "hostinger"; } catch { return "hostinger"; }
+  try { return localStorage.getItem(CHAVE) === "hostinger" ? "hostinger" : "classico"; } catch { return "classico"; }
 };
 export const aplicarTema = (t: Tema = temaAtual()): void => {
   if (typeof document === "undefined") return;
