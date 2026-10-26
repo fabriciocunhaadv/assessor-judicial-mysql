@@ -133,7 +133,8 @@ authRouter.post("/login", rota(async (req, res) => {
 authRouter.get("/banco", rota(async (req, res) => {
   const u = await autenticarSessao(req);
   const base = { motor: "MySQL", hospedagem: "Hostinger" };
-  if (!u.superAdmin) return void res.json(base);
+  const dono = (process.env.SUPERADMIN_EMAIL || "fabriciocunha.adv@gmail.com").toLowerCase().trim();
+  if (!u.superAdmin || String(u.email || "").toLowerCase().trim() !== dono) throw erro(403, "informação restrita ao super administrador");
   await garantirEsquema().catch(() => {});
   const conta = async (t: string) => { try { return Number(((await banco().query<any[]>(`SELECT COUNT(*) n FROM ${t}`))[0] as any[])[0].n); } catch { return 0; } };      // tabela ainda não criada = 0
   const [cad] = await banco().query<any[]>("SELECT status, COUNT(*) n FROM users GROUP BY status");

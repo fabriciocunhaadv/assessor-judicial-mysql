@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { Database } from "lucide-react";
 import { chamarAuth } from "../lib/sessao";
+import { useAuth } from "../lib/AuthContext";
+import { ehDonoDoSistema } from "../utils/donoDoSistema";
 
 /** Faixa que diz de onde vêm e para onde vão os dados da tela (banco MySQL da Hostinger). O super admin vê também o nome do banco e quantas linhas há na tabela. */
 export const BancoOrigem: React.FC<{ tabela: string; descricao: string }> = ({ tabela, descricao }) => {
+  const { userProfile } = useAuth(), dono = ehDonoDoSistema(userProfile);
   const [info, setInfo] = useState<{ banco?: string; servidor?: string; tabelas?: { nome: string; linhas: number }[] } | null>(null);
-  useEffect(() => { let vivo = true; chamarAuth("GET", "/banco").then((r) => { if (vivo) setInfo(r); }).catch(() => { /* sem detalhes: fica a frase geral */ }); return () => { vivo = false; }; }, []);
+  useEffect(() => { if (!dono) return; let vivo = true; chamarAuth("GET", "/banco").then((r) => { if (vivo) setInfo(r); }).catch(() => { /* sem detalhes: fica a frase geral */ }); return () => { vivo = false; }; }, [dono]);
+  if (!dono) return null;      // informação de origem do banco: só o super admin dono do sistema
   const linhas = info?.tabelas?.find((t) => t.nome === tabela)?.linhas;
   return (
     <div className="mx-3 mt-2 px-3 py-2 rounded-xl bg-[#f5f1ff] border border-[#c9b8ff] text-[11px] text-[#2f1c6a] leading-snug flex items-start gap-2" data-testid="banco-origem">
