@@ -82,9 +82,20 @@ export const FontesOficiaisPanel: React.FC = () => {
               {saidaConsulta.te && <pre className="whitespace-pre-wrap break-words max-h-48 overflow-auto text-[10px]">{JSON.stringify(saidaConsulta.te, null, 1).slice(0, 2500)}</pre>}
             </div>}
             {leis && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button className={`${btn} bg-white border border-[#c9cbd8] text-[#673de6]`} onClick={() => { const t = leis.map((l) => `${l.nome}\t${l.url}`).join("\n"); navigator.clipboard?.writeText(t).then(() => window.alert(`${leis.length} endereços copiados (nome e endereço, um por linha).`)).catch(() => window.alert(t)); }}>Copiar lista de endereços</button>
+                <span className="text-[10px] text-slate-500">Abra cada endereço no seu navegador, aperte Ctrl+S, salve como “Página da Web, somente HTML” com o nome indicado e depois use “Enviar arquivos salvos do Planalto” (pode enviar vários de uma vez).</span>
+              </div>
+            )}
+            {leis && (
               <table className="w-full text-[11px] border border-[#e4e5ed] bg-white rounded-lg overflow-hidden"><tbody>{leis.map((l) => (
                 <tr key={l.id} className="border-t border-[#e4e5ed] align-top">
-                  <td className="p-1.5 font-semibold">{l.nome}</td>
+                  <td className="p-1.5 font-semibold">
+                    {l.nome}
+                    <div className="font-normal text-[10px] text-slate-500 break-all">
+                      Salvar como <code className="bg-slate-100 px-1 rounded">{l.url.split("/").pop()}</code> · <a href={l.url} target="_blank" rel="noopener noreferrer" className="text-[#673de6] underline">abrir no Planalto</a>
+                    </div>
+                  </td>
                   <td className="p-1.5">{l.baixadoEm ? <span className="text-emerald-700">{l.total} artigos · {l.revogados} revogados · {l.vetados} vetados · {new Date(l.baixadoEm).toLocaleDateString("pt-BR")}</span> : <span className="text-slate-500">ainda não baixada</span>}{l.erro && <span className="text-red-700 block">Falha: {l.erro}</span>}</td>
                   <td className="p-1.5 text-right"><button disabled={!!atualizando || !!lote} onClick={() => atualizar(l.id)} className={`${btn} bg-white border border-[#c9cbd8] text-[#673de6]`}>{atualizando === l.id ? "..." : "Atualizar"}</button></td>
                 </tr>))}</tbody></table>
