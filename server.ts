@@ -11,7 +11,7 @@ import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
 import { fontesRouter, verificarCitacoes, avisoDispositivosRevogados, lerCopiaLocal } from './server/fontesOficiais';
-import { consultarLegislacao, diagnosticoLegislacao, testarLegislacao, definirLeitorLocal } from './src/utils/legislacaoPlanalto';
+import { consultarLegislacao, diagnosticoLegislacao, testarLegislacao, definirLeitorLocal, pesquisarLegislacao } from './src/utils/legislacaoPlanalto';
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
@@ -302,7 +302,11 @@ app.post("/api/test-api-key", async (req, res) => {
         });
     }
 });
-app.post("/api/lookup-legislation", (req, res) => res.json({ result: "Not implemented" }));
+// Pesquisa Legislativa: lê a consulta (opcional) e o processo, identifica as leis e artigos necessários (citados, ou do regime jurídico identificado) e traz o texto oficial do Planalto.
+app.post("/api/lookup-legislation", async (req, res) => {
+    try { res.json(await pesquisarLegislacao(String(req.body?.query || "").slice(0, 600), String(req.body?.context || "").slice(0, 200000))); }
+    catch (e: any) { res.status(500).json({ error: e?.message || "falha na pesquisa legislativa" }); }
+});
 app.post("/api/map-decision-documents", (req, res) => res.json({ result: "Not implemented" }));
 app.post("/api/scan-cabinet-theses", (req, res) => res.json({ matches: [] }));
 app.post("/api/extract-pdf-text", async (req, res) => {
