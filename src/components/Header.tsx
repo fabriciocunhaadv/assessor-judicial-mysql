@@ -346,7 +346,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <div className="absolute right-0 top-full pt-1.5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-              <div className="w-[210px] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 ring-1 ring-black/50">
+              <div data-janela="clara" className="w-[210px] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 ring-1 ring-black/50">
                 
                 {isSuperAdmin && onOpenSuperAdmin && (
                   <button

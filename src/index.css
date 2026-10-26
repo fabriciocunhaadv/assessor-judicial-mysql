@@ -249,3 +249,37 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { border-radi
 .tema-hostinger button:active:not(:disabled) { transform: scale(.985); }
 .tema-hostinger button:focus-visible, .tema-hostinger a:focus-visible { outline: 2px solid var(--h-roxo); outline-offset: 2px; }
 .tema-hostinger h1, .tema-hostinger h2 { letter-spacing: -0.015em; }
+
+/* ===== VISUAL MAIS CLARO (tema Hostinger) =====
+   1) o roxo escuro ficou um tom mais claro (faixas e janelas que continuam escuras);
+   2) o fundo escuro atrás das janelas fica translúcido e lilás, não preto;
+   3) janelas marcadas com data-janela="clara" (Painel Super Admin e menu Configurações) viram brancas, com texto escuro, como o hPanel. Só CSS + o atributo. */
+.tema-hostinger { --h-navy-fundo:#2b1f72; --h-navy:#3a2b92; --h-navy-2:#4a39ad; }
+.tema-hostinger [class~="bg-slate-950"], .tema-hostinger [class*=" bg-[#0"]:not([class*="/"]), .tema-hostinger [class^="bg-[#0"]:not([class*="/"]) { background-image: linear-gradient(90deg, #2c1f7a 0%, #4a35b8 55%, #6244dc 100%) !important; }
+.tema-hostinger [class~="fixed"][class~="inset-0"][class*="bg-slate-950/"], .tema-hostinger [class~="fixed"][class~="inset-0"][class*="bg-black/"] { background-color: rgba(38,26,92,.5) !important; backdrop-filter: blur(6px); }
+
+.tema-hostinger [data-janela="clara"] { background-color: #fff !important; background-image: none !important; color: #1d1e20 !important; border-color: var(--h-linha) !important; box-shadow: 0 24px 60px rgba(47,28,106,.22) !important; }
+.tema-hostinger [data-janela="clara"] :is([class~="bg-slate-950"], [class~="bg-slate-900"], [class~="bg-slate-800"], [class*="bg-slate-950/"], [class*="bg-slate-900/"], [class*="bg-slate-800/"], [class*="bg-slate-700/"], [class*="bg-gray-900"], [class*="bg-black/"]) { background-color: #f6f5fb !important; background-image: none !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="bg-indigo-950"], [class*="bg-purple-950"], [class*="bg-violet-950"], [class*="bg-indigo-900"], [class*="bg-purple-900"]) { background-color: var(--h-roxo-claro) !important; background-image: none !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="bg-red-950"], [class*="bg-rose-950"]) { background-color: #fdecec !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="bg-amber-950"], [class*="bg-orange-950"], [class*="bg-yellow-950"]) { background-color: #fff4dc !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="bg-emerald-950"], [class*="bg-green-950"], [class*="bg-teal-950"], [class*="bg-sky-950"], [class*="bg-blue-950"], [class*="bg-cyan-950"]) { background-color: #eaf1ff !important; }
+.tema-hostinger [data-janela="clara"] :is([class~="text-white"], [class~="text-slate-50"], [class~="text-slate-100"]):not(button *):not(button):not([class*="bg-"]) { color: #1d1e20 !important; }
+.tema-hostinger [data-janela="clara"] :is([class~="text-slate-200"], [class~="text-slate-300"], [class~="text-gray-200"], [class~="text-gray-300"]):not(button[class*="bg-indigo-6"] *) { color: #34364a !important; }
+.tema-hostinger [data-janela="clara"] :is([class~="text-slate-400"], [class~="text-slate-500"], [class~="text-gray-400"], [class~="text-gray-500"]) { color: #62647c !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="text-indigo-2"], [class*="text-indigo-3"], [class*="text-indigo-4"], [class*="text-purple-2"], [class*="text-purple-3"], [class*="text-purple-4"], [class*="text-violet-2"], [class*="text-violet-3"], [class*="text-violet-4"], [class*="text-emerald-2"], [class*="text-emerald-3"], [class*="text-emerald-4"], [class*="text-sky-2"], [class*="text-sky-3"], [class*="text-sky-4"], [class*="text-blue-2"], [class*="text-blue-3"], [class*="text-blue-4"], [class*="text-cyan-3"], [class*="text-cyan-4"], [class*="text-teal-3"], [class*="text-teal-4"]) { color: #4a28b8 !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="text-amber-2"], [class*="text-amber-3"], [class*="text-amber-4"], [class*="text-orange-3"], [class*="text-orange-4"], [class*="text-yellow-3"], [class*="text-yellow-4"]) { color: #92400e !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="text-red-2"], [class*="text-red-3"], [class*="text-red-4"], [class*="text-rose-3"], [class*="text-rose-4"]) { color: #b42318 !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="border-slate-8"], [class*="border-slate-7"], [class*="border-slate-6"], [class*="border-indigo-5"], [class*="border-indigo-8"], [class*="border-purple-5"], [class*="border-purple-8"], [class*="border-violet-5"], [class*="border-violet-8"], [class*="border-gray-8"], [class*="border-gray-7"]) { border-color: #dcd9ee !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="border-emerald-"], [class*="border-sky-"], [class*="border-blue-"], [class*="border-amber-"], [class*="border-red-"]) { border-color: #d9d3f3 !important; }
+.tema-hostinger [data-janela="clara"] input:not([type="checkbox"]):not([type="radio"]), .tema-hostinger [data-janela="clara"] select, .tema-hostinger [data-janela="clara"] textarea { background-color: #fff !important; color: #1d1e20 !important; border-color: #cfd0de !important; }
+.tema-hostinger [data-janela="clara"] ::placeholder { color: #8b8da3 !important; }
+.tema-hostinger [data-janela="clara"] :is(table, thead, tbody) { color: #1d1e20; }
+.tema-hostinger [data-janela="clara"] tr:hover > td { background-color: var(--h-roxo-fraco) !important; }
+.tema-hostinger [data-janela="clara"] [class~="shadow-lg"], .tema-hostinger [data-janela="clara"] [class~="shadow-md"] { box-shadow: 0 4px 14px rgba(47,28,106,.10) !important; }
+/* faixa do cabeçalho: roxo mais claro; janelas claras: degradês escuros e hover no tom do tema */
+.tema-hostinger header[class~="sticky"][class*="from-[#"] { background-image: linear-gradient(90deg, #2c1f7a 0%, #4a35b8 55%, #6244dc 100%) !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="from-"][class*="-900"], [class*="from-"][class*="-950"], [class*="to-"][class*="-950"], [class*="to-"][class*="-900"]):not([class*="from-indigo-6"]):not([class*="from-purple-6"]) { background-image: none !important; background-color: var(--h-roxo-fraco) !important; }
+.tema-hostinger [data-janela="clara"] :is([class*="hover:bg-slate-8"], [class*="hover:bg-slate-7"], [class*="hover:bg-indigo-9"], [class*="hover:bg-purple-9"]):hover, .tema-hostinger [data-janela="clara"] :is([class*="hover:from-"]):hover { background-color: var(--h-roxo-claro) !important; background-image: none !important; }
+.tema-hostinger [data-janela="clara"] [class*="hover:text-white"]:hover:not([class*="bg-"]) { color: #1d1e20 !important; }
+.tema-hostinger header [class~="xl:flex"][class*="bg-[#080d14]"] { background-color: #36279a !important; border-color: rgba(255,255,255,.14) !important; }
