@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { avisoNotaAntiga } from "../utils/avisoNotaAntiga";
 import {
   Scale,
   Sparkles,
@@ -313,6 +314,17 @@ export const TripleConferenceBench: React.FC<TripleConferenceBenchProps> = ({
                     <div className="rounded-lg bg-slate-950 border border-slate-800 py-1.5"><div className="text-slate-400">Provas</div><div className="font-black text-white">{auditResult.evidentiary?.score ?? "—"}%</div></div>
                     <div className="rounded-lg bg-slate-950 border border-slate-800 py-1.5"><div className="text-slate-400">Rito</div><div className="font-black text-white">{auditResult.procedural?.score ?? "—"}%</div></div>
                   </div>
+                  {avisoNotaAntiga(auditResult, auditResult) && (
+                    <div data-testid="aviso-auditoria-antiga-bancada" className={`p-2 rounded-lg border text-[11px] ${avisoNotaAntiga(auditResult, auditResult) === "forte" ? "border-rose-500/50 bg-rose-950/40 text-rose-100" : "border-slate-600 bg-slate-900/60 text-slate-300"}`}>
+                      <strong>Auditoria feita antes da correção da nota.</strong> {avisoNotaAntiga(auditResult, auditResult) === "forte" ? "O resumo fala em problema grave, mas a nota ficou alta: não confie nela. Confira os autos ou refaça a auditoria." : "Os pontos que a IA não conseguiu provar não foram guardados nesta versão. Se a decisão for importante, refaça a auditoria."}
+                    </div>
+                  )}
+                  {Boolean(auditResult.apontamentosNaoConfirmados?.length) && (
+                    <div data-testid="nao-confirmados-bancada" className="p-2 rounded-lg border border-amber-500/50 bg-amber-950/40 text-amber-100 text-[11px] space-y-1">
+                      <strong>A IA levantou {auditResult.apontamentosNaoConfirmados!.length} ponto(s) sem prova literal.</strong> Não entram na nota; confira nos autos:
+                      <ul className="list-disc pl-4 space-y-0.5">{auditResult.apontamentosNaoConfirmados!.map((x, i) => <li key={i}>{x.title}{x.location ? ` (${x.location})` : ""}</li>)}</ul>
+                    </div>
+                  )}
                   {auditResult.summary && <p className="text-[12px] text-slate-100 leading-relaxed">{auditResult.summary}</p>}
                   {(auditResult.criticalAlerts || []).length > 0 && (
                     <ul className="space-y-1.5">
