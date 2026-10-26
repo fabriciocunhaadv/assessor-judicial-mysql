@@ -1608,8 +1608,9 @@ function conferenciasPorCodigo(minuta: string, autos: string): AlertaAuditoria[]
         const lista = [...carim].sort((a, b) => a - b);
         out.push(mk("atencao", "provas", "Movimentação citada que não existe nos autos", `A minuta cita ${vl.movsInexistentes.map((n) => "Mov. " + n).join(", ")}, que não aparece(m) nos carimbos dos autos enviados.`, "Conferir a localização; se o fato só consta no relato de uma decisão posterior, citar essa decisão.", "Relatório / Fundamentação", contexto(minuta, (minuta.match(new RegExp("Mov(?:imenta[cç][aã]o|\\.)?\\s*" + vl.movsInexistentes[0] + "\\b", "i")) || [""])[0] || ("Mov. " + vl.movsInexistentes[0])), `Movimentações com carimbo nos autos: ${lista.slice(0, 40).join(", ")}${lista.length > 40 ? "…" : ""}`));
     }
+    const autosSoDigitos = autos.replace(/\D/g, "");      // o OCR às vezes separa o número com espaços ou muda a pontuação
     const cnjMin = [...new Set(minuta.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/g) || [])], cnjAut = [...new Set(autos.slice(0, 60000).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/g) || [])];
-    if (cnjMin.length && cnjAut.length && !cnjMin.some((c) => autos.includes(c))) out.push(mk("bloqueante", "adstricao", "Autos não correspondem à minuta", `O número do processo da minuta (${cnjMin[0]}) não aparece nos autos enviados (${cnjAut[0]}).`, "Conferir se os autos anexados são do processo da minuta.", "Cabeçalho da minuta", cnjMin[0], `Processo nos autos: ${cnjAut[0]}`));
+    if (cnjMin.length && cnjAut.length && !cnjMin.some((c) => autos.includes(c) || autosSoDigitos.includes(c.replace(/\D/g, "")))) out.push(mk("bloqueante", "adstricao", "Autos não correspondem à minuta", `O número do processo da minuta (${cnjMin[0]}) não aparece nos autos enviados (${cnjAut[0]}).`, "Conferir se os autos anexados são do processo da minuta.", "Cabeçalho da minuta", cnjMin[0], `Processo nos autos: ${cnjAut[0]}`));
     const A = autos.replace(/\s+/g, " ");
     const datas = [...new Set(minuta.match(/\b\d{2}\/\d{2}\/\d{4}\b/g) || [])].filter((d) => !A.includes(d));
     if (datas.length) out.push(mk("informativo", "provas", "Datas da minuta que não aparecem nos autos", `Datas citadas na minuta e não localizadas no texto dos autos: ${datas.slice(0, 10).join(", ")}${datas.length > 10 ? "…" : ""}. Podem ser prazos calculados pelo assessor.`, "Conferir cada data com a peça de origem.", "Minuta", contexto(minuta, datas[0]), "não consta nos autos enviados"));
@@ -1640,13 +1641,13 @@ function validarAlertasIa(brutos: any[], minuta: string, autos: string): { valid
 
 /** Nota por regra: parte de 100 e desconta só por apontamento com prova. Cada pilar tem a sua nota. */
 function calcularNotaAuditoria(alertas: AlertaAuditoria[]) {
-    const peso = { bloqueante: 25, atencao: 8, informativo: 1 } as const;
+    const peso = { bloqueante: 25, atencao: 8, informativo: 0 } as const;      // informativo é só observação: não é ressalva e não tira ponto
     const pilar = (ps: string[]) => Math.max(0, 100 - alertas.filter((a) => ps.includes(a.pillar)).reduce((t, a) => t + peso[a.severity], 0));
     const total = Math.max(0, 100 - alertas.reduce((t, a) => t + peso[a.severity], 0));
     const n = (sv: string) => alertas.filter((a) => a.severity === sv).length;
-    const explicacao = [`Parte de 100; bloqueante −25, atenção −8, informativo −1, só com prova nos autos.`, `${n("bloqueante")} bloqueante(s), ${n("atencao")} de atenção, ${n("informativo")} informativo(s).`];
-    const verdict = total >= 90 ? "Aprovada sem Ressalvas" : total >= 75 ? "Aprovada com Ressalvas" : total >= 50 ? "Requer Correções Obrigatórias" : "Crítica / Risco de Nulidade";
-    const verdictColor = total >= 90 ? "emerald" : total >= 75 ? "indigo" : total >= 50 ? "amber" : "rose";
+    const explicacao = [`Parte de 100; bloqueante −25, atenção −8, informativo 0 (só observação), só com prova nos autos. 100 = sem nenhuma ressalva.`, `${n("bloqueante")} bloqueante(s), ${n("atencao")} de atenção, ${n("informativo")} informativo(s).`];
+    const verdict = total >= 100 ? "Aprovada sem Ressalvas" : total >= 75 ? "Aprovada com Ressalvas" : total >= 50 ? "Requer Correções Obrigatórias" : "Crítica / Risco de Nulidade";
+    const verdictColor = total >= 100 ? "emerald" : total >= 75 ? "indigo" : total >= 50 ? "amber" : "rose";
     return { score: total, verdict, verdictColor, adstricao: pilar(["adstricao"]), provas: pilar(["provas"]), rito: pilar(["preliminares_rito", "preclusao_marcha"]), explicacao };
 }
 
