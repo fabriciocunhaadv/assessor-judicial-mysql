@@ -5373,6 +5373,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage1ContentsParts, stage1SystemInstruction) / 10000) * 3000);      // maior para autos grandes
     stage1Response = await gerarComAutosGrandes(generateWithFallbackAndRetry, {
         autosGrandes: { userPrompt, textos: [accumulatedPdfText, safeProcessText], partesRef: stage1ContentsParts },
+        segundoPlano: req.body?.aceitaSegundoPlano === true,
         onProgresso: (t: string, f?: number) => setProg(progId, "Etapa 1 — " + t, f != null ? 12 + f * 40 : undefined, 56),
         apiKey: userApiKey,
         keyPool: extractApiKeyPool(req),
@@ -6544,7 +6545,8 @@ if (wasRotated && rotatedKey) {
         const isQuota = error?.message?.includes("429") ||
                         error?.message?.includes("RESOURCE_EXHAUSTED") ||
                         error?.message?.includes("Quota exceeded");
-        const statusCode = isQuota ? 429 : (isDemand ? 503 : 500);
+        const emSegundoPlano = error?.codigo === "AUTOS_GRANDES_SEGUNDO_PLANO";
+        const statusCode = emSegundoPlano ? 409 : isQuota ? 429 : (isDemand ? 503 : 500);
 
         if (isDemand) {
             console.log("[Assessor Judicial] Aviso de alta demanda transitória dos clusters de IA do Google (503).");
@@ -6553,10 +6555,10 @@ if (wasRotated && rotatedKey) {
         }
         const formattedErr = formatGeminiError(error) || "Erro interno ao processar a minuta processual.";
         if (!res.headersSent) {
-            res.status(statusCode).json({ error: formattedErr, isError: true });
+            res.status(statusCode).json({ error: formattedErr, isError: true, ...(emSegundoPlano ? { codigo: error.codigo } : {}) });
         } else {
             try {
-                res.write(JSON.stringify({ error: formattedErr, isError: true }));
+                res.write(JSON.stringify({ error: formattedErr, isError: true, ...(emSegundoPlano ? { codigo: error.codigo } : {}) }));
                 res.end();
             } catch (_) {}
         }

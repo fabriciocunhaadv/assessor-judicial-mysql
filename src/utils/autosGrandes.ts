@@ -96,7 +96,7 @@ async function chamar(gerar: (o: any) => Promise<any>, base: any, extra: any, pa
 }
 
 export async function gerarComAutosGrandes(gerar: (o: any) => Promise<any>, opts: any): Promise<any> {
-    const { autosGrandes, onProgresso, ...resto } = opts;
+    const { autosGrandes, onProgresso, segundoPlano, ...resto } = opts;
     try {
         return await gerar(resto);
     } catch (e: any) {
@@ -134,6 +134,8 @@ export async function gerarComAutosGrandes(gerar: (o: any) => Promise<any>, opts
         const cabeCompacto = depoisCompactar <= permitido;
         log(`[Autos Grandes] Compactação sem perda: ${Math.round(antesCompactar / 1000)}k → ${Math.round(depoisCompactar / 1000)}k caracteres (cabem ${Math.round(permitido / 1000)}k)${cabeCompacto ? ": basta, sem classificar nem cortar páginas." : "."}`);
 
+        // quem aceita segundo plano (a tela do usuário) não fica presa a minutos de classificação: devolve um código e a leitura em lotes roda em segundo plano
+        if (!cabeCompacto && segundoPlano) throw Object.assign(new Error("Autos grandes para a chave gratuita: a leitura segue em segundo plano."), { codigo: "AUTOS_GRANDES_SEGUNDO_PLANO" });
         if (!cabeCompacto) onProgresso?.("os autos passam do limite da chave gratuita: compactando e classificando as páginas…", 0.05);
         // 1) classificação por partes (cada parte fica bem abaixo do limite)
         const contexto = String(prompt.match(/Tipo de ato[^\n]*|TIPO DE (?:ATO|MINUTA)[^\n]*/i)?.[0] || "").slice(0, 200);
