@@ -11,7 +11,8 @@ import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
 import { fontesRouter, verificarCitacoes, avisoDispositivosRevogados, lerCopiaLocal } from './server/fontesOficiais';
-import { consultarLegislacao, diagnosticoLegislacao, testarLegislacao, definirLeitorLocal, pesquisarLegislacao } from './src/utils/legislacaoPlanalto';
+import { consultarLegislacao, diagnosticoLegislacao, testarLegislacao, definirLeitorLocal, definirProvedorOutrasLeis, pesquisarLegislacao } from './src/utils/legislacaoPlanalto';
+import { outrasLeisRouter, consultarOutrasLeis } from './server/outrasLeis';
 import { listarRegimes, gravarRegime, apagarRegime, sanearRegime } from './server/taxonomiaDb';
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
@@ -223,8 +224,10 @@ app.use("/api/db/history", historyRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/db/docs", docsRouter);
 app.use("/api/db/retencao", retencaoRouter);
+app.use("/api/fontes/outras", outrasLeisRouter);      // leis estaduais, municipais e outras normas enviadas pelo Super Admin
 app.use("/api/fontes", fontesRouter);
-definirLeitorLocal(lerCopiaLocal);      // se o Planalto bloquear o servidor, a consulta usa a cópia da lei salva pelo super admin
+definirLeitorLocal(lerCopiaLocal);
+definirProvedorOutrasLeis((textos) => consultarOutrasLeis(textos));      // leis estaduais/municipais da base do gabinete      // se o Planalto bloquear o servidor, a consulta usa a cópia da lei salva pelo super admin
 
 // Texto oficial (planalto.gov.br) dos artigos citados nestes textos, consultado na hora; qualquer falha devolve vazio e a resposta segue como antes
 async function blocoLegislacao(textos: any[], max = 8, timeoutMs = 6000): Promise<string> {

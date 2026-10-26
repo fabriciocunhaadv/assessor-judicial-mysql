@@ -40,6 +40,8 @@ const RANGES: Array<[number, number]> = [[2004, 2006], [2007, 2010], [2011, 2014
 const ANCORAS: Array<[number, number]> = [[1, 1937], [4000, 1962], [5000, 1966], [6000, 1973], [7000, 1984], [8000, 1990], [9000, 1994], [9500, 1997], [10000, 1999], [10500, 2002], [11000, 2005], [11500, 2007], [12000, 2008], [12500, 2010], [13000, 2015], [13500, 2017], [14000, 2020], [14500, 2022], [15000, 2023], [15500, 2024]];
 const anoCompleto = (y?: string | number): number | undefined => { if (y == null || y === "") return undefined; const n = Number(y); if (!isFinite(n)) return undefined; return n >= 1000 ? n : (n <= 26 ? 2000 + n : 1900 + n); };
 const anosProvaveis = (n: number): number[] => { let est = 2024; for (let i = 0; i < ANCORAS.length; i++) if (n >= ANCORAS[i][0]) est = ANCORAS[i][1] + (ANCORAS[i + 1] ? Math.round(((n - ANCORAS[i][0]) / (ANCORAS[i + 1][0] - ANCORAS[i][0])) * (ANCORAS[i + 1][1] - ANCORAS[i][1])) : 0); return [est, est - 1, est + 1].filter((y) => y >= 1937 && y <= 2026); };
+/** Lei ordinária federal com número que não existe para o ano citado (ex.: Lei 21.792/2023: as federais de 2023 estão em torno de 14.500) é quase certamente estadual ou municipal. */
+const numeroImpossivelFederal = (n: number, ano?: number): boolean => n > 16000 || (n >= 4000 && !!ano && ano >= 1937 && Math.abs(anosProvaveis(n)[0] - ano) > 2);
 const faixa = (y: number) => RANGES.find(([a, b]) => y >= a && y <= b);
 const numPonto = (n: string) => (n.length > 3 ? `${n.slice(0, -3)}.${n.slice(-3)}` : n);
 
@@ -92,7 +94,9 @@ export function extrairTudo(texto: string, max = 10): ExtracaoCitacoes {
   const somar = (d: Diploma, artigo: string) => { const a = artigo.replace(/[º°o\s]/g, "").toUpperCase(); if (!a) return; const k = `${d.id}:${a}`, x = cont.get(k); if (x) x.n++; else cont.set(k, { c: { diploma: d, artigo: a }, n: 1 }); };
   const diplomaDoMatch = (m: RegExpExecArray): Diploma | null => {
     const estatico = DIPLOMAS.find((d) => d.alias.test(m[0])); if (estatico) return estatico;
-    return diplomaDoAto({ tipo: tipoDe(m[1]), numero: m[2].replace(/\D/g, ""), ano: anoCompleto(m[3] || m[4]) });
+    const tipo = tipoDe(m[1]), numero = m[2].replace(/\D/g, ""), ano = anoCompleto(m[3] || m[4]);
+    if (tipo === "lei" && numeroImpossivelFederal(Number(numero), ano)) { if (locais.size < 6) locais.add(`${m[0].replace(/\s+/g, " ").trim()} (provável lei estadual ou municipal: esse número não existe entre as leis federais)`.slice(0, 160)); return null; }
+    return diplomaDoAto({ tipo, numero, ano });
   };
   let lm: RegExpExecArray | null;
   const rl = new RegExp(LOCAL_RE.source, "gi"); while ((lm = rl.exec(t)) && locais.size < 6) locais.add(lm[0].replace(/\s+/g, " ").trim().slice(0, 110));
@@ -177,6 +181,12 @@ export function trechoDoArtigo(linhas: string[], artigo: string, limite = 2200):
 export type LeitorLocal = (chave: string) => Promise<{ linhas: string[]; salvoEm: number } | null>;
 let leitorLocal: LeitorLocal | null = null;
 export const definirLeitorLocal = (f: LeitorLocal | null) => { leitorLocal = f; };
+// Leis estaduais, municipais e outras que o Super Admin enviou: consultadas na base do gabinete, nunca no Planalto. Quem liga o provedor é o server.ts (este arquivo não conhece o banco).
+export interface ConsultaOutrasLeis { bloco: string; conferidos: string[]; naoAchados: string[]; cobre: (local: string) => boolean }
+export type ProvedorOutrasLeis = (textos: string[]) => Promise<ConsultaOutrasLeis | null>;
+let provedorOutrasLeis: ProvedorOutrasLeis | null = null;
+export const definirProvedorOutrasLeis = (f: ProvedorOutrasLeis | null) => { provedorOutrasLeis = f; };
+const motivoDoDiploma = new Map<string, "acesso" | "nao_localizada">();      // lei fora da lista conhecida que não veio: o site não abriu, ou abriu e a lei não existe lá
 const copiasLocais = new Map<string, number>();      // diploma -> data em que a cópia foi salva
 export const chaveDoDiploma = (d: { url: string }) => (d.url.split("/").pop() || "").replace(/\.[a-z]+$/i, "").toLowerCase();
 
@@ -234,13 +244,14 @@ async function linhasDoDiploma(d: Diploma, timeoutMs: number): Promise<string[] 
     console.warn(`[Legislação] ${d.id}: não consegui consultar o Planalto.`); return null;
   }
   // lei qualquer: tenta os endereços prováveis, 4 de cada vez, dentro do orçamento de tempo, e só aceita a página cujo cabeçalho é mesmo a lei pedida
-  const cand = candidatosDoAto(d.ref), cab = cabecalhoDoAto(d.ref), limite = Date.now() + Math.max(timeoutMs, 6000);
+  const cand = candidatosDoAto(d.ref), cab = cabecalhoDoAto(d.ref), limite = Date.now() + Math.max(timeoutMs, 6000), tentadas: string[] = [];
   for (let i = 0; i < cand.length && Date.now() < limite; i += 4) {
+    tentadas.push(...cand.slice(i, i + 4));
     const lote = await Promise.all(cand.slice(i, i + 4).map(async (u) => { const l = await baixarLinhas(u, 5000); return l && cab.test(l.slice(0, 60).join(" ")) ? { l, u } : null; }));
     const ok = lote.find(Boolean);
     if (ok) { guardar(d.id, ok.l, ok.u); console.log(`[Legislação] ${d.nome}: localizada em ${ok.u}`); return ok.l; }
   }
-  negativos.set(d.id, Date.now()); console.warn(`[Legislação] ${d.nome}: não localizei no Planalto (${cand.length} endereços tentados).`); return null;
+  negativos.set(d.id, Date.now()); motivoDoDiploma.set(d.id, tentadas.some((u) => !motivoFalha.has(u)) ? "nao_localizada" : "acesso"); console.warn(`[Legislação] ${d.nome}: não localizei no Planalto (${cand.length} endereços tentados).`); return null;
 }
 
 export interface ResultadoLegislacao { bloco: string; consultados: number; naoAchados: string[]; falhas: string[]; locais: string[]; conferidos: string[] }
@@ -256,8 +267,10 @@ export async function consultarLegislacao(textos: string[], opts: { maxArtigos?:
     }
     // no máximo 4 leis fora da lista conhecida por análise (cada uma exige procurar o endereço no Planalto)
     const novas = new Set<string>(); const lista = citacoes.filter((c) => { if (!c.diploma.ref) return true; if (novas.has(c.diploma.id)) return true; if (novas.size >= 4) return false; novas.add(c.diploma.id); return true; }).slice(0, opts.maxArtigos ?? 10);
-    const localTxt = locais.slice(0, 6);
-    if (!lista.length && !localTxt.length) return vazio;
+    let localTxt = locais.slice(0, 6);
+    let outras: ConsultaOutrasLeis | null = null;      // leis estaduais/municipais enviadas pelo Super Admin
+    if (provedorOutrasLeis) { try { outras = await provedorOutrasLeis(textos); } catch { outras = null; } if (outras) { const o = outras; localTxt = localTxt.filter((l) => !o.cobre(l)); } }
+    if (!lista.length && !localTxt.length && !outras?.bloco) return vazio;
     const diplomas = [...new Set(lista.map((c) => c.diploma))];
     const baixados = new Map<string, string[] | null>();
     await Promise.all(diplomas.map(async (d) => baixados.set(d.id, await linhasDoDiploma(d, opts.timeoutMs ?? 8000))));
@@ -265,7 +278,11 @@ export async function consultarLegislacao(textos: string[], opts: { maxArtigos?:
     const curto = (n: string) => n.replace(/\s*\(.*\)\s*$/, "");
     for (const c of lista) {
       const base = baixados.get(c.diploma.id);
-      if (!base) { if (!falhas.includes(c.diploma.nome)) falhas.push(c.diploma.nome); continue; }
+      if (!base) {
+        if (motivoDoDiploma.get(c.diploma.id) === "nao_localizada") { const m = `${c.diploma.nome} (lei não encontrada no Planalto: pode ser lei estadual ou municipal, ou o número está incorreto)`; if (!naoAchados.includes(m)) naoAchados.push(m); }
+        else if (!falhas.includes(c.diploma.nome)) falhas.push(c.diploma.nome);
+        continue;
+      }
       const tr = trechoDoArtigo(base, c.artigo);
       if (!tr) { naoAchados.push(`${c.diploma.nome}, art. ${c.artigo}`); continue; }
       conferidos.push(`${curto(c.diploma.nome)}, art. ${c.artigo}${tr.revogado ? " (REVOGADO)" : ""}`);
@@ -282,8 +299,9 @@ export async function consultarLegislacao(textos: string[], opts: { maxArtigos?:
     if (localTxt.length) bloco += `\n\n[LEIS MUNICIPAIS/ESTADUAIS CITADAS — TEXTO NÃO CONSULTADO]: ${localTxt.join("; ")}.\nDIRETRIZ: o sistema não consulta leis locais. Aplique apenas o conteúdo que os autos ou a base de conhecimento do gabinete reproduzirem; não invente o teor, o número de artigo nem a vigência dessas leis e registre na fundamentação, quando necessário, que o texto da lei local não foi conferido.\n`;
     const copias = diplomas.filter((d) => copiasLocais.has(d.id) && lista.some((c) => c.diploma.id === d.id && baixados.get(d.id)));
     if (bloco && copias.length) bloco += `\nOBSERVAÇÃO: o site do Planalto não respondeu; ${copias.map((d) => `${d.nome} veio de cópia salva pelo gabinete em ${new Date(copiasLocais.get(d.id) as number).toLocaleDateString("pt-BR")}`).join("; ")}. Essa cópia pode não refletir alterações posteriores: na dúvida sobre a vigência, sinalize a conferência.\n`;
+    if (outras) { bloco += outras.bloco; conferidos.push(...outras.conferidos); naoAchados.push(...outras.naoAchados); }
     if (!bloco) return { ...vazio, falhas };
-    return { bloco, consultados: linhas.length, naoAchados, falhas, locais: localTxt, conferidos };
+    return { bloco, consultados: linhas.length + (outras?.conferidos.length || 0), naoAchados, falhas, locais: localTxt, conferidos };
   } catch (e) { console.warn("[Legislação] falha inesperada na consulta; segue sem o bloco:", e); return vazio; }
 }
 
@@ -339,7 +357,11 @@ export async function pesquisarLegislacao(consulta: string, contexto: string, op
     await Promise.all([...new Set(lista.map((x) => x.c.diploma))].map(async (d) => baixados.set(d.id, await linhasDoDiploma(d, opts.timeoutMs ?? 8000))));
     for (const { c, origem } of lista) {
       const l = baixados.get(c.diploma.id);
-      if (!l) { const m = `${c.diploma.nome}`; if (!out.falhas.includes(m)) out.falhas.push(m); continue; }
+      if (!l) {
+        if (motivoDoDiploma.get(c.diploma.id) === "nao_localizada") { const m = `${c.diploma.nome} (lei não encontrada no Planalto: pode ser lei estadual ou municipal, ou o número está incorreto)`; if (!out.naoAchados.includes(m)) out.naoAchados.push(m); }
+        else if (!out.falhas.includes(c.diploma.nome)) out.falhas.push(c.diploma.nome);
+        continue;
+      }
       const tr = trechoDoArtigo(l, c.artigo, 1600);
       if (!tr) { out.naoAchados.push(`${c.diploma.nome}, art. ${c.artigo}`); continue; }
       out.itens.push({ diploma: c.diploma.nome, artigo: c.artigo, texto: tr.texto, revogado: tr.revogado, origem, url: cache.get(c.diploma.id)?.url });

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getApiHeaders } from "../utils/apiKeyManager";
+import { OutrasLeisTab } from "./OutrasLeisTab";
 
 interface Resultado { id: string; grupo: string; nome: string; url: string; status: number; urlFinal?: string; tipo?: string; bytes?: number; ms?: number; amostra?: string; linhas?: number; erro?: string; bloqueio?: string; leitura?: { artigos: number; revogados: number; vetados: number } }
 interface Lei { id: string; nome: string; url: string; baixadoEm?: number; total?: number; revogados?: number; vetados?: number; erro?: string }
@@ -12,7 +13,7 @@ const btn = "px-3 py-1.5 rounded-full text-xs font-bold cursor-pointer disabled:
 
 /** Só Super Admin: central das fontes oficiais. Envio de várias leis salvas do Planalto de uma vez (arrastando ou escolhendo), andamento das 29 leis, envio por lei e testes de acesso. */
 export const FontesOficiaisPanel: React.FC = () => {
-  const [aberto, setAberto] = useState(false), [aba, setAba] = useState<"leis" | "testes">("leis"), [erro, setErro] = useState("");
+  const [aberto, setAberto] = useState(false), [aba, setAba] = useState<"leis" | "outras" | "testes">("leis"), [erro, setErro] = useState("");
   const [leis, setLeis] = useState<Lei[] | null>(null), [atualizando, setAtualizando] = useState<string | null>(null), [lote, setLote] = useState<{ feitas: number; total: number } | null>(null);
   const [envios, setEnvios] = useState<ItemEnvio[]>([]), [arrastando, setArrastando] = useState(false);
   const [filtro, setFiltro] = useState<"todas" | "pendentes" | "prontas" | "erro">("todas"), [busca, setBusca] = useState("");
@@ -95,7 +96,7 @@ export const FontesOficiaisPanel: React.FC = () => {
   };
 
   const pct = contagem.total ? Math.round((contagem.prontas / contagem.total) * 100) : 0;
-  const aba_ = (id: "leis" | "testes", rotulo: string) => (
+  const aba_ = (id: "leis" | "outras" | "testes", rotulo: string) => (
     <button onClick={() => setAba(id)} className={`px-4 py-2 text-xs font-bold border-b-2 cursor-pointer ${aba === id ? "border-[#673de6] text-[#673de6]" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{rotulo}</button>
   );
 
@@ -124,7 +125,7 @@ export const FontesOficiaisPanel: React.FC = () => {
                 <div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-[#673de6] transition-all" style={{ width: `${pct}%` }} /></div>
                 <span className="text-xs font-bold whitespace-nowrap">{contagem.prontas} de {contagem.total} leis prontas</span>
               </div>
-              <div className="flex">{aba_("leis", "Leis do Planalto")}{aba_("testes", "Testes de acesso")}</div>
+              <div className="flex">{aba_("leis", "Leis do Planalto")}{aba_("outras", "Outras leis (estaduais e municipais)")}{aba_("testes", "Testes de acesso")}</div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-xs text-slate-700">
@@ -193,6 +194,8 @@ export const FontesOficiaisPanel: React.FC = () => {
                 )}
                 <p className="text-[11px] text-slate-500">O sistema guarda a lista de artigos revogados e vetados de cada lei (poucos KB) e uma cópia compactada do texto (cerca de 100 KB por lei) que serve de reserva quando o Planalto não responde na hora da minuta.</p>
               </>)}
+
+              {aba === "outras" && <OutrasLeisTab />}
 
               {aba === "testes" && (<>
                 <div className="space-y-1.5">

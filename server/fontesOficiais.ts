@@ -206,7 +206,7 @@ export interface AlertaLegislacao { lei: string; artigo: string; tipo: "revogado
 const alvoDoTexto = (m: RegExpMatchArray | RegExpExecArray) => m.index ?? 0;
 
 /** Números de artigo citados logo antes de uma menção à lei ("arts. 85, § 2º, e 98 do CPC" → 85, 98). */
-function artigosAntes(texto: string, pos: number): string[] {
+export function artigosAntes(texto: string, pos: number): string[] {
   const janela = texto.slice(Math.max(0, pos - 160), pos);
   const ult = Math.max(janela.toLowerCase().lastIndexOf("art."), janela.toLowerCase().lastIndexOf("arts."), janela.toLowerCase().lastIndexOf("artigo"));
   if (ult < 0) return [];
