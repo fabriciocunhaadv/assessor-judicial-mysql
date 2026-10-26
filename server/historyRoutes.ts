@@ -48,6 +48,15 @@ const autenticar = async (req: express.Request): Promise<Usuario> => {
 const condicaoMeus = (u: Usuario) => ({ sql: `(created_by IN (${u.ids.map(() => "?").join(",")}) OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(data,'$.creatorEmail')))=?)`, args: [...u.ids, String(u.email || "").toLowerCase()] });
 
 // ---------- regras ----------
+/** Filtro por autor: `criador` pode trazer vários ids separados por vírgula e `email` o e-mail de autor; vale quem tiver qualquer um deles (a mesma pessoa pode ter ids diferentes, o e-mail do login é o que a identifica). */
+const condicaoAutor = (criador: string, email: string, u: Usuario) => {
+  if (!criador && !email) return null;
+  if (criador === u.uid && !email) return condicaoMeus(u);
+  const ids = criador.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 50), partes: string[] = [], args: any[] = [];
+  if (ids.length) { partes.push(`created_by IN (${ids.map(() => "?").join(",")})`); args.push(...ids); }
+  if (email) { partes.push("LOWER(JSON_UNQUOTE(JSON_EXTRACT(data,'$.creatorEmail')))=?"); args.push(email.toLowerCase().trim()); }
+  return { sql: `(${partes.join(" OR ")})`, args };
+};
 const ehDono = (u: Usuario, createdBy?: string | null) => u.superAdmin || !createdBy || createdBy === "anonymous" || u.ids.includes(createdBy);
 const unidadeDe = (req: express.Request) => String(req.query.unit || "montes_claros");
 const agora = () => Date.now();
@@ -102,7 +111,7 @@ historyRouter.get("/", rota(async (req, res, u) => {
   const antes = Number(req.query.antes) || 0;
   const tabela = completo ? "history" : "history_index";
   const onde = ["tenant=?", "unit_id=?"], args: any[] = [u.tenant, unit];
-  if (criador) { if (criador === u.uid) { const c = condicaoMeus(u); onde.push(c.sql); args.push(...c.args); } else { onde.push("created_by=?"); args.push(criador); } }
+  { const c = condicaoAutor(criador, String(req.query.email || ""), u); if (c) { onde.push(c.sql); args.push(...c.args); } }
   if (numeros.length) { onde.push(`numero_limpo IN (${numeros.map(() => "?").join(",")})`); args.push(...numeros); }
   if (antes) { onde.push("date<?"); args.push(antes); }
   const [rows] = await banco().query<any[]>(`SELECT id, data FROM ${tabela} WHERE ${onde.join(" AND ")} ORDER BY date DESC LIMIT ?`, [...args, limite + 1]);
@@ -113,8 +122,8 @@ historyRouter.get("/", rota(async (req, res, u) => {
 /** Assinatura barata da lista (quantidade + última alteração): o navegador só baixa a lista de novo quando ela muda. */
 historyRouter.get("/assinatura", rota(async (req, res, u) => {
   const criador = String(req.query.criador || "");
-  const c = criador === u.uid ? condicaoMeus(u) : null;      // "minhas": ids do usuário (inclusive os antigos) ou o mesmo e-mail de autor
-  const [rows] = await banco().query<any[]>(`SELECT COUNT(*) n, COALESCE(MAX(atualizado_em),0) ultima FROM history_index WHERE tenant=? AND unit_id=?${criador ? (c ? ` AND ${c.sql}` : " AND created_by=?") : ""}`, criador ? [u.tenant, unidadeDe(req), ...(c ? c.args : [criador])] : [u.tenant, unidadeDe(req)]);
+  const c = condicaoAutor(criador, String(req.query.email || ""), u);      // "minhas": ids do usuário (inclusive os antigos) ou o mesmo e-mail de autor
+  const [rows] = await banco().query<any[]>(`SELECT COUNT(*) n, COALESCE(MAX(atualizado_em),0) ultima FROM history_index WHERE tenant=? AND unit_id=?${c ? ` AND ${c.sql}` : ""}`, [u.tenant, unidadeDe(req), ...(c ? c.args : [])]);
   res.json({ n: Number(rows[0].n), ultima: Number(rows[0].ultima) });
 }));
 

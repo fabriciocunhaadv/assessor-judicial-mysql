@@ -120,6 +120,13 @@ const getSafeUnitText = (val: any): string => {
   return String(val).trim();
 };
 
+/** Quem é o autor da minuta: o e-mail do login (minúsculo); sem e-mail, o id do autor; sem nenhum dos dois, "__sem__". */
+const chaveAutor = (it: any): string => {
+  const email = String(it?.creatorEmail || "").toLowerCase().trim();
+  if (email) return email;
+  return it?.createdBy && it.createdBy !== "anonymous" ? String(it.createdBy) : "__sem__";
+};
+
 export const HistoryModal: React.FC<HistoryModalProps> = ({
   isOpen,
   onClose,
@@ -141,8 +148,13 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const [usuarioFiltro, setUsuarioFiltro] = useState<string>("todos");
   const LOTE_GABINETE = 40;      // a lista do gabinete traz só os 40 resumos mais recentes; "Ver mais" busca outros 40
   const [limiteGabinete, setLimiteGabinete] = useState(LOTE_GABINETE);
-  const [autoresVistos, setAutoresVistos] = useState<Map<string, { id: string; nome: string }>>(new Map());
+  // autores do Gabinete identificados pelo E-MAIL do login (o nome varia e a mesma pessoa pode ter ids diferentes); sem e-mail na minuta, vale o id
+  const [autoresVistos, setAutoresVistos] = useState<Map<string, { id: string; nome: string; email: string; ids: string[] }>>(new Map());
   const [viewMode, setViewMode] = useState<"dossiers" | "flat">("dossiers");
+  // seleção em lote: ids dos dossiês (visão Dossiês) ou dos atos (visão Atos) marcados para apagar
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [apagandoLote, setApagandoLote] = useState<{ feitos: number; total: number } | null>(null);
   const [lancFilter, setLancFilter] = useState<"todos" | "pendentes" | "lancados">("pendentes");      // o que interessa no dia a dia: o que ainda falta lançar
   const [recemMarcados, setRecemMarcados] = useState<Set<string>>(new Set()); // atos que acabei de marcar: ficam à vista até trocar o filtro, para não "sumirem" na hora do clique
   const [isLoading, setIsLoading] = useState(false);
@@ -170,6 +182,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, actFilter, categoryFilter, scopeFilter, viewMode, usuarioFiltro]);
+
+  useEffect(() => { setModoSelecao(false); setSelecionados(new Set()); }, [viewMode, isOpen, scopeFilter]);      // a seleção em lote não atravessa troca de visão nem fechar a janela
 
   const currentUid = auth.currentUser?.uid;
 
@@ -200,7 +214,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     setIsLoading(true);
     const opcoes: OpcoesListaHistorico =
       scopeFilter === "meus" ? { criador: currentUid || "sem-login" }
-      : usuarioFiltro !== "todos" && usuarioFiltro !== "__sem__" ? { criador: usuarioFiltro }
+      : usuarioFiltro !== "todos" && usuarioFiltro !== "__sem__" ? ((a) => (a ? { criadores: a.ids, emailCriador: a.email || undefined } : { criador: usuarioFiltro }))(autoresVistos.get(usuarioFiltro))
       : { limite: limiteGabinete };
     return assinarHistorico((lista) => { setHistory(lista); setIsLoading(false); }, opcoes);
   }, [isOpen, activeUnit?.id, scopeFilter, usuarioFiltro, limiteGabinete, currentUid]);
@@ -212,9 +226,13 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
       let mudou = false; const m = new Map(prev);
       for (const it of history) {
         if (!it?.id) continue;
-        const id = it.createdBy && it.createdBy !== "anonymous" ? it.createdBy : "__sem__";
-        const nome = id === "__sem__" ? "Sem autor registrado" : (it.creatorName || it.creatorEmail?.split("@")[0] || "Usuário");
-        if (!m.has(id)) { m.set(id, { id, nome }); mudou = true; }
+        const idAto = it.createdBy && it.createdBy !== "anonymous" ? it.createdBy : "";
+        const email = String(it.creatorEmail || "").toLowerCase().trim();
+        const id = chaveAutor(it);
+        const nome = id === "__sem__" ? "Sem autor registrado" : (it.creatorName || email.split("@")[0] || "Usuário");
+        const atual = m.get(id);
+        if (!atual) { m.set(id, { id, nome, email, ids: idAto ? [idAto] : [] }); mudou = true; }
+        else if (idAto && !atual.ids.includes(idAto)) { m.set(id, { ...atual, ids: [...atual.ids, idAto] }); mudou = true; }
       }
       return mudou ? m : prev;
     });
@@ -338,6 +356,41 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     setTimeout(() => setFeedbackMessage(null), 4000);
   };
 
+  // ---------- apagar vários ou todos (só as minutas que o próprio usuário pode excluir; as de outros ficam) ----------
+  const alternarSelecao = (chave: string) => setSelecionados((s) => { const n = new Set(s); if (n.has(chave)) n.delete(chave); else n.add(chave); return n; });
+  const sairDaSelecao = () => { setModoSelecao(false); setSelecionados(new Set()); };
+  const apagarEmLote = async (escopo: "selecionados" | "todos") => {
+    const dossies = viewMode === "dossiers" ? processDossiers.filter((d) => escopo === "todos" || selecionados.has(d.id)) : [];
+    const atosEscolhidos = viewMode === "flat" ? filteredHistory.filter((a) => escopo === "todos" || selecionados.has(a.id)) : [];
+    const todosOsAtos: SavedAnalysis[] = viewMode === "dossiers" ? dossies.flatMap((d) => d.analyses) : atosEscolhidos;
+    const meus = todosOsAtos.filter((a) => podeExcluirAto(a, currentUid));
+    const dosOutros = todosOsAtos.length - meus.length;
+    if (!meus.length) { showFeedback(todosOsAtos.length ? "As minutas escolhidas foram geradas por outros usuários: só quem gerou pode excluir." : "Nada selecionado."); return; }
+    const resumo = `${meus.length} minuta(s)${viewMode === "dossiers" ? ` em ${dossies.filter((d) => d.analyses.some((a) => podeExcluirAto(a, currentUid))).length} processo(s)` : ""}`;
+    const aviso = dosOutros ? `\n\n${dosOutros} minuta(s) de outros usuários NÃO serão apagadas.` : "";
+    if (escopo === "todos") {
+      const digitado = window.prompt(`Apagar TODAS as ${resumo} da lista atual (com os filtros aplicados)? Isso não pode ser desfeito.${aviso}\n\nPara confirmar, digite APAGAR:`);
+      if ((digitado || "").trim().toUpperCase() !== "APAGAR") return;
+    } else if (!window.confirm(`Apagar ${resumo}? Isso não pode ser desfeito.${aviso}`)) return;
+
+    const ids = new Set(meus.map((a) => a.id));
+    setHistory((prev) => prev.filter((it) => !ids.has(it.id)));      // some da lista na hora; se algo falhar, a lista é recarregada
+    setApagandoLote({ feitos: 0, total: meus.length });
+    let falhas = 0, feitos = 0;
+    for (let i = 0; i < meus.length; i += 4) {
+      await Promise.all(meus.slice(i, i + 4).map(async (a) => {
+        try { await deleteFromHistory(a.id); onDeleteAnalysis?.(a.id, a.processNumber || a.result?.minute?.processNumber); }
+        catch { falhas++; }
+        finally { feitos++; setApagandoLote({ feitos, total: meus.length }); }
+      }));
+    }
+    setApagandoLote(null);
+    if (activeTimelineDossier && activeTimelineDossier.analyses.every((a) => ids.has(a.id))) setActiveTimelineDossier(null);
+    sairDaSelecao();
+    showFeedback(falhas ? `${meus.length - falhas} minuta(s) apagada(s); ${falhas} não puderam ser apagadas (a lista foi atualizada).` : `${meus.length} minuta(s) apagada(s) com sucesso.${dosOutros ? ` ${dosOutros} de outros usuários permaneceram.` : ""}`);
+    if (falhas) loadHistory();
+  };
+
   const handleExport = async () => {
     if (history.length === 0) return;
     const completo = await getHistoryCompleto("hist_exportar");      // o backup precisa das minutas inteiras (a lista só tem o resumo)
@@ -411,8 +464,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
       // minhas = id atual, ids do sistema antigo vinculados pelo Super Admin ou o mesmo e-mail de autor
       if (currentUid && item.createdBy !== currentUid && !ehIdAntigoHistorico(item.createdBy) && !(perfilAuth?.email && String(item.creatorEmail || "").toLowerCase() === perfilAuth.email.toLowerCase())) return false;
     } else if (podeVerGabinete && usuarioFiltro !== "todos") {
-      const dono = item.createdBy && item.createdBy !== "anonymous" ? item.createdBy : "__sem__";
-      if (dono !== usuarioFiltro) return false;
+      if (chaveAutor(item) !== usuarioFiltro) return false;
     }
 
     if (categoryFilter !== "todos") {
@@ -528,7 +580,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
               <select value={usuarioFiltro} onChange={(e) => { setUsuarioFiltro(e.target.value); setCurrentPage(1); }} data-testid="filtro-usuario" title="Ver só as minutas de um usuário (busca só os resumos dele)"
                 className="shrink-0 max-w-[190px] bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-700 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-200">
                 <option value="todos">Todos os usuários</option>
-                {autoresDaLista.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                {autoresDaLista.map((a) => <option key={a.id} value={a.id}>{a.email ? `${a.nome} (${a.email})` : a.nome}</option>)}
               </select>
             )}
 
@@ -593,6 +645,24 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
         <BancoOrigem tabela="history" descricao="As minutas e dossiês desta lista são lidos desse banco e tudo o que você salva, marca como lançado ou exclui é gravado nele." />
         <AvisoRetencao />
 
+        {/* Selecionar e apagar vários */}
+        {filteredHistory.length > 0 && (
+          <div className="shrink-0 px-3 sm:px-4 py-1.5 border-b border-slate-200 bg-white flex flex-wrap items-center gap-2 text-[11px]" data-testid="barra-selecao">
+            {!modoSelecao ? (
+              <button onClick={() => setModoSelecao(true)} className="px-2.5 py-1 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer" title="Marcar vários processos ou atos para apagar de uma vez">Selecionar para apagar</button>
+            ) : (<>
+              <button onClick={() => { const todos = viewMode === "dossiers" ? processDossiers.map((d) => d.id) : filteredHistory.map((a) => a.id); setSelecionados(selecionados.size === todos.length ? new Set() : new Set(todos)); }} className="px-2.5 py-1 rounded-lg border border-indigo-300 text-indigo-800 bg-indigo-50 font-bold cursor-pointer">
+                {selecionados.size === (viewMode === "dossiers" ? processDossiers.length : filteredHistory.length) ? "Desmarcar todos" : `Marcar todos (${viewMode === "dossiers" ? processDossiers.length : filteredHistory.length})`}
+              </button>
+              <span className="font-semibold text-slate-600">{selecionados.size} {viewMode === "dossiers" ? "processo(s)" : "ato(s)"} marcado(s)</span>
+              <button disabled={!selecionados.size || !!apagandoLote} onClick={() => void apagarEmLote("selecionados")} className="px-2.5 py-1 rounded-lg bg-red-600 text-white font-bold disabled:opacity-40 cursor-pointer">Apagar selecionados</button>
+              <button disabled={!!apagandoLote} onClick={() => void apagarEmLote("todos")} className="px-2.5 py-1 rounded-lg border border-red-300 text-red-700 font-bold hover:bg-red-50 disabled:opacity-40 cursor-pointer" title="Apaga tudo o que aparece na lista atual (respeita busca e filtros); só as suas minutas">Apagar todos da lista</button>
+              <button disabled={!!apagandoLote} onClick={sairDaSelecao} className="px-2 py-1 text-slate-500 underline cursor-pointer">Cancelar</button>
+              {apagandoLote && <span className="font-bold text-red-700">Apagando {apagandoLote.feitos} de {apagandoLote.total}...</span>}
+            </>)}
+          </div>
+        )}
+
         {/* List Content */}
         <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 bg-slate-50/70">
           
@@ -646,6 +716,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                   >
                     {/* Linha 1: número, vara, atos, partes, data e excluir */}
                     <div className="flex items-center gap-1.5 flex-wrap">
+                      {modoSelecao && <input type="checkbox" className="w-4 h-4 cursor-pointer accent-indigo-600" checked={selecionados.has(dossier.id)} onChange={() => alternarSelecao(dossier.id)} aria-label={`Marcar o processo ${dossier.processNumber}`} data-testid="marcar-dossie" />}
                       <div className="flex items-center gap-1 font-mono text-[11px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-900 px-1.5 py-0.5 rounded-md">
                         <Hash className="w-3 h-3 text-indigo-600 shrink-0" />
                         <span className="truncate max-w-[170px]">{dossier.processNumber}</span>
@@ -739,10 +810,12 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                   <div
                     key={item.id}
                     onClick={async () => {
+                      if (modoSelecao) { alternarSelecao(item.id); return; }      // em modo de seleção o clique marca em vez de abrir
                       if (await abrirAto(item)) onClose();
                     }}
-                    className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-indigo-300 hover:shadow-md transition cursor-pointer group flex flex-col justify-between space-y-3"
+                    className={`relative bg-white p-4 rounded-2xl border shadow-2xs hover:border-indigo-300 hover:shadow-md transition cursor-pointer group flex flex-col justify-between space-y-3 ${modoSelecao && selecionados.has(item.id) ? "border-indigo-400 ring-2 ring-indigo-200" : "border-slate-200"}`}
                   >
+                    {modoSelecao && <input type="checkbox" className="absolute top-2 left-2 w-4 h-4 cursor-pointer accent-indigo-600" checked={selecionados.has(item.id)} onChange={() => alternarSelecao(item.id)} onClick={(e) => e.stopPropagation()} aria-label="Marcar este ato" data-testid="marcar-ato" />}
                     <div>
                       <div className="flex items-start justify-between gap-2 mb-1.5">
                         <div className="flex items-center gap-1.5 flex-wrap">
