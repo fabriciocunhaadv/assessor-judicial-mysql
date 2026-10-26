@@ -2646,7 +2646,7 @@ ${reAuditNotes}`
               )}
               {auditResult.scoreCalculo && (
                 <div data-testid="nota-por-regra" className="text-[11px] text-slate-400 leading-relaxed">
-                  <strong className="text-slate-300">Nota calculada por regra:</strong> {auditResult.scoreCalculo.regra.join(" ")}
+                  <strong className="text-slate-300">Como a nota foi dada:</strong> {auditResult.scoreCalculo.regra.join(" ")}
                   {typeof auditResult.apontamentosDescartados === "number" && auditResult.apontamentosDescartados > 0 && <> {auditResult.apontamentosDescartados} apontamento(s) da IA foram descartados por não trazerem prova literal.</>}
                 </div>
               )}

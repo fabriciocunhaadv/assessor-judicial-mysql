@@ -328,10 +328,13 @@ export const TripleConferenceBench: React.FC<TripleConferenceBenchProps> = ({
                   {auditResult.summary && <p className="text-[12px] text-slate-100 leading-relaxed">{auditResult.summary}</p>}
                   {(auditResult.criticalAlerts || []).length > 0 && (
                     <ul className="space-y-1.5">
-                      {auditResult.criticalAlerts.slice(0, 8).map((al, i) => (
+                      {auditResult.criticalAlerts.slice(0, 20).map((al, i) => (
                         <li key={i} className="pl-2.5 border-l-2 border-amber-500/70">
                           <span className="font-bold text-white">{al.title}</span>
-                          {al.severity && <span className="ml-1.5 text-[9px] uppercase tracking-wider text-amber-300">{al.severity}</span>}
+                          {al.severity && <span className="ml-1.5 text-[9px] uppercase tracking-wider text-amber-300">{al.severity === "informativo" ? "a conferir" : al.severity}</span>}
+                          {al.description && <p className="text-[11px] text-slate-200 mt-0.5">{al.description}</p>}
+                          {(al.location || al.autosTrecho) && <p className="text-[10px] text-slate-400 mt-0.5">{al.location ? <><strong className="text-slate-300">Onde:</strong> {al.location}. </> : null}{al.autosTrecho ? <><strong className="text-slate-300">Nos autos:</strong> {al.autosTrecho}</> : null}</p>}
+                          {(al.suggestedFix || al.recommendation) && <p className="text-[10px] text-amber-200/90 mt-0.5"><strong>O que fazer:</strong> {al.suggestedFix || al.recommendation}</p>}
                         </li>
                       ))}
                     </ul>
@@ -368,7 +371,7 @@ export const TripleConferenceBench: React.FC<TripleConferenceBenchProps> = ({
             <div className="px-3.5 py-2 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400 shrink-0">
               <span className="flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                <span>Nota calculada por regra, só com prova nos autos</span>
+                <span>Nota dada pela análise da IA; observações com local e pedido de atenção</span>
               </span>
               <span className="font-mono text-slate-300">
                 {systemGeneratedMinute.length.toLocaleString()} caracteres
