@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { ChavesDoUsuarioModal } from "./ChavesDoUsuarioModal";
 import { 
   X, 
   Users, 
@@ -73,6 +74,7 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ isOpen, onCl
   const [pendingInvites, setPendingInvites] = useState<{email: string, tenantId: string, invitedAt: number}[]>([]);
   const [loading, setLoading] = useState(true);
   const [keysOpenUid, setKeysOpenUid] = useState<string | null>(null);
+  const [chavesDoUsuario, setChavesDoUsuario] = useState<any | null>(null);      // Super Admin gerencia as chaves de IA de um membro
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [inviteFeedback, setInviteFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -952,6 +954,14 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ isOpen, onCl
                           </div>
                         ) : null}
 
+                        {isSuperAdmin && !(u as any).superAdmin && (
+                          <div className="w-full mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+                            <button type="button" onClick={() => setChavesDoUsuario(u)} className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 cursor-pointer" title="Cadastrar, alterar ou remover as chaves de IA deste usuário">
+                              Gerenciar chaves de IA
+                            </button>
+                          </div>
+                        )}
+
                         {/* Units Assignment section */}
                         <div className="w-full mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
                           <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-2 block uppercase tracking-wider">
@@ -1512,8 +1522,9 @@ export const UserManagerModal: React.FC<UserManagerModalProps> = ({ isOpen, onCl
         </div>
       )}
 
+      {chavesDoUsuario && (
+        <ChavesDoUsuarioModal usuario={chavesDoUsuario} onClose={() => setChavesDoUsuario(null)} onSalvo={() => { void loadUsers(); }} />
+      )}
     </div>
   );
 };
-
-

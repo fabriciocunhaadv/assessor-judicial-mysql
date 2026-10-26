@@ -70,6 +70,7 @@ import { MonitorOperacaoPanel } from './MonitorOperacaoPanel';
 import { db } from '../lib/firebase';
 import { linkDeAcesso } from '../utils/linkAcesso';
 import { ChavesResumo } from './ChavesResumo';
+import { ChavesDoUsuarioModal } from './ChavesDoUsuarioModal';
 import { chamarAuth } from '../lib/sessao';
 import { 
   getAllTenantsWithMetrics, 
@@ -248,6 +249,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
 
   // Global Users State
   const [globalUsers, setGlobalUsers] = useState<UserProfile[]>([]);
+  const [chavesDoUsuario, setChavesDoUsuario] = useState<UserProfile | null>(null);      // Super Admin gerencia as chaves de IA de outro usuário
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'admin' | 'judge' | 'user' | 'inactive'>('all');
@@ -2460,6 +2462,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                               Mudar Gabinete
                             </button>
                             <button
+                              onClick={() => setChavesDoUsuario(u)}
+                              className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                            >
+                              Chaves
+                            </button>
+                            <button
                               onClick={() => handleRenameUser(u)}
                               className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
                             >
@@ -2623,6 +2631,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                                       Mudar Gabinete
                                     </button>
 
+                                    <button
+                                      onClick={() => setChavesDoUsuario(u)}
+                                      title="Cadastrar, alterar ou remover as chaves de IA deste usuário"
+                                      className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                                    >
+                                      Chaves
+                                    </button>
                                     <button
                                       onClick={() => handleRenameUser(u)}
                                       title="Alterar o nome de exibição deste usuário"
@@ -6235,6 +6250,10 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
             </div>
           </div>
         </div>
+      )}
+
+      {chavesDoUsuario && (
+        <ChavesDoUsuarioModal usuario={chavesDoUsuario} onClose={() => setChavesDoUsuario(null)} onSalvo={() => { void loadAllData(); }} />
       )}
 
     </div>
