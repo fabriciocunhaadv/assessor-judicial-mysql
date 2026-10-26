@@ -132,6 +132,12 @@ interface MinuteAuditorModalProps {
   }) => void;
 }
 
+/** Auditorias salvas antes da correção da nota não guardaram os pontos da IA sem prova literal. Quando a nota é alta mas o resumo fala em problema grave, avisa para conferir. */
+const RESUMO_GRAVE = /diverg|falhas? graves?|grave|contradi|nulidade|estranh|alheio|incorret|cerceament|distor[çc]/i;
+const avisoNotaAntiga = (r: { score?: number; summary?: string }, a: AssessorDraftAuditResult | undefined): "forte" | "leve" | null => {
+  if (!a || a.apontamentosNaoConfirmados !== undefined) return null;
+  return (r.score ?? 0) >= 90 && RESUMO_GRAVE.test(String(a.summary || "")) ? "forte" : "leve";
+};
 export const MinuteAuditorModal: React.FC<MinuteAuditorModalProps> = ({
   isOpen,
   onClose,
@@ -2556,6 +2562,7 @@ ${reAuditNotes}`
                                         </span>
 
                                         {getStatusBadge(rec.status)}
+                                        {avisoNotaAntiga(rec, rec.auditResult) === "forte" && <span data-testid="aviso-nota-antiga" title="Auditoria feita antes da correção da nota: o resumo fala em problema grave, mas a nota ficou alta. Confira ou refaça." className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase border bg-rose-500/15 text-rose-300 border-rose-500/40">⚠ nota pode estar errada</span>}
 
                                         <span className="text-[11px] text-slate-400 flex items-center gap-1 ml-auto md:ml-0">
                                           <Clock className="w-3 h-3 text-slate-500" />
@@ -2649,6 +2656,11 @@ ${reAuditNotes}`
                 </div>
               )}
 
+              {avisoNotaAntiga(auditResult, auditResult) && (
+                <div data-testid="aviso-auditoria-antiga" className={`p-3 rounded-xl border text-xs ${avisoNotaAntiga(auditResult, auditResult) === "forte" ? "border-rose-500/50 bg-rose-950/40 text-rose-100" : "border-slate-600 bg-slate-900/60 text-slate-300"}`}>
+                  <strong>Auditoria feita antes da correção da nota.</strong> {avisoNotaAntiga(auditResult, auditResult) === "forte" ? "O resumo abaixo fala em problema grave, mas a nota ficou alta: não confie nela. Confira os autos ou refaça a auditoria." : "Os pontos que a IA não conseguiu provar por citação não foram guardados nesta versão. Se a decisão for importante, refaça a auditoria."}
+                </div>
+              )}
               {Boolean(auditResult.apontamentosNaoConfirmados?.length) && (
                 <div data-testid="nao-confirmados" className="p-3 rounded-xl border border-amber-500/50 bg-amber-950/40 text-amber-100 text-xs space-y-1.5">
                   <strong>A IA levantou {auditResult.apontamentosNaoConfirmados!.length} ponto(s) que não deu para provar por citação literal.</strong> Não entram na nota, mas vale conferir nos autos antes de aprovar:
