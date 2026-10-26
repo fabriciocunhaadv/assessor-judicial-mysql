@@ -865,8 +865,8 @@ ${specificInstructions}`
         try {
           const errText = await response.text();
           const errData = JSON.parse(errText);
-          if (errData?.error) errStr = errData.error;
-        } catch {}
+          if (errData?.error || errData?.erro) errStr = errData.error || errData.erro;
+        } catch { errStr = `Falha na requisição de auditoria (erro ${response.status}${response.status === 413 ? ": o conteúdo enviado é grande demais" : [502, 503, 504].includes(response.status) ? ": o servidor demorou a responder; tente de novo" : ""}).`; }
         throw new Error(errStr);
       }
 
