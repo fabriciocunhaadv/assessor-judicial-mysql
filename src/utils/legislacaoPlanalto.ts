@@ -157,7 +157,8 @@ function limparHtml(html: string, manterQuebrasDoArquivo: boolean): string[] {
 }
 export function htmlParaLinhas(html: string): string[] {
   const l = limparHtml(html, false);
-  return l.length >= 20 ? l : limparHtml(html, true);      // página sem marcas de parágrafo: usa as quebras do próprio arquivo
+  const base = l.length >= 20 ? l : limparHtml(html, true);      // página sem marcas de parágrafo: usa as quebras do próprio arquivo
+  return base.flatMap((x) => (x.length > 1500 ? x.split(/(?<=[.;:)\]])\s+(?=Art\.?\s*\d{1,4}(?:\.\d{3})?\s*(?:[º°o]|\.|-|\s))/) : [x]));      // vários artigos colados numa linha só
 }
 
 export interface TextoArtigo { texto: string; revogado: boolean }

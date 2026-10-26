@@ -4,7 +4,7 @@ import express from "express";
 import { gzipSync, gunzipSync } from "zlib";
 import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
-import { artigosAntes } from "./fontesOficiais";
+import { artigosAntes, LEIS, importarArquivoLei, processarHtmlLei } from "./fontesOficiais";
 import { htmlParaLinhas, decodificarPagina, trechoDoArtigo, ConsultaOutrasLeis } from "../src/utils/legislacaoPlanalto";
 
 const COL = "legislacao_outras";
@@ -51,7 +51,9 @@ async function carregar(): Promise<OutraLei[]> {
   cache = { ate: Date.now() + 60_000, itens };
   return itens;
 }
-export async function listarOutrasLeis(): Promise<Omit<OutraLei, "gz">[]> { return (await carregar()).map(({ gz, ...r }) => r).sort((a, b) => b.salvoEm - a.salvoEm); }
+/** A lei enviada é uma das leis federais da lista do Planalto (ex.: DPVAT, Lei 14.905/2024)? Então o lugar certo dela é a lista do Planalto, onde também vale como cópia de reserva. */
+export const leiDoCatalogo = (l: { esfera: string; tipo: string; numero: string; ano: number }) => (l.esfera === "estadual" || l.esfera === "municipal") ? null : (LEIS.find((c) => c.aliases.slice(0, 6).some((re) => re.test(`${l.tipo === "lei" ? "Lei" : l.tipo} nº ${l.numero}/${l.ano}`))) || null);
+export async function listarOutrasLeis(): Promise<any[]> { return (await carregar()).map(({ gz, ...r }) => ({ ...r, noCatalogo: leiDoCatalogo(r) ? { id: leiDoCatalogo(r)!.id, nome: leiDoCatalogo(r)!.nome } : null })).sort((a, b) => b.salvoEm - a.salvoEm); }
 export async function gravarOutraLei(l: OutraLei): Promise<void> { await garantirDocs(); await banco().query("INSERT INTO docs (col,id,data,updated_at) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE data=VALUES(data), updated_at=VALUES(updated_at)", [COL, l.id, JSON.stringify(l), Date.now()]); cache = null; }
 export async function apagarOutraLei(id: string): Promise<void> { await garantirDocs(); await banco().query("DELETE FROM docs WHERE col=? AND id=?", [COL, id]); cache = null; }
 
@@ -126,6 +128,12 @@ outrasLeisRouter.post("/", corpoBruto, async (req: any, res) => {
     if (!esfera || !numero || !(ano >= 1900 && ano <= 2100)) return void res.status(400).json({ erro: "informe a esfera, o número e o ano da lei" });
     if ((esfera === "estadual" || esfera === "municipal") && !ente) return void res.status(400).json({ erro: esfera === "estadual" ? "informe o estado (ex.: Goiás)" : "informe o município (ex.: Goiânia)" });
     if (!Buffer.isBuffer(req.body) || req.body.length < 100) return void res.status(400).json({ erro: "arquivo vazio ou pequeno demais" });
+    // lei federal que já está na lista do Planalto: vai para lá (mesma leitura, cópia de reserva e contagem "N de 29 prontas")
+    const cat = leiDoCatalogo({ esfera, tipo, numero, ano });
+    if (cat && String(req.headers["x-formato"] || "") !== "texto") {
+      const r = await importarArquivoLei(`${cat.url.split("/").pop()}`, req.body, cat.id);
+      if (!r.erro) return void res.json({ redirecionada: { id: cat.id, nome: cat.nome, artigos: r.total } });
+    }
     const linhas = linhasDoEnvio(req.body, String(req.headers["x-formato"] || ""));
     const artigos = contarArtigos(linhas);
     if (artigos < 1) return void res.status(400).json({ erro: "não reconheci nenhum artigo no arquivo (linhas começando com “Art. 1º”). Confira se é o texto da lei." });
@@ -137,5 +145,20 @@ outrasLeisRouter.post("/", corpoBruto, async (req: any, res) => {
     const { gz: _g, ...resumo } = lei;
     res.json({ lei: resumo });
   } catch (e: any) { res.status(500).json({ erro: e?.message || "falha ao gravar" }); }
+});
+/** Move uma lei já enviada aqui para a lista do Planalto (quando ela é uma das leis federais da lista). */
+outrasLeisRouter.post("/:id/promover", async (req: any, res) => {
+  if (!soSuper(req, res)) return;
+  try {
+    const lei = (await carregar()).find((l) => l.id === String(req.params.id));
+    if (!lei) return void res.status(404).json({ erro: "lei não encontrada" });
+    const cat = leiDoCatalogo(lei);
+    if (!cat) return void res.status(400).json({ erro: "esta lei não está na lista do Planalto" });
+    const linhas = lei.gz ? gunzipSync(Buffer.from(lei.gz, "base64")).toString("utf-8").split("\n") : [];
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const resumo = await processarHtmlLei(cat, `<html><body>${linhas.map((l) => `<p>${esc(l)}</p>`).join("")}</body></html>`);
+    await apagarOutraLei(lei.id);
+    res.json({ ok: true, lei: resumo });
+  } catch (e: any) { res.status(400).json({ erro: e?.message || "não consegui mover" }); }
 });
 outrasLeisRouter.delete("/:id", async (req: any, res) => { if (!soSuper(req, res)) return; try { await apagarOutraLei(String(req.params.id)); res.json({ ok: true }); } catch { res.status(500).json({ erro: "não consegui excluir" }); } });

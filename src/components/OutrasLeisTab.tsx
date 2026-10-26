@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
 
-interface Resumo { id: string; esfera: string; ente: string; tipo: string; numero: string; ano: number; titulo: string; salvoEm: number; artigos: number }
+interface Resumo { id: string; esfera: string; ente: string; tipo: string; numero: string; ano: number; titulo: string; salvoEm: number; artigos: number; noCatalogo?: { id: string; nome: string } | null }
 interface Linha { chave: string; arquivo: File; formato: "" | "texto"; bytes: ArrayBuffer; esfera: string; ente: string; tipo: string; numero: string; ano: string; titulo: string; artigos: number; amostra: string; estado: "lendo" | "pronto" | "salvando" | "salvo" | "erro"; msg: string }
 const TIPOS = ["lei", "lei complementar", "decreto", "decreto-lei", "resolução", "portaria", "provimento", "emenda constitucional"];
 const campo = "border border-slate-300 rounded-lg px-2 py-1 bg-white text-slate-900";
@@ -40,6 +40,7 @@ export const OutrasLeisTab: React.FC = () => {
       const q = new URLSearchParams({ esfera: l.esfera, ente: l.ente, tipo: l.tipo, numero: l.numero, ano: l.ano, titulo: l.titulo });
       const r = await fetch(`/api/fontes/outras?${q.toString()}`, { method: "POST", headers: { "Content-Type": "application/octet-stream", "x-formato": l.formato }, body: l.bytes });
       const j = await r.json().catch(() => ({} as any)); if (!r.ok) throw new Error(j.erro || `erro ${r.status}`);
+      if (j.redirecionada) { mudar(l.chave, { estado: "salvo", msg: `✅ É lei federal da lista do Planalto: gravada em "${j.redirecionada.nome}" (${j.redirecionada.artigos} artigos).`, bytes: new ArrayBuffer(0) }); return; }
       mudar(l.chave, { estado: "salvo", msg: `✅ Salva: ${rotulo(j.lei)} (${j.lei.artigos} artigos).`, bytes: new ArrayBuffer(0) });
       void carregar();
     } catch (err: any) { mudar(l.chave, { estado: "pronto", msg: `❌ ${err?.message || "falha ao salvar"}` }); }
@@ -48,6 +49,9 @@ export const OutrasLeisTab: React.FC = () => {
   const excluir = async (l: Resumo) => {
     if (!window.confirm(`Excluir ${rotulo(l)} da base? Isso vale para todos os gabinetes.`)) return;
     try { const r = await fetch(`/api/fontes/outras/${encodeURIComponent(l.id)}`, { method: "DELETE" }); if (!r.ok) throw new Error(`erro ${r.status}`); await carregar(); } catch (e: any) { setErro(e.message); }
+  };
+  const promover = async (l: Resumo) => {
+    try { const r = await fetch(`/api/fontes/outras/${encodeURIComponent(l.id)}/promover`, { method: "POST" }); const j = await r.json().catch(() => ({} as any)); if (!r.ok) throw new Error(j.erro || `erro ${r.status}`); await carregar(); } catch (e: any) { setErro(e.message); }
   };
   const visiveis = (lista || []).filter((l) => !busca.trim() || `${rotulo(l)} ${l.titulo}`.toLowerCase().includes(busca.trim().toLowerCase()));
 
@@ -91,6 +95,7 @@ export const OutrasLeisTab: React.FC = () => {
             <div key={l.id} className="p-2.5 flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-[220px]"><p className="font-semibold text-[12px]">{rotulo(l)}</p>{l.titulo && <p className="text-[11px] text-slate-500">{l.titulo}</p>}</div>
               <span className="text-[11px] text-slate-600">{l.artigos} artigos · enviada em {new Date(l.salvoEm).toLocaleDateString("pt-BR")}</span>
+              {l.noCatalogo && <button onClick={() => void promover(l)} title={`Esta lei federal pertence à lista do Planalto (${l.noCatalogo.nome})`} className={`${btn} bg-[#673de6] text-white`}>Mover para a lista do Planalto</button>}
               <button onClick={() => void excluir(l)} className={`${btn} bg-white border border-red-300 text-red-700`}>Excluir</button>
             </div>
           ))}
