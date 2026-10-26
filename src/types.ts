@@ -212,11 +212,6 @@ export interface GenerationResult {
   };
   /** Movimentações citadas na minuta que não constam dos carimbos dos autos (conferência automática, sem IA). */
   avisoLocalizacao?: { movsInexistentes: number[]; conferidas: number };
-  /** Conferências de mecânica judicial (sem IA): competência, pedido de parte sem peça, título interno vazado, citação Arq./Pág. inexistente. */
-  avisoCompetencia?: { juizo: string; motivo: string };
-  avisoPedidoSemPeca?: string[];
-  avisoVazamento?: string[];
-  avisoCitacao?: string[];
   /** Artigos citados na minuta que o Planalto marca como revogados, vetados ou inexistentes (conferência automática). */
   alertasLegislacao?: { lei: string; artigo: string; tipo: "revogado" | "vetado" | "inexistente" | "cpc1973"; nota?: string }[];
   legislacaoConferida?: string[];
