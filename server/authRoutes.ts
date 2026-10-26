@@ -66,7 +66,7 @@ export const perfilPublico = (r: any) => ({
 /** Confere o token e o cadastro no banco A CADA chamada (desativar um usuário vale na hora). */
 /** Porteiro das rotas /api que não são de login nem do banco (análises, Lupa, Mesa, Turbo, chat...): sem sessão válida, nada roda (e a chave do Gemini do servidor não fica exposta). */
 export const exigirSessao: express.RequestHandler = async (req: any, res, next) => {
-  if (req.path.startsWith("/auth") || req.path.startsWith("/db/") || req.path === "/native-key-info" || req.path === "/legislacao-status" || req.path === "/legislacao-teste") return next();      // diagnósticos só de leitura da consulta ao Planalto (texto de lei pública; com limite de uso em server.ts)      // essas rotas conferem a sessão sozinhas (ou só informam se existe chave do servidor)
+  if (req.path.startsWith("/auth") || req.path.startsWith("/db/") || req.path === "/native-key-info" || req.path === "/legislacao-status" || req.path === "/legislacao-teste" || req.path === "/lookup-legislation") return next();      // diagnósticos só de leitura da consulta ao Planalto (texto de lei pública; com limite de uso em server.ts)      // essas rotas conferem a sessão sozinhas (ou só informam se existe chave do servidor)
   try {
     if (!req.headers["x-assessor-sessao"]) throw erro(401, "login necessário");
     req.usuarioSessao = await autenticarSessao(req);
@@ -204,6 +204,12 @@ authRouter.post("/users/:id/acao", rota(async (req, res) => {
   if (b.acao === "redefinir_senha") {
     await banco().query("UPDATE users SET password_hash=?, must_change_password=1, updated_at=? WHERE id=?", [hashSenha(SENHA_INICIAL), Date.now(), r.id]);
     return void res.json({ ok: true, senhaInicial: SENHA_INICIAL });
+  }
+  if (b.acao === "renomear") {      // o nome é só de exibição (o login é pelo e-mail); vale também para o próprio super administrador
+    const nome = String(b.nome || "").trim().slice(0, 190);
+    if (nome.length < 2) throw erro(400, "informe o nome (mínimo 2 letras)");
+    await banco().query("UPDATE users SET name=?, updated_at=? WHERE id=?", [nome, Date.now(), r.id]);
+    return void res.json({ ok: true, nome });
   }
   const status = { aprovar: "aprovado", reativar: "aprovado", recusar: "recusado", desativar: "desativado" }[b.acao as string];
   if (!status) throw erro(400, "ação desconhecida");

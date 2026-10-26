@@ -304,7 +304,8 @@ app.post("/api/test-api-key", async (req, res) => {
 });
 // Pesquisa Legislativa: lê a consulta (opcional) e o processo, identifica as leis e artigos necessários (citados, ou do regime jurídico identificado) e traz o texto oficial do Planalto.
 app.post("/api/lookup-legislation", async (req, res) => {
-    try { res.json(await pesquisarLegislacao(String(req.body?.query || "").slice(0, 600), String(req.body?.context || "").slice(0, 200000))); }
+    if (!limiteDiagnostico(req, res)) return;      // rota aberta (sem login): limite de uso por endereço, só lê lei pública e não devolve dado do gabinete
+    try { res.json(await pesquisarLegislacao(String(req.body?.query || "").slice(0, 600), String(req.body?.context || "").slice(0, 120000))); }
     catch (e: any) { res.status(500).json({ error: e?.message || "falha na pesquisa legislativa" }); }
 });
 app.post("/api/map-decision-documents", (req, res) => res.json({ result: "Not implemented" }));

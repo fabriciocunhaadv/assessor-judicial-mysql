@@ -766,7 +766,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
     try {
       // Safety Snapshot before provisioning new tenant (non-blocking if warning)
       try {
-        await autoPrePermissionChangeSnapshot(`Criação do Gabinete "${newTenantName.trim()}" (${formattedId})`);
+        await snapshotRapido(`Criação do Gabinete "${newTenantName.trim()}" (${formattedId})`);
       } catch (snapErr) {
         console.warn("Aviso ao gerar snapshot pré-criação:", snapErr);
       }
@@ -857,12 +857,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
     setEditInitialUnit(tenant.primaryUnitName || tenant.notes || '');
   };
 
+  // O ponto de restauração copia o banco todo e pode demorar minutos: espera no máximo 4 s e segue (ele termina em segundo plano). Exclusões continuam esperando.
+  const snapshotRapido = (rotulo: string) => Promise.race([autoPrePermissionChangeSnapshot(rotulo).catch(() => null), new Promise((r) => setTimeout(r, 4000))]);
   const handleSaveEditTenant = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTenant) return;
 
     // Safety Snapshot
-    await autoPrePermissionChangeSnapshot(`Edição de dados do Gabinete "${editingTenant.name}" (${editingTenant.id})`);
+    await snapshotRapido(`Edição de dados do Gabinete "${editingTenant.name}" (${editingTenant.id})`);
 
     try {
       await updateTenantDetails(editingTenant.id, {
@@ -887,7 +889,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
 
   const handleToggleTenantStatus = async (tenant: SaaSTenant, targetStatus: TenantStatus, reason?: string) => {
     // Safety Snapshot
-    await autoPrePermissionChangeSnapshot(`Alteração de status do Gabinete "${tenant.name}" para ${targetStatus.toUpperCase()}`);
+    await snapshotRapido(`Alteração de status do Gabinete "${tenant.name}" para ${targetStatus.toUpperCase()}`);
 
     try {
       await updateTenantStatus(tenant.id, targetStatus, reason);
@@ -1025,7 +1027,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
       }
 
       // Safety Snapshot
-      await autoPrePermissionChangeSnapshot(`Transferência do usuário ${transferringUser.email} para "${finalCabinetName}"`);
+      await snapshotRapido(`Transferência do usuário ${transferringUser.email} para "${finalCabinetName}"`);
 
       await transferUserToCabinet(transferringUser.uid, finalTenantId, transferringUser.email);
       showSuccessToast(`Usuário ${transferringUser.email} transferido para "${finalCabinetName}" com sucesso!`);
@@ -1140,6 +1142,17 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
       showErrorToast("Erro ao atualizar status de juiz: " + (err.message || String(err)));
       await loadAllData();
     }
+  };
+
+  const handleRenameUser = async (user: UserProfile) => {
+    const atual = (user as any).name || '';
+    const novo = window.prompt(`Novo nome de exibição para ${user.email}:`, atual);
+    if (novo === null || novo.trim() === atual.trim()) return;
+    try {
+      await chamarAuth("POST", `/users/${user.uid}/acao`, { acao: "renomear", nome: novo.trim() });
+      setGlobalUsers(prev => prev.map(u => u.uid === user.uid ? ({ ...u, name: novo.trim() } as any) : u));
+      window.alert("Nome atualizado. Se for o seu próprio nome, recarregue a página para ver no topo.");
+    } catch (e: any) { window.alert("Não foi possível alterar o nome: " + (e?.message || e)); }
   };
 
   const handleResetPassword = async (user: UserProfile) => {
@@ -2446,6 +2459,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                               <Building className="w-3 h-3 text-indigo-400" />
                               Mudar Gabinete
                             </button>
+                            <button
+                              onClick={() => handleRenameUser(u)}
+                              className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                            >
+                              Renomear
+                            </button>
                             {!(u as any).superAdmin && <button
                               onClick={() => handleResetPassword(u)}
                               className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
@@ -2604,6 +2623,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                                       Mudar Gabinete
                                     </button>
 
+                                    <button
+                                      onClick={() => handleRenameUser(u)}
+                                      title="Alterar o nome de exibição deste usuário"
+                                      className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                                    >
+                                      Renomear
+                                    </button>
                                     {!(u as any).superAdmin && (
                                       <button
                                         onClick={() => handleResetPassword(u)}
