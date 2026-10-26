@@ -330,7 +330,7 @@ export const SystemTour: React.FC<SystemTourProps> = ({
         content: (
           <div className="text-left font-sans space-y-1.5">
             <h3 className="font-bold text-md text-purple-800 flex items-center gap-1.5 flex-wrap">
-              <span>Módulo Petição & Defesa 360° (Exclusivo Super Admin) 🚀</span>
+              <span>Módulo Petição & Defesa 360° (Super Admin e quem ele liberar) 🚀</span>
             </h3>
             <p className="text-sm text-slate-700 leading-relaxed">
               Ambiente totalmente separado e independente do fluxo judicial de gabinete. Atua tanto na propositura quanto na <strong>defesa contenciosa (Contestação, Réplica, Incidentais e Recursos)</strong>: conta com inserção de número dos autos (CNJ), tempestividade, duplo upload inteligente, preliminares do art. 337 do CPC, a <strong>Matriz de Impugnação Específica (Art. 341 do CPC)</strong> e a <strong>Pesquisa Automática de Jurisprudência pelo Tema da Peça</strong> (via Google Search Grounding em segundo plano), validando precedentes reais com links oficiais e separando sugestões de teses sem qualquer alucinação.

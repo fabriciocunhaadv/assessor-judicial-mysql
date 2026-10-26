@@ -109,6 +109,27 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
   const [hasConciliationOption, setHasConciliationOption] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
+  // Rascunho automático: os campos de texto do formulário ficam guardados neste navegador (por usuário) e voltam se a janela for fechada sem querer. Os arquivos anexados não entram (são grandes).
+  const chaveRascunho = `assessor_peticao_rascunho_v1_${String(currentUserEmail || "").toLowerCase()}`;
+  const rascunhoRestaurado = useRef(false);
+  useEffect(() => {
+    if (!isOpen || rascunhoRestaurado.current) return;
+    rascunhoRestaurado.current = true;
+    try {
+      const r = JSON.parse(localStorage.getItem(chaveRascunho) || "null");
+      if (!r || !(r.caseDescription || r.clientName || r.defendantName || r.customPrompt)) return;
+      setClientName(r.clientName || ""); setDefendantName(r.defendantName || ""); setLawArea(r.lawArea || "Direito do Consumidor / Bancário"); setTargetCourt(r.targetCourt || "TJGO");
+      setCaseDescription(r.caseDescription || ""); setCustomPrompt(r.customPrompt || ""); setCauseValue(r.causeValue || "");
+      if (r.pieceType) setPieceType(r.pieceType);
+      toast.success("Rascunho recuperado: o texto do formulário volta de onde você parou.");
+    } catch { /* sem rascunho */ }
+  }, [isOpen]);
+  useEffect(() => {
+    if (!rascunhoRestaurado.current) return;
+    const t = setTimeout(() => { try { localStorage.setItem(chaveRascunho, JSON.stringify({ clientName, defendantName, lawArea, targetCourt, caseDescription, customPrompt, causeValue, pieceType })); } catch { /* sem armazenamento */ } }, 800);
+    return () => clearTimeout(t);
+  }, [clientName, defendantName, lawArea, targetCourt, caseDescription, customPrompt, causeValue, pieceType]);
+
   // Duplo Upload Especializado: Autos do Processo (PDF) e Documentos do Cliente
   const [processFiles, setProcessFiles] = useState<{ name: string; base64: string; mimeType: string; size: number; extractedText?: string }[]>([]);
   const [clientFiles, setClientFiles] = useState<{ name: string; base64: string; mimeType: string; size: number; extractedText?: string }[]>([]);
@@ -324,6 +345,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
   };
 
   const handleNewProcess = () => {
+    try { localStorage.removeItem(chaveRascunho); } catch { /* sem armazenamento */ }
     setClientName("");
     setDefendantName("");
     setLawArea("Direito do Consumidor / Bancário");
@@ -803,7 +825,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                     Módulo Petição & Defesa 360°
                   </h1>
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] md:text-[11px] font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                    <FolderLock className="w-2.5 h-2.5" /> Super Admin
+                    <FolderLock className="w-2.5 h-2.5" /> Acesso liberado
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400 hidden sm:block">
@@ -2242,7 +2264,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
           )}
 
           {/* ========================================================================= */}
-          {/* ABA 5: HISTÓRICO TOTALMENTE INDEPENDENTE (APENAS SUPER ADMIN) */}
+          {/* ABA 5: HISTÓRICO TOTALMENTE INDEPENDENTE (cada autor vê só o seu; o Super Admin vê todos) */}
           {/* ========================================================================= */}
           {activeTab === "historico" && (
             <div id="independent-history-tab" className="flex-1 p-3 sm:p-6 md:p-8 overflow-y-auto bg-slate-950">
@@ -2253,7 +2275,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                       <History className="w-5 h-5 text-indigo-400" /> Histórico Exclusivo da Advocacia
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Banco de dados isolado no Firestore (<code>initial_petitions_history</code>), inacessível por assessores e juízes do gabinete.
+                      Suas petições ficam no banco do sistema, separadas das minutas do gabinete: cada pessoa vê só as próprias, e assessores e juízes sem a liberação do Super Admin não têm acesso ao módulo.
                     </p>
                   </div>
                   <button

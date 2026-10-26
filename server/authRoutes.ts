@@ -10,6 +10,8 @@ export const authRouter = express.Router();
 export interface UsuarioSessao { uid: string; email: string; name: string; role: string; superAdmin: boolean; tenant: string; row: any }
 const GABINETES_PRINCIPAIS = ["", "gabinete_default", "default", "gab_rafael_machado", "rafael_machado", "montes_claros", "fazenda_nova", "principal", "gabinete_principal"];
 export const tenantCanonico = (t: string) => (GABINETES_PRINCIPAIS.includes((t || "").toLowerCase().trim()) ? "gabinete_default" : String(t).trim());
+/** Módulo Petição & Defesa 360°: só o Super Admin e quem ele liberou (marca `peticao360` no cadastro). Sempre pelo cadastro verificado na sessão, nunca por cabeçalho enviado pelo navegador. */
+export const podeUsarPeticao360 = (u: { superAdmin: boolean; row?: any }): boolean => { if (u.superAdmin) return true; try { return JSON.parse(u.row?.extras || "{}").peticao360 === true; } catch { return false; } };
 export const SENHA_INICIAL = "12345678";      // senha padrão de quem recebe o acesso liberado pelo administrador; no primeiro acesso a pessoa é obrigada a trocá-la
 const erro = (status: number, msg: string) => Object.assign(new Error(msg), { status });
 /** Texto de erro para a tela: erros do sistema aparecem como são; falhas do banco viram uma dica de configuração (sem expor senha nem detalhes internos). */
@@ -224,6 +226,12 @@ authRouter.post("/users/:id/acao", rota(async (req, res) => {
     if (nome.length < 2) throw erro(400, "informe o nome (mínimo 2 letras)");
     await banco().query("UPDATE users SET name=?, updated_at=? WHERE id=?", [nome, Date.now(), r.id]);
     return void res.json({ ok: true, nome });
+  }
+  if (b.acao === "modulo_peticao") {      // libera ou revoga o módulo Petição & Defesa 360° para este usuário
+    if (r.role === "super_admin") throw erro(400, "o super administrador já tem acesso");
+    const extras = { ...(r.extras ? JSON.parse(r.extras) : {}), peticao360: b.liberado === true };
+    await banco().query("UPDATE users SET extras=?, updated_at=? WHERE id=?", [JSON.stringify(extras), Date.now(), r.id]);
+    return void res.json({ ok: true, liberado: b.liberado === true });
   }
   if (b.acao === "vincular_historico") {      // não altera nenhuma minuta: só registra, no cadastro, quais ids antigos de autor passam a ser deste usuário
     const ids = Array.from(new Set((Array.isArray(b.criadores) ? b.criadores : []).map((x: any) => String(x).trim().slice(0, 128)).filter((x: string) => x && x !== "anonymous" && x !== r.id))).slice(0, 50);

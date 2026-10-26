@@ -6,6 +6,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { consultarLegislacao } from "../src/utils/legislacaoPlanalto";
+import { podeUsarPeticao360 } from "./authRoutes";
 
 async function processFileToPart(ai: any, file: any): Promise<any> {
   if (file.extractedText) {
@@ -76,14 +77,11 @@ async function processFileToPart(ai: any, file: any): Promise<any> {
 
 export const petitionRouter = express.Router();
 
-const SUPER_ADMIN_EMAIL = "fabriciocunha.adv@gmail.com";
-
-// Trava de Segurança Mandatória: Acesso exclusivo ao Super Admin (fabriciocunha.adv@gmail.com)
-petitionRouter.use((req, res, next) => {
-  const userEmail = ((req.headers["x-user-email"] as string) || "").toLowerCase().trim();
-  if (userEmail !== SUPER_ADMIN_EMAIL) {
+// Trava de segurança: só o Super Admin e quem ele liberou. A decisão usa o cadastro verificado na sessão (o cabeçalho x-user-email, que o navegador controla, não vale mais).
+petitionRouter.use((req: any, res, next) => {
+  if (!req.usuarioSessao || !podeUsarPeticao360(req.usuarioSessao)) {
     return res.status(403).json({
-      error: "Acesso restrito. O módulo Petição & Defesa 360° é de uso exclusivo do Super Administrador (fabriciocunha.adv@gmail.com).",
+      error: "Acesso restrito. O módulo Petição & Defesa 360° é liberado pelo Super Administrador.",
       isForbidden: true
     });
   }
@@ -316,6 +314,12 @@ Responda ESTRITAMENTE em formato JSON.`;
 
     }
 
+    // artigos citados nos autos e nas anotações conferidos no texto oficial do Planalto (falha silenciosa: sem o site, segue como antes)
+    try {
+      const textos = [String(quickNotes || ""), ...[...(processFiles || []), ...(clientFiles || []), ...(pdfFiles || [])].map((f: any) => String(f?.extractedText || "").slice(0, 120000))].filter(Boolean);
+      const leg = textos.length ? await consultarLegislacao(textos, { maxArtigos: 8, timeoutMs: 6000 }) : null;
+      if (leg?.bloco) contentsParts.push({ text: leg.bloco });
+    } catch { /* segue sem a consulta */ }
     contentsParts.push({
       text: `Contexto da atuação:
 Tipo de Peça Pretendida: ${pieceType}
