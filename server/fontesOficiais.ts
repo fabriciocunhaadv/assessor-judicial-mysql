@@ -65,8 +65,11 @@ export function decodificar(buf: Buffer, contentType = ""): string {
   try { return new TextDecoder(cs).decode(buf); } catch { return new TextDecoder("windows-1252").decode(buf); }
 }
 export function htmlParaLinhas(html: string): string[] {
-  const t = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<!--[\s\S]*?-->/g, " ").replace(/<\/(p|div|tr|li|h[1-6]|table|center|blockquote)>|<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
-  return he.decode(t).replace(/ /g, " ").split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  // fecha e ABRE parágrafos: páginas antigas (ex.: Lei do Cheque) usam <P> sem </P>, e viravam uma linha só
+  const t = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<!--[\s\S]*?-->/g, " ").replace(/<\/?(p|div|tr|li|h[1-6]|table|center|blockquote|pre)\b[^>]*>|<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
+  const linhas = he.decode(t).replace(/\u00a0/g, " ").split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  // linha enorme com vários artigos colados: separa antes de cada "Art. N" que começa frase
+  return linhas.flatMap((l) => (l.length > 1500 ? l.split(/(?<=[.;:)\]])\s+(?=Art\.?\s*\d{1,4}(?:\.\d{3})?\s*(?:[º°o]|\.|-|\s))/) : [l]));
 }
 
 export interface ArtigoLei { t: string; r?: 1; v?: 1; n?: string }
