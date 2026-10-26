@@ -1162,6 +1162,7 @@ export default function App() {
         },
         specificInstructions: "",
         executionStage: isTwoStageExecution ? 1 : undefined,
+        aceitaSegundoPlano: true,
       });
 
       const novoProg = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `p-${Date.now()}`);
@@ -1205,6 +1206,8 @@ export default function App() {
         let errorMsg = "Falha ao processar o processo com o prompt.";
         try {
           const errorData = JSON.parse(responseText.trim());
+          // autos grandes demais para a chave gratuita: em vez de prender a tela por minutos, segue em segundo plano (leitura em lotes)
+          if (errorData?.codigo === "AUTOS_GRANDES_SEGUNDO_PLANO") { let auto = false; try { auto = document.documentElement.dataset.assessorAuto === "1"; } catch { /* sem dataset */ } if (await enviarSegundoPlano(auto)) return; }
           if (errorData?.error) {
             errorMsg = errorData.error;
           }
@@ -1298,6 +1301,7 @@ export default function App() {
       }
 
       // Strict validation: if server returned an error payload or flagged error
+      if (rawData?.codigo === "AUTOS_GRANDES_SEGUNDO_PLANO") { let auto = false; try { auto = document.documentElement.dataset.assessorAuto === "1"; } catch { /* sem dataset */ } if (await enviarSegundoPlano(auto)) return; }
       if (rawData?.error || rawData?.isError) {
         let cleanMsg = rawData.error;
         try {
