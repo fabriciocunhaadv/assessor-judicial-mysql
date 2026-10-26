@@ -1608,13 +1608,17 @@ function conferenciasPorCodigo(minuta: string, autos: string): AlertaAuditoria[]
         const lista = [...carim].sort((a, b) => a - b);
         out.push(mk("atencao", "provas", "Movimentação citada que não existe nos autos", `A minuta cita ${vl.movsInexistentes.map((n) => "Mov. " + n).join(", ")}, que não aparece(m) nos carimbos dos autos enviados.`, "Conferir a localização; se o fato só consta no relato de uma decisão posterior, citar essa decisão.", "Relatório / Fundamentação", contexto(minuta, (minuta.match(new RegExp("Mov(?:imenta[cç][aã]o|\\.)?\\s*" + vl.movsInexistentes[0] + "\\b", "i")) || [""])[0] || ("Mov. " + vl.movsInexistentes[0])), `Movimentações com carimbo nos autos: ${lista.slice(0, 40).join(", ")}${lista.length > 40 ? "…" : ""}`));
     }
+    const autosSoDigitos = autos.replace(/\D/g, "");      // o OCR às vezes separa o número com espaços ou muda a pontuação
     const cnjMin = [...new Set(minuta.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/g) || [])], cnjAut = [...new Set(autos.slice(0, 60000).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/g) || [])];
-    if (cnjMin.length && cnjAut.length && !cnjMin.some((c) => autos.includes(c))) out.push(mk("bloqueante", "adstricao", "Autos não correspondem à minuta", `O número do processo da minuta (${cnjMin[0]}) não aparece nos autos enviados (${cnjAut[0]}).`, "Conferir se os autos anexados são do processo da minuta.", "Cabeçalho da minuta", cnjMin[0], `Processo nos autos: ${cnjAut[0]}`));
+    if (cnjMin.length && cnjAut.length && !cnjMin.some((c) => autos.includes(c) || autosSoDigitos.includes(c.replace(/\D/g, "")))) out.push(mk("bloqueante", "adstricao", "Autos não correspondem à minuta", `O número do processo da minuta (${cnjMin[0]}) não aparece nos autos enviados (${cnjAut[0]}).`, "Conferir se os autos anexados são do processo da minuta.", "Cabeçalho da minuta", cnjMin[0], `Processo nos autos: ${cnjAut[0]}`));
     const A = autos.replace(/\s+/g, " ");
+    const poucos = <T,>(xs: T[], n = 5) => xs.slice(0, n);
     const datas = [...new Set(minuta.match(/\b\d{2}\/\d{2}\/\d{4}\b/g) || [])].filter((d) => !A.includes(d));
-    if (datas.length) out.push(mk("informativo", "provas", "Datas da minuta que não aparecem nos autos", `Datas citadas na minuta e não localizadas no texto dos autos: ${datas.slice(0, 10).join(", ")}${datas.length > 10 ? "…" : ""}. Podem ser prazos calculados pelo assessor.`, "Conferir cada data com a peça de origem.", "Minuta", contexto(minuta, datas[0]), "não consta nos autos enviados"));
+    for (const d of poucos(datas)) out.push(mk("informativo", "provas", `Data ${d} citada na minuta não localizada nos autos`, `A minuta cita a data ${d} neste trecho: “${contexto(minuta, d, 90)}”. Essa data não consta no texto dos autos enviados. Pode ser prazo calculado pelo assessor ou estar em página sem texto legível. Atenção, Excelência: confira de onde vem a data (movimentação e página de origem) e, se for cálculo, refaça a conta.`, "Conferir a data com a peça de origem nos autos e, se for prazo calculado, a contagem.", `Minuta, no trecho: “${contexto(minuta, d, 40)}”`, contexto(minuta, d, 90), "Não localizada em nenhuma movimentação ou página dos autos enviados"));
+    if (datas.length > 5) out.push(mk("informativo", "provas", `Mais ${datas.length - 5} data(s) da minuta não localizadas nos autos`, `Além das acima, estas datas da minuta não constam no texto dos autos: ${datas.slice(5, 15).join(", ")}${datas.length > 15 ? "…" : ""}. Atenção: confira cada uma com a peça de origem.`, "Conferir cada data com a peça de origem.", "Minuta", datas[5], "Não localizadas nos autos enviados"));
     const vals = [...new Set(minuta.match(/R\$\s?[\d.]+,\d{2}/g) || [])].filter((v) => !A.includes(v.replace(/R\$\s?/, "")));
-    if (vals.length) out.push(mk("informativo", "provas", "Valores da minuta que não aparecem nos autos", `Valores citados na minuta e não localizados no texto dos autos: ${vals.slice(0, 10).join(", ")}${vals.length > 10 ? "…" : ""}. Podem ser cálculos do assessor.`, "Conferir a conta e a peça de onde vem cada valor.", "Minuta", contexto(minuta, vals[0]), "não consta nos autos enviados"));
+    for (const v of poucos(vals)) out.push(mk("informativo", "provas", `Valor ${v} citado na minuta não localizado nos autos`, `A minuta cita o valor ${v} neste trecho: “${contexto(minuta, v, 90)}”. Esse valor não consta no texto dos autos enviados. Pode ser cálculo do assessor. Atenção, Excelência: confira a conta e a peça (movimentação e página) de onde vêm os números.`, "Conferir a conta e a peça de onde vem o valor.", `Minuta, no trecho: “${contexto(minuta, v, 40)}”`, contexto(minuta, v, 90), "Não localizado em nenhuma movimentação ou página dos autos enviados"));
+    if (vals.length > 5) out.push(mk("informativo", "provas", `Mais ${vals.length - 5} valor(es) da minuta não localizados nos autos`, `Além dos acima, estes valores da minuta não constam no texto dos autos: ${vals.slice(5, 15).join(", ")}${vals.length > 15 ? "…" : ""}. Atenção: confira a conta de cada um.`, "Conferir a conta e a peça de origem de cada valor.", "Minuta", vals[5], "Não localizados nos autos enviados"));
     return out;
 }
 
@@ -1640,13 +1644,13 @@ function validarAlertasIa(brutos: any[], minuta: string, autos: string): { valid
 
 /** Nota por regra: parte de 100 e desconta só por apontamento com prova. Cada pilar tem a sua nota. */
 function calcularNotaAuditoria(alertas: AlertaAuditoria[]) {
-    const peso = { bloqueante: 25, atencao: 8, informativo: 1 } as const;
+    const peso = { bloqueante: 25, atencao: 8, informativo: 0 } as const;      // informativo é só observação: não é ressalva e não tira ponto
     const pilar = (ps: string[]) => Math.max(0, 100 - alertas.filter((a) => ps.includes(a.pillar)).reduce((t, a) => t + peso[a.severity], 0));
     const total = Math.max(0, 100 - alertas.reduce((t, a) => t + peso[a.severity], 0));
     const n = (sv: string) => alertas.filter((a) => a.severity === sv).length;
-    const explicacao = [`Parte de 100; bloqueante −25, atenção −8, informativo −1, só com prova nos autos.`, `${n("bloqueante")} bloqueante(s), ${n("atencao")} de atenção, ${n("informativo")} informativo(s).`];
-    const verdict = total >= 90 ? "Aprovada sem Ressalvas" : total >= 75 ? "Aprovada com Ressalvas" : total >= 50 ? "Requer Correções Obrigatórias" : "Crítica / Risco de Nulidade";
-    const verdictColor = total >= 90 ? "emerald" : total >= 75 ? "indigo" : total >= 50 ? "amber" : "rose";
+    const explicacao = [`Parte de 100; bloqueante −25, atenção −8, informativo 0 (só observação), só com prova nos autos. 100 = sem nenhuma ressalva.`, `${n("bloqueante")} bloqueante(s), ${n("atencao")} de atenção, ${n("informativo")} informativo(s).`];
+    const verdict = total >= 100 ? "Aprovada sem Ressalvas" : total >= 75 ? "Aprovada com Ressalvas" : total >= 50 ? "Requer Correções Obrigatórias" : "Crítica / Risco de Nulidade";
+    const verdictColor = total >= 100 ? "emerald" : total >= 75 ? "indigo" : total >= 50 ? "amber" : "rose";
     return { score: total, verdict, verdictColor, adstricao: pilar(["adstricao"]), provas: pilar(["provas"]), rito: pilar(["preliminares_rito", "preclusao_marcha"]), explicacao };
 }
 
@@ -1782,14 +1786,14 @@ CALIBRAGEM DO AUDITOR (VALE PARA QUALQUER PROCESSO E QUALQUER ÁREA):
 4. PRESUNÇÃO DE REGULARIDADE: minuta coerente com os autos (pedidos apreciados, fatos fiéis, decisões anteriores respeitadas) e fundamentada em base jurídica plausível é APROVADA. Escolhas de fundamentação, de solução entre alternativas juridicamente possíveis ou de redação não são erro e não reduzem a nota.
 5. VOCABULÁRIO: só use "sem base legal", "ilegal", "ignorou" ou "contraria" quando puder indicar o dispositivo violado ou a prova dos autos desconsiderada. Caso contrário use "diverge de ..." ou "não localizei nos autos ...".
 6. IDENTIDADE: confira o número do processo e as partes da minuta e dos autos. Se não coincidirem, emita um único alerta bloqueante: "autos não correspondem à minuta".
-7. NOTA: parta de 100 e reduza apenas por erro demonstrado (alerta com prova): forte para bloqueante, leve para atenção. Sem alertas com prova, a nota fica entre 90 e 100 ("Aprovada sem Ressalvas").
+7. NOTA (score): a nota é SUA, de 0 a 100, e deve refletir a sua análise. 100 só quando a minuta está aprovada sem NENHUMA ressalva; toda ressalva ou correção necessária reduz a nota (leve para atenção, forte para bloqueante). Nota, "verdict" e "summary" têm de ser coerentes entre si: 100 = "Aprovada sem Ressalvas"; 75 a 99 = "Aprovada com Ressalvas"; 50 a 74 = "Requer Correções Obrigatórias"; abaixo de 50 = "Crítica / Risco de Nulidade". Se o summary fala em problema, a nota não pode ser alta.
 8. TOM: objetivo e construtivo. No campo "summary", a primeira frase é a conclusão (aprovar / aprovar com ajuste / devolver), depois no máximo 3 pontos.
 9. ABERTURA DO RELATÓRIO: o relatório da minuta deve começar com "Trata-se de [natureza], movida por [autor], em face de [réu], [objeto]". Se não começar assim, emita um alerta de atenção (pilar "redacao_clareza") com o trecho inicial real e a abertura sugerida; não reduza a nota por isso além do peso de um alerta de atenção.
 10. COMPETÊNCIA E ÁREA: se a minuta decide mérito, tutela ou custódia em juízo incompatível com o objeto (matéria, rito, valor, pena máxima), emita alerta BLOQUEANTE com o juízo da capa e o elemento dos autos que mostra a incompatibilidade. Emita alerta de atenção se a minuta usar instituto de outro ramo (ex.: art. 300 do CPC ou gratuidade em feito criminal) ou trouxer título de etapa interna ("teses do gabinete", "checklist", "matriz").
 11. PEÇA DE PARTE E FATO MATERIAL: alerta de atenção para qualquer pedido, manifestação ou parecer atribuído a parte sem peça localizada nos autos, e para bem apreendido, entregue ou pago sem termo ou comprovante; e para antecedentes agregados em categoria que o documento não traz.
 10. PROVA LITERAL (REGRA DO SISTEMA): todo apontamento em "criticalAlerts" exige trechos LITERAIS copiados do texto: "minutaTrecho" (da minuta) e/ou "autosTrecho" (dos autos), conforme o "tipoProva": contradicao = a minuta diz uma coisa e os autos outra (os dois trechos); omissao = os autos têm algo que a minuta deveria tratar e não trata (trecho dos autos); sem_lastro = a minuta afirma algo que os autos não mostram (trecho da minuta); forma = defeito de redação ou estrutura (trecho da minuta). O servidor CONFERE se os trechos existem e DESCARTA o apontamento que não tiver prova. Não parafraseie dentro dos trechos.
 11. FICHA DOS AUTOS: a ficha da etapa 1 é só um mapa. Confirme nos autos antes de apontar; se a ficha e os autos divergirem, vale o texto dos autos. Use a ficha para não deixar passar solicitação sem resposta, ordem condicional cuja condição ocorreu e pendência formal (procuração, citação, prazo, cumprimento).
-12. NOTA: o servidor calcula a nota a partir dos apontamentos com prova; não gaste esforço em "score". Preencha os campos de resumo só com o que você de fato conferiu; se não conferiu algo, deixe o campo vazio em vez de afirmar regularidade.
+12. NADA SOLTO: toda observação para o juiz deve ser um apontamento em "criticalAlerts" que diga com clareza (a) o que observar, (b) ONDE: na minuta (trecho literal) e nos autos (Mov./Arq./Pág.), e (c) o que o juiz deve conferir ou decidir. Não deixe observação genérica ou solta no summary sem apontamento correspondente. Preencha os campos de resumo só com o que você de fato conferiu; se não conferiu algo, deixe o campo vazio em vez de afirmar regularidade.
 
 Você deve responder ESTRITAMENTE em formato JSON com o seguinte schema obrigatório:
 {
@@ -1947,14 +1951,16 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
         const feedback = (typeof parsed.assessorFeedbackMessage === "string" && parsed.assessorFeedbackMessage.trim()) ||
             (alertasFinais.length ? `Foram apontados ${alertasFinais.length} ponto(s) com prova nos autos (${nBloq} bloqueante(s)). Veja cada apontamento, com o trecho da minuta e o trecho dos autos.` : "Nenhum apontamento com prova nos autos foi encontrado nesta conferência.");
 
-        // A nota só conta apontamento com prova literal. Se a IA levantou ponto GRAVE que não deu para provar por citação, a faixa não pode dizer "aprovada": pede conferência (a nota não muda).
-        const modeloDiverge = typeof parsed.score === "number" && parsed.score <= 60 && nota.score >= 90;      // a IA deu nota baixa, mas nenhum apontamento dela passou na prova literal
-        const graveNaoConfirmado = naoConfirmados.some((x) => x.severity === "bloqueante") || modeloDiverge;
-        if (graveNaoConfirmado) { nota.score = Math.min(nota.score, 70); nota.explicacao.push("A IA apontou problema grave que não deu para provar por citação literal (ou deu nota bem menor): a nota fica limitada a 70 até a conferência."); }
+        // A nota segue a análise da IA (a mesma que escreve o resumo). Só uma trava de coerência: com ressalva à vista (apontamento de atenção/bloqueante, confirmado ou não), não pode ser 100.
+        const temRessalva = alertasFinais.some((x) => x.severity !== "informativo") || naoConfirmados.some((x) => x.severity !== "informativo");
+        const notaIa = typeof parsed.score === "number" && Number.isFinite(parsed.score) ? Math.max(0, Math.min(100, Math.round(parsed.score))) : null;
+        const scoreFinal = notaIa === null ? nota.score : temRessalva ? Math.min(notaIa, 99) : notaIa;
+        const veredictoFinal = scoreFinal >= 100 ? { v: "Aprovada sem Ressalvas", c: "emerald" } : scoreFinal >= 75 ? { v: "Aprovada com Ressalvas", c: "indigo" } : scoreFinal >= 50 ? { v: "Requer Correções Obrigatórias", c: "amber" } : { v: "Crítica / Risco de Nulidade", c: "rose" };
+        nota.explicacao = [notaIa === null ? "A IA não devolveu nota; usada a regra de apoio (atenção −8, bloqueante −25)." : "Nota atribuída pela análise da IA; 100 = aprovada sem ressalvas e cada ressalva reduz a nota.", ...(temRessalva && notaIa === 100 ? ["Havia ressalva a conferir; por isso a nota não é 100."] : []), `${nBloq} bloqueante(s), ${alertasFinais.filter((x) => x.severity === "atencao").length} de atenção, ${alertasFinais.filter((x) => x.severity === "informativo").length} observação(ões) a conferir.`];
         const finalResult: any = {
-            score: nota.score,
-            verdict: graveNaoConfirmado ? "Conferir antes de aprovar" : nota.verdict,
-            verdictColor: graveNaoConfirmado ? "amber" : nota.verdictColor,
+            score: scoreFinal,
+            verdict: veredictoFinal.v,
+            verdictColor: veredictoFinal.c,
             apontamentosNaoConfirmados: naoConfirmados,
             summary: resumoIa || (alertasFinais.length ? `Conferência concluída: ${alertasFinais.length} apontamento(s) com prova, ${nBloq} bloqueante(s).` : "Conferência concluída: nenhum apontamento com prova nos autos."),
             scoreCalculo: { regra: nota.explicacao, notaDoModelo: typeof parsed.score === "number" ? Math.round(parsed.score) : null },

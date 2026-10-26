@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { avisoNotaAntiga } from "../utils/avisoNotaAntiga";
 import {
   Scale,
   Sparkles,
@@ -313,13 +314,27 @@ export const TripleConferenceBench: React.FC<TripleConferenceBenchProps> = ({
                     <div className="rounded-lg bg-slate-950 border border-slate-800 py-1.5"><div className="text-slate-400">Provas</div><div className="font-black text-white">{auditResult.evidentiary?.score ?? "—"}%</div></div>
                     <div className="rounded-lg bg-slate-950 border border-slate-800 py-1.5"><div className="text-slate-400">Rito</div><div className="font-black text-white">{auditResult.procedural?.score ?? "—"}%</div></div>
                   </div>
+                  {avisoNotaAntiga(auditResult, auditResult) && (
+                    <div data-testid="aviso-auditoria-antiga-bancada" className={`p-2 rounded-lg border text-[11px] ${avisoNotaAntiga(auditResult, auditResult) === "forte" ? "border-rose-500/50 bg-rose-950/40 text-rose-100" : "border-slate-600 bg-slate-900/60 text-slate-300"}`}>
+                      <strong>Auditoria feita antes da correção da nota.</strong> {avisoNotaAntiga(auditResult, auditResult) === "forte" ? "O resumo fala em problema grave, mas a nota ficou alta: não confie nela. Confira os autos ou refaça a auditoria." : "Os pontos que a IA não conseguiu provar não foram guardados nesta versão. Se a decisão for importante, refaça a auditoria."}
+                    </div>
+                  )}
+                  {Boolean(auditResult.apontamentosNaoConfirmados?.length) && (
+                    <div data-testid="nao-confirmados-bancada" className="p-2 rounded-lg border border-amber-500/50 bg-amber-950/40 text-amber-100 text-[11px] space-y-1">
+                      <strong>A IA levantou {auditResult.apontamentosNaoConfirmados!.length} ponto(s) sem prova literal.</strong> Não entram na nota; confira nos autos:
+                      <ul className="list-disc pl-4 space-y-0.5">{auditResult.apontamentosNaoConfirmados!.map((x, i) => <li key={i}>{x.title}{x.location ? ` (${x.location})` : ""}</li>)}</ul>
+                    </div>
+                  )}
                   {auditResult.summary && <p className="text-[12px] text-slate-100 leading-relaxed">{auditResult.summary}</p>}
                   {(auditResult.criticalAlerts || []).length > 0 && (
                     <ul className="space-y-1.5">
-                      {auditResult.criticalAlerts.slice(0, 8).map((al, i) => (
+                      {auditResult.criticalAlerts.slice(0, 20).map((al, i) => (
                         <li key={i} className="pl-2.5 border-l-2 border-amber-500/70">
                           <span className="font-bold text-white">{al.title}</span>
-                          {al.severity && <span className="ml-1.5 text-[9px] uppercase tracking-wider text-amber-300">{al.severity}</span>}
+                          {al.severity && <span className="ml-1.5 text-[9px] uppercase tracking-wider text-amber-300">{al.severity === "informativo" ? "a conferir" : al.severity}</span>}
+                          {al.description && <p className="text-[11px] text-slate-200 mt-0.5">{al.description}</p>}
+                          {(al.location || al.autosTrecho) && <p className="text-[10px] text-slate-400 mt-0.5">{al.location ? <><strong className="text-slate-300">Onde:</strong> {al.location}. </> : null}{al.autosTrecho ? <><strong className="text-slate-300">Nos autos:</strong> {al.autosTrecho}</> : null}</p>}
+                          {(al.suggestedFix || al.recommendation) && <p className="text-[10px] text-amber-200/90 mt-0.5"><strong>O que fazer:</strong> {al.suggestedFix || al.recommendation}</p>}
                         </li>
                       ))}
                     </ul>
@@ -356,7 +371,7 @@ export const TripleConferenceBench: React.FC<TripleConferenceBenchProps> = ({
             <div className="px-3.5 py-2 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400 shrink-0">
               <span className="flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                <span>Nota calculada por regra, só com prova nos autos</span>
+                <span>Nota dada pela análise da IA; observações com local e pedido de atenção</span>
               </span>
               <span className="font-mono text-slate-300">
                 {systemGeneratedMinute.length.toLocaleString()} caracteres
