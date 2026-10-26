@@ -12,6 +12,7 @@ import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServ
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
 import { fontesRouter, verificarCitacoes, avisoDispositivosRevogados, lerCopiaLocal } from './server/fontesOficiais';
 import { consultarLegislacao, diagnosticoLegislacao, testarLegislacao, definirLeitorLocal, pesquisarLegislacao } from './src/utils/legislacaoPlanalto';
+import { listarRegimes, gravarRegime, apagarRegime, sanearRegime } from './server/taxonomiaDb';
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
@@ -305,7 +306,7 @@ app.post("/api/test-api-key", async (req, res) => {
 // Pesquisa Legislativa: lê a consulta (opcional) e o processo, identifica as leis e artigos necessários (citados, ou do regime jurídico identificado) e traz o texto oficial do Planalto.
 app.post("/api/lookup-legislation", async (req, res) => {
     if (!limiteDiagnostico(req, res)) return;      // rota aberta (sem login): limite de uso por endereço, só lê lei pública e não devolve dado do gabinete
-    try { res.json(await pesquisarLegislacao(String(req.body?.query || "").slice(0, 600), String(req.body?.context || "").slice(0, 120000))); }
+    try { res.json(await pesquisarLegislacao(String(req.body?.query || "").slice(0, 600), String(req.body?.context || "").slice(0, 120000), { regimesExtras: await listarRegimes().catch(() => []) })); }
     catch (e: any) { res.status(500).json({ error: e?.message || "falha na pesquisa legislativa" }); }
 });
 app.post("/api/map-decision-documents", (req, res) => res.json({ result: "Not implemented" }));
@@ -647,7 +648,12 @@ app.delete("/api/precedentes/:id", async (req: any, res) => {
     } catch (e: any) { res.status(500).json({ success: false, error: "Não consegui excluir o precedente." }); }
 });
 
-app.post("/api/parse-precedents-pdf", async (req, res) => {
+// Importação de PDF de súmulas, teses e informativos (só Super Admin: a base é única e compartilhada por todos os gabinetes).
+// Roda em SEGUNDO PLANO: PDFs grandes passam do tempo de espera da hospedagem e a conexão caía sem avisar. Cada lote é gravado assim que fica pronto e o navegador acompanha pelo andamento.
+interface JobPrecedentes { id: string; arquivo: string; status: "rodando" | "concluido" | "erro"; total: number; feitos: number; adicionados: number; jaExistiam: number; erros: string[]; criadoEm: number; mensagem?: string }
+const jobsPrecedentes = new Map<string, JobPrecedentes>();
+app.post("/api/parse-precedents-pdf", async (req: any, res) => {
+    if (!req.usuarioSessao?.superAdmin) return res.status(403).json({ success: false, error: "Somente o Super Administrador alimenta a base de súmulas, teses e informativos (ela é compartilhada por todos os gabinetes)." });
     try {
         const userApiKey = extractApiKey(req);
         const isNativeAllowed = req.headers['x-use-native-key'] === 'true' || req.headers['x-use-native-key'] === '1';
@@ -655,17 +661,17 @@ app.post("/api/parse-precedents-pdf", async (req, res) => {
         if (!apiKey) {
             return res.status(401).json({ error: "Chave da API Gemini ausente. Configure uma chave nas preferências ou verifique as credenciais do sistema." });
         }
+        const keyPool = extractApiKeyPool(req);
 
         const { pdfText, fileName } = req.body;
         if (!pdfText || typeof pdfText !== "string" || pdfText.trim().length < 20) {
             return res.status(400).json({ error: "Texto do documento insuficiente para indexação." });
         }
 
-        // Blocos amplos de ~120.000 caracteres: processa 167 páginas em apenas 4 a 5 blocos rápidos
+        // Blocos amplos de ~120.000 caracteres (167 páginas em 4 a 5 blocos)
         const CHUNK_SIZE = 120000;
         const CHUNK_OVERLAP = 2500;
         const chunks: string[] = [];
-
         let currentPos = 0;
         while (currentPos < pdfText.length) {
             const endPos = Math.min(currentPos + CHUNK_SIZE, pdfText.length);
@@ -674,147 +680,94 @@ app.post("/api/parse-precedents-pdf", async (req, res) => {
             currentPos = endPos - CHUNK_OVERLAP;
         }
 
-        console.log(`[Parse Precedents PDF] Documento "${fileName || 'PDF'}" com ${pdfText.length} caracteres dividido em ${chunks.length} lote(s) para extração integral...`);
+        for (const [k, v] of jobsPrecedentes) if (Date.now() - v.criadoEm > 3 * 3600_000) jobsPrecedentes.delete(k);      // esquece andamentos antigos
+        const job: JobPrecedentes = { id: `prec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, arquivo: String(fileName || "Documento anexado"), status: "rodando", total: chunks.length, feitos: 0, adicionados: 0, jaExistiam: 0, erros: [], criadoEm: Date.now() };
+        jobsPrecedentes.set(job.id, job);
+        const anexadoPor = req.usuarioSessao?.email || "";
+        console.log(`[Parse Precedents PDF] "${job.arquivo}": ${pdfText.length} caracteres em ${chunks.length} lote(s), em segundo plano (${job.id}).`);
+        res.json({ success: true, jobId: job.id, total: chunks.length });
 
-        const allParsed: any[] = [];
-        const seenKeys = new Set<string>();
-
-        // Processamento paralelo dos lotes (em blocos de 3 paralelos para agilidade em segundos)
-        const BATCH_SIZE = 3;
-        for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-            const batch = chunks.slice(i, i + BATCH_SIZE);
-            const batchPromises = batch.map(async (chunkText, bIdx) => {
-                const chunkIndex = i + bIdx + 1;
+        (async () => {
+            const seenKeys = new Set<string>();
+            const processarLote = async (chunkText: string, chunkIndex: number) => {
                 const chunkPrompt = `Você é um especialista em indexação de jurisprudência e teses judiciais vinculantes (STF, STJ, TNU e TJGO).
-Analise o texto abaixo (Lote ${chunkIndex} de ${chunks.length}), extraído de documento/caderno oficial ou informativo ("${fileName || 'Documento Anexado'}"):
-"""
-${chunkText}
-"""
-
-Extraia com fidelidade jurídica TODAS as súmulas, teses repetitivas, enunciados ou informativos de jurisprudência identificados NESTE LOTE.
-Não resuma nem ignore julgados ou teses contidas neste trecho.
-Responda EXCLUSIVAMENTE em formato JSON puro (um array de objetos), sem blocos de markdown explicativos e sem texto introdutório.
-Se neste trecho não houver nenhum julgado ou tese (ex: apenas sumário, índice ou introdução genérica), retorne apenas um array vazio: []
-
-Estrutura de cada objeto:
-[
-  {
-    "id": "identificador_unico_curto",
-    "tribunal": "TJGO" | "STJ" | "STF" | "TNU",
-    "type": "sumula" | "sumula_vinculante" | "tese_repetitivo" | "informativo_tjgo" | "tese_tnu",
-    "number": "Número/identificação oficial (ex: Informativo TJGO 2026 nº 5, Súmula 32 TJGO, Tema 1061 STJ)",
-    "title": "Título conciso da tese",
-    "statement": "Enunciado completo, claro e objetivo da tese",
-    "sourceUrl": "https://transparencia.tjgo.jus.br/jurisprudencia",
-    "tags": ["termo1", "termo2", "termo3"],
-    "area": "Ramo do Direito (ex: Direito do Consumidor, Direito Bancário, Fazenda Pública, Processual Civil)"
-  }
-]`;
-
-                const options = {
-                    apiKey,
-                    keyPool: extractApiKeyPool(req),
-                    isNativeAllowed: Boolean(isNativeAllowed),
-                    res,
-                    primaryModel: "gemini-3.1-flash-lite",
-                    fallbackModel: "gemini-flash-latest",
-                    contents: [{ role: "user", parts: [{ text: chunkPrompt }] }],
-                    config: {
-                        temperature: 0.1,
-                        maxOutputTokens: 8192
-                    }
-                };
-
+                Analise o texto abaixo (Lote ${chunkIndex} de ${chunks.length}), extraído de documento/caderno oficial ou informativo ("${fileName || 'Documento Anexado'}"):
+                """
+                ${chunkText}
+                """
+                
+                Extraia com fidelidade jurídica TODAS as súmulas, teses repetitivas, enunciados ou informativos de jurisprudência identificados NESTE LOTE.
+                Não resuma nem ignore julgados ou teses contidas neste trecho.
+                Responda EXCLUSIVAMENTE em formato JSON puro (um array de objetos), sem blocos de markdown explicativos e sem texto introdutório.
+                Se neste trecho não houver nenhum julgado ou tese (ex: apenas sumário, índice ou introdução genérica), retorne apenas um array vazio: []
+                
+                Estrutura de cada objeto:
+                [
+                  {
+                    "id": "identificador_unico_curto",
+                    "tribunal": "TJGO" | "STJ" | "STF" | "TNU",
+                    "type": "sumula" | "sumula_vinculante" | "tese_repetitivo" | "informativo_tjgo" | "tese_tnu",
+                    "number": "Número/identificação oficial (ex: Informativo TJGO 2026 nº 5, Súmula 32 TJGO, Tema 1061 STJ)",
+                    "title": "Título conciso da tese",
+                    "statement": "Enunciado completo, claro e objetivo da tese",
+                    "sourceUrl": "https://transparencia.tjgo.jus.br/jurisprudencia",
+                    "tags": ["termo1", "termo2", "termo3"],
+                    "area": "Ramo do Direito (ex: Direito do Consumidor, Direito Bancário, Fazenda Pública, Processual Civil)"
+                  }
+                ]`;
                 try {
-                    const response = await generateWithFallbackAndRetry(options);
-                    const rawText = response.text || "[]";
-                    const cleaned = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+                    const response = await generateWithFallbackAndRetry({
+                        apiKey, keyPool, isNativeAllowed: Boolean(isNativeAllowed),
+                        primaryModel: "gemini-3.1-flash-lite", fallbackModel: "gemini-flash-latest",
+                        contents: [{ role: "user", parts: [{ text: chunkPrompt }] }],
+                        config: { temperature: 0.1, maxOutputTokens: 8192 }
+                    });
+                    const cleaned = (response.text || "[]").replace(/```json/g, "").replace(/```/g, "").trim();
                     let parsed: any[] = [];
-                    try {
-                        parsed = JSON.parse(cleaned);
-                        if (!Array.isArray(parsed)) parsed = [];
-                    } catch {
-                        parsed = [];
+                    try { parsed = JSON.parse(cleaned); if (!Array.isArray(parsed)) parsed = []; } catch { job.erros.push(`Lote ${chunkIndex}: a IA devolveu um formato inválido (o lote foi pulado).`); parsed = []; }
+                    const novos: any[] = [];
+                    for (const item of parsed) {
+                        if (!item || (!item.title && !item.statement && !item.number)) continue;
+                        const dedupeKey = ((item.number || '') + ' ' + (item.title || '') + ' ' + (item.statement || '').slice(0, 80)).toLowerCase().trim();
+                        if (!seenKeys.has(dedupeKey)) { seenKeys.add(dedupeKey); novos.push(item); }
                     }
-                    return parsed;
-                } catch (cErr) {
+                    if (novos.length) {
+                        const current = await loadServerCustomPrecedents();
+                        const existingKeys = new Set(current.map(c => ((c.number || '') + ' ' + (c.title || '')).toLowerCase().trim()));
+                        const existingIds = new Set(current.map(c => c.id));
+                        const validos = novos.map((item, idx) => {
+                            const cleanNum = (item.number || `Tese ${chunkIndex}.${idx + 1}`).trim();
+                            const autoId = `custom-${Date.now()}-${chunkIndex}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+                            return { ...item, id: item.id && !existingIds.has(item.id) ? item.id : autoId, number: cleanNum, sourceFile: job.arquivo, importedAt: new Date().toISOString(), origem: "anexo_pdf", anexadoPor };      // origem: texto extraído por IA de documento anexado, precisa ser conferido na fonte
+                        }).filter(item => !existingKeys.has(((item.number || '') + ' ' + (item.title || '')).toLowerCase().trim()) && !existingIds.has(item.id));
+                        job.jaExistiam += novos.length - validos.length;
+                        if (validos.length) await gravarPrecedentes(validos);
+                        job.adicionados += validos.length;
+                    }
+                } catch (cErr: any) {
                     console.warn(`[Parse Precedents PDF] Falha no lote ${chunkIndex}:`, cErr);
-                    return [];
-                }
-            });
-
-            const batchResults = await Promise.all(batchPromises);
-            for (const items of batchResults) {
-                for (const item of items) {
-                    if (!item || (!item.title && !item.statement && !item.number)) continue;
-                    const dedupeKey = ((item.number || '') + ' ' + (item.title || '') + ' ' + (item.statement || '').slice(0, 80)).toLowerCase().trim();
-                    if (!seenKeys.has(dedupeKey)) {
-                        seenKeys.add(dedupeKey);
-                        allParsed.push(item);
-                    }
-                }
-            }
-        }
-
-        if (allParsed.length > 0) {
-            const current = await loadServerCustomPrecedents();
-            const existingKeys = new Set(current.map(c => ((c.number || '') + ' ' + (c.title || '')).toLowerCase().trim()));
-            const existingIds = new Set(current.map(c => c.id));
-
-            const newValid = allParsed.map((item, idx) => {
-                const cleanNum = (item.number || `Tese ${idx + 1}`).trim();
-                const autoId = `custom-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
-                return {
-                    ...item,
-                    id: item.id && !existingIds.has(item.id) ? item.id : autoId,
-                    number: cleanNum,
-                    sourceFile: fileName || "Documento anexado",
-                    importedAt: new Date().toISOString(),
-                    origem: "anexo_pdf",      // texto extraído por IA de um documento anexado: precisa ser conferido na fonte
-                    anexadoPor: (req as any).usuarioSessao?.email || ""
-                };
-            }).filter(item => {
-                const key = ((item.number || '') + ' ' + (item.title || '')).toLowerCase().trim();
-                return !existingKeys.has(key) && !existingIds.has(item.id);
-            });
-
-            if (newValid.length === 0) {
-                const existingForFile = current.filter(c => c.sourceFile === (fileName || "Documento anexado"));
-                const reportedCount = existingForFile.length > 0 ? existingForFile.length : allParsed.length;
-                return res.json({
-                    success: true,
-                    alreadyIndexed: true,
-                    count: 0,
-                    total: current.length,
-                    precedents: existingForFile.length > 0 ? existingForFile : current,
-                    allPrecedents: current,
-                    message: `Este documento já foi indexado anteriormente. ${reportedCount} julgado(s)/tese(s) já constam ativos no seu repositório.`
-                });
-            }
-
-            const updated = [...newValid, ...current];
-            await gravarPrecedentes(newValid);
-
-            return res.json({
-                success: true,
-                count: newValid.length,
-                total: updated.length,
-                precedents: newValid,
-                allPrecedents: updated,
-                message: `${newValid.length} julgado(s)/tese(s) extraído(s) e indexado(s) com sucesso a partir de ${chunks.length} lote(s) do PDF.`
-            });
-        }
-
-        return res.json({
-            success: true,
-            count: 0,
-            precedents: [],
-            message: "Nenhuma tese ou enunciado específico foi identificado com clareza no texto fornecido."
-        });
+                    const bruto = String(cErr?.message || cErr); let legivel = bruto; try { legivel = JSON.parse(bruto)?.error?.message || bruto; } catch { /* mensagem simples */ }
+                    job.erros.push(`Lote ${chunkIndex}: ${legivel.slice(0, 220)}`);
+                } finally { job.feitos++; }
+            };
+            const LOTES_JUNTOS = 2;
+            for (let i = 0; i < chunks.length; i += LOTES_JUNTOS) await Promise.all(chunks.slice(i, i + LOTES_JUNTOS).map((c, k) => processarLote(c, i + k + 1)));
+            if (job.adicionados > 0) { job.status = "concluido"; job.mensagem = `${job.adicionados} julgado(s)/tese(s) extraído(s) e gravado(s) a partir de "${job.arquivo}".${job.jaExistiam ? ` ${job.jaExistiam} já constavam na base.` : ""}${job.erros.length ? ` Atenção: ${job.erros.length} lote(s) com problema.` : ""}`; }
+            else if (job.erros.length >= job.total) { job.status = "erro"; job.mensagem = `Nenhum lote foi processado. ${job.erros[0]}`; }
+            else if (job.jaExistiam > 0) { job.status = "concluido"; job.mensagem = `Este documento já foi indexado antes: ${job.jaExistiam} julgado(s)/tese(s) já constam na base.`; }
+            else { job.status = "concluido"; job.mensagem = "Nenhuma tese ou enunciado específico foi identificado com clareza no texto fornecido."; }
+            console.log(`[Parse Precedents PDF] ${job.id} terminou: ${job.mensagem}`);
+        })().catch((e) => { job.status = "erro"; job.mensagem = String(e?.message || e).slice(0, 300); console.error("[Parse Precedents PDF] erro:", e); });
     } catch (err: any) {
         console.error("Erro no parse-precedents-pdf:", err);
-        res.status(500).json({ error: err.message || "Erro ao processar PDF de precedentes." });
+        if (!res.headersSent) res.status(500).json({ error: err.message || "Erro ao processar PDF de precedentes." });
     }
+});
+app.get("/api/parse-precedents-pdf/:id", (req: any, res) => {
+    if (!req.usuarioSessao?.superAdmin) return res.status(403).json({ success: false, error: "Somente o Super Administrador." });
+    const job = jobsPrecedentes.get(String(req.params.id));
+    if (!job) return res.status(404).json({ success: false, error: "Importação não encontrada (o servidor pode ter reiniciado). Veja a lista: os lotes já prontos ficaram gravados." });
+    res.json({ success: true, ...job });
 });
 
 // Antes este botão gravava 4 precedentes escritos à mão no código e dizia que a base tinha sido "alimentada" pelos tribunais. Não existe fonte oficial conectada:
@@ -834,6 +787,26 @@ app.post("/api/sync-precedents-weekly", async (_req, res) => {
         console.error("Erro ao atualizar a lista de precedentes:", err);
         res.status(500).json({ error: "Não consegui ler os precedentes do banco." });
     }
+});
+
+// Regimes da Pesquisa Legislativa & Taxonomia Normativa: base única e compartilhada por todos os gabinetes. Todos leem; só o Super Admin cadastra, altera e exclui.
+app.get("/api/taxonomia", async (_req, res) => {
+    try { res.json({ success: true, regimes: await listarRegimes() }); }
+    catch { res.status(500).json({ success: false, error: "Não consegui ler os regimes cadastrados." }); }
+});
+app.post("/api/taxonomia", async (req: any, res) => {
+    if (!req.usuarioSessao?.superAdmin) return res.status(403).json({ success: false, error: "Somente o Super Administrador cadastra regimes." });
+    const fw = sanearRegime(req.body);
+    if (!fw) return res.status(400).json({ success: false, error: "Preencha nome, categoria, ao menos uma palavra-chave e ao menos uma lei." });
+    try { await gravarRegime(fw); res.json({ success: true, regime: fw }); }
+    catch { res.status(500).json({ success: false, error: "Não consegui gravar o regime." }); }
+});
+app.delete("/api/taxonomia/:id", async (req: any, res) => {
+    if (!req.usuarioSessao?.superAdmin) return res.status(403).json({ success: false, error: "Somente o Super Administrador exclui regimes." });
+    const id = String(req.params.id || "");
+    if (!id.startsWith("custom_")) return res.status(400).json({ success: false, error: "Os regimes que já vêm no sistema não podem ser excluídos." });
+    try { await apagarRegime(id); res.json({ success: true }); }
+    catch { res.status(500).json({ success: false, error: "Não consegui excluir o regime." }); }
 });
 
 // Diagnósticos abertos (sem login) da consulta à legislação: só dizem se o servidor alcança o Planalto e mostram o começo de um artigo de lei pública.
@@ -4499,7 +4472,7 @@ const matchedPrecedents = matchApplicableBindingPrecedents(combinedContextForPre
 const fontesConsultadas: { legislacao: string[]; naoLocalizados: string[]; indisponiveis: string[]; locais: string[]; precedentes: string[] } = { legislacao: [], naoLocalizados: [], indisponiveis: [], locais: [], precedentes: [...new Set(matchedPrecedents.map((p) => `${p.tribunal} • ${p.number}`))] };
 const somarFontes = (l: { conferidos?: string[]; naoAchados?: string[]; falhas?: string[]; locais?: string[] }, alvo: any = fontesConsultadas) => { for (const [k, v] of [["legislacao", l.conferidos], ["naoLocalizados", l.naoAchados], ["indisponiveis", l.falhas], ["locais", l.locais]] as const) for (const x of v || []) if (!alvo[k].includes(x)) alvo[k].push(x); };
 const fontesParaTela = (f: any = fontesConsultadas) => ({ ...f, consultado: true });      // sempre devolve: a tela mostra "nenhum artigo citado" em vez de parecer que a consulta não rodou
-const taxonomySummary = getApplicableTaxonomySummary(combinedContextForPrecedents);
+const taxonomySummary = getApplicableTaxonomySummary(combinedContextForPrecedents, await listarRegimes().catch(() => []));      // regimes do sistema + os cadastrados pelo Super Admin
 
 let liveGroundingPrecedents = "";
 let liveGroundingSources: Array<{ title: string; url: string }> = [];

@@ -18,8 +18,8 @@ export const FontesOficiaisPanel: React.FC = () => {
   const carregarLeis = async () => { try { setLeis((await chamar("/leis", "GET")).leis); } catch (e: any) { setErro(e.message); } };
   const abrir = () => { setAberto((v) => !v); if (!leis) void carregarLeis(); };
   const testar = async () => { setTestando(true); setErro(""); setRes(null); try { setRes((await chamar("/reconhecer")).resultados); } catch (e: any) { setErro(e.message); } finally { setTestando(false); } };
-  const atualizar = async (id: string) => { setAtualizando(id); try { const { lei } = await chamar(`/leis/${id}/atualizar`); setLeis((ls) => (ls || []).map((l) => (l.id === id ? lei : l))); } catch (e: any) { setErro(e.message); } finally { setAtualizando(null); } };
-  const atualizarTodas = async () => { if (!leis) return; setLote({ feitas: 0, total: leis.length }); for (let i = 0; i < leis.length; i++) { await atualizar(leis[i].id); setLote({ feitas: i + 1, total: leis.length }); await new Promise((r) => setTimeout(r, 800)); } setLote(null); };
+  const atualizar = async (id: string): Promise<any> => { setAtualizando(id); try { const { lei } = await chamar(`/leis/${id}/atualizar`); setLeis((ls) => (ls || []).map((l) => (l.id === id ? lei : l))); return lei; } catch (e: any) { setErro(e.message); return null; } finally { setAtualizando(null); } };
+  const atualizarTodas = async () => { if (!leis) return; setLote({ feitas: 0, total: leis.length }); for (let i = 0; i < leis.length; i++) { const lei = await atualizar(leis[i].id); setLote({ feitas: i + 1, total: leis.length }); if (lei?.erro && /bloque/i.test(lei.erro)) { setErro("O Planalto está bloqueando o servidor: a atualização em lote foi interrompida. Salve as leis no seu navegador (Ctrl+S) e use “Enviar arquivos salvos do Planalto”."); break; } await new Promise((r) => setTimeout(r, 800)); } setLote(null); };
   const enviarArquivos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const arquivos = Array.from(e.target.files || []); e.target.value = ""; if (!arquivos.length) return;
     setEnviando(true); setEnvio([]);

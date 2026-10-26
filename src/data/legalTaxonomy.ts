@@ -527,7 +527,7 @@ export const LEGAL_FRAMEWORKS: LegalFramework[] = [
   },
 ];
 
-export function detectApplicableLegalFrameworks(text: string): LegalFramework[] {
+export function detectApplicableLegalFrameworks(text: string, extra: LegalFramework[] = []): LegalFramework[] {
   if (!text || typeof text !== "string" || text.trim().length === 0) {
     return [LEGAL_FRAMEWORKS[0]]; // Retorna Cível Geral por padrão
   }
@@ -535,7 +535,7 @@ export function detectApplicableLegalFrameworks(text: string): LegalFramework[] 
   const normalized = text.toLowerCase();
   const matched: LegalFramework[] = [];
 
-  for (const framework of LEGAL_FRAMEWORKS) {
+  for (const framework of [...LEGAL_FRAMEWORKS, ...extra]) {
     let hits = 0;
     for (const kw of framework.keywords) {
       if (normalized.includes(kw.toLowerCase())) {
@@ -548,6 +548,7 @@ export function detectApplicableLegalFrameworks(text: string): LegalFramework[] 
     } else if (hits === 1) {
       // Casos específicos de alta relevância
       if (
+        (framework.id.startsWith("custom_") && framework.keywords.length <= 2) ||      // regime cadastrado pelo Super Admin com poucas palavras-chave: uma basta
         (framework.id === "curatela-epd" && (normalized.includes("curatela") || normalized.includes("interdicao"))) ||
         (framework.id === "titulos-credito-cheque" && normalized.includes("cheque")) ||
         (framework.id === "fazenda-publica" && (normalized.includes("fazenda publica") || normalized.includes("estado de goias") || normalized.includes("municipio de"))) ||
@@ -566,8 +567,8 @@ export function detectApplicableLegalFrameworks(text: string): LegalFramework[] 
   return matched;
 }
 
-export function getApplicableTaxonomySummary(text: string): string {
-  const frameworks = detectApplicableLegalFrameworks(text);
+export function getApplicableTaxonomySummary(text: string, extra: LegalFramework[] = []): string {
+  const frameworks = detectApplicableLegalFrameworks(text, extra);
   if (frameworks.length === 0) return "";
 
   return frameworks
