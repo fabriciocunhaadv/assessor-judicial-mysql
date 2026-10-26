@@ -1,6 +1,7 @@
 import { salvarPendente, lerPendente, limparPendente, consultarResultado, lerCorpo, lerPendenteModulo, limparPendenteModulo, ativosNestaPagina, type ModuloPendente } from "./utils/analisePendente";
 import { saveAudit as salvarAuditoria } from "./utils/auditDb";
 import { AvisoNovaVersao } from "./components/AvisoNovaVersao";
+import { AvisoSistemaAtualizado } from "./components/AvisoSistemaAtualizado";
 import { unirFontes } from "./utils/fontesConsultadas";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { detectarUnidadeDosAutos, unidadesParaAvisar } from "./utils/unidadeDosAutos";
@@ -2105,6 +2106,7 @@ export default function App() {
       />
 
       <div className="flex-1 flex flex-col h-screen overflow-y-auto overflow-x-hidden relative">
+        <AvisoSistemaAtualizado />
         {/* Official Header */}
       <Header
         onOpenPromptManager={() => setIsPromptManagerOpen(true)}
