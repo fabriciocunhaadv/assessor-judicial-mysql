@@ -1596,7 +1596,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-1.5 sm:p-5 bg-slate-950/90 backdrop-blur-md animate-in fade-in">
-      <div className="bg-slate-900 border border-indigo-500/40 rounded-2xl sm:rounded-3xl shadow-2xl max-w-6xl w-full flex flex-col h-[98vh] sm:h-[92vh] overflow-hidden text-slate-200">
+      <div data-janela="clara" className="bg-slate-900 border border-indigo-500/40 rounded-2xl sm:rounded-3xl shadow-2xl max-w-6xl w-full flex flex-col h-[98vh] sm:h-[92vh] overflow-hidden text-slate-200">
         
         {/* Top Header Responsivo */}
         <div className="p-3 sm:p-5 border-b border-slate-800 bg-slate-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 shrink-0">
