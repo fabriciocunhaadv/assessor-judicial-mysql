@@ -397,7 +397,7 @@ const listaDoIndice = (docs: any[]): SavedAnalysis[] => {
   return out.sort((a, b) => (b.date || 0) - (a.date || 0));
 };
 /** Consulta do índice. `criador`: só os atos desse usuário (consulta por igualdade, sem ordenar no servidor). Sem `criador`: os `limite` mais recentes do gabinete. */
-export interface OpcoesListaHistorico { limite?: number; criador?: string }
+export interface OpcoesListaHistorico { limite?: number; criador?: string; criadores?: string[]; emailCriador?: string }      // criadores/emailCriador: a mesma pessoa pode ter mais de um id; o e-mail do login a identifica
 const consultaIndice = (o: OpcoesListaHistorico = {}) => o.criador
   ? query(collection(db, indiceHistoricoPath()), where('createdBy', '==', o.criador))
   : query(collection(db, indiceHistoricoPath()), orderBy('date', 'desc'), limit(o.limite ?? INDICE_LIMITE));
@@ -417,7 +417,7 @@ export const assinarIndiceHistorico = (cb: (lista: SavedAnalysis[]) => void, ori
   if (!auth.currentUser) return () => {};
   let cancelado = false, assinaturaAtual = '', ocupado = false;
   const baixar = async () => {
-    const r = await chamarHistorico<{ itens: SavedAnalysis[] }>(globalTenantId, 'GET', '', undefined, { unit: getActiveUnitId(), limite: opcoes.limite ?? INDICE_LIMITE, criador: opcoes.criador });
+    const r = await chamarHistorico<{ itens: SavedAnalysis[] }>(globalTenantId, 'GET', '', undefined, { unit: getActiveUnitId(), limite: opcoes.limite ?? INDICE_LIMITE, criador: opcoes.criadores?.length ? opcoes.criadores.join(',') : opcoes.criador, email: opcoes.emailCriador });
     medirLeitura(origem, r.itens.map((x) => ({ data: () => x })) as any);
     if (!cancelado) cb(r.itens);
   };
@@ -426,7 +426,7 @@ export const assinarIndiceHistorico = (cb: (lista: SavedAnalysis[]) => void, ori
     if (cancelado || ocupado || (!forcar && typeof document !== 'undefined' && document.hidden)) return;
     ocupado = true;
     try {
-      const a = await chamarHistorico<{ n: number; ultima: number }>(globalTenantId, 'GET', '/assinatura', undefined, { unit: getActiveUnitId(), criador: opcoes.criador });
+      const a = await chamarHistorico<{ n: number; ultima: number }>(globalTenantId, 'GET', '/assinatura', undefined, { unit: getActiveUnitId(), criador: opcoes.criadores?.length ? opcoes.criadores.join(',') : opcoes.criador, email: opcoes.emailCriador });
       const chave = `${a.n}|${a.ultima}`;
       if (forcar || chave !== assinaturaAtual) { await baixar(); assinaturaAtual = chave; }
     } catch (e) { console.warn('[Histórico] atualização da lista falhou:', e); }
