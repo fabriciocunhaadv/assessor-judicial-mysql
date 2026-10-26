@@ -2,6 +2,7 @@ import { estadoIndiceHistorico, EstadoIndiceHistorico } from "../lib/firestoreUt
 import toast from "react-hot-toast";
 import { AvisoRetencao, EtiquetaValidade } from "./EtiquetaValidade";
 import { BancoOrigem } from "./BancoOrigem";
+import { ehDonoDoSistema } from "../utils/donoDoSistema";
 import React, { useState, useEffect, useRef } from "react";
 import {
   X,
@@ -126,7 +127,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   onGoHome,
   onDeleteAnalysis,
 }) => {
-  const { allowedUnits, isAdmin, isJudge, isSuperAdmin, activeUnit } = useAuth();
+  const { allowedUnits, isAdmin, isJudge, isSuperAdmin, activeUnit, userProfile: perfilAuth } = useAuth();
+  const verBanco = ehDonoDoSistema(perfilAuth);      // selo e faixa de origem do banco: só o dono do sistema
   // só administrador, juiz e super admin podem ver as minutas do gabinete inteiro; os demais veem só as próprias
   const podeVerGabinete = Boolean(isAdmin || isJudge || isSuperAdmin);
   const [history, setHistory] = useState<SavedAnalysis[]>([]);
@@ -448,11 +450,11 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap">
                 <h2 className="text-sm sm:text-base font-bold text-slate-900 leading-tight truncate">Histórico & Dossiês</h2>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold flex items-center gap-1 border border-emerald-200 whitespace-nowrap shrink-0">
+                {verBanco && <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold flex items-center gap-1 border border-emerald-200 whitespace-nowrap shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
                   <span className="hidden sm:inline">MySQL · Hostinger</span>
                   <span className="sm:hidden">MySQL</span>
-                </span>
+                </span>}
               </div>
             </div>
           </div>
