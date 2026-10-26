@@ -154,6 +154,9 @@ async function escreverUsuario(quem: UsuarioSessao, id: string, tipo: string, da
   if (campos.length) { campos.push("updated_at=?"); args.push(Date.now()); await banco().query(`UPDATE users SET ${campos.join(", ")} WHERE id=?`, [...args, id]); }
 }
 
+/** Ids do sistema antigo vinculados a este usuário pelo Super Admin (as minutas deles continuam sendo dele). */
+const idsAntigosDoUsuario = (u: UsuarioSessao): string[] => { try { const x = JSON.parse(u.row?.extras || "{}").uidsAntigos; return Array.isArray(x) ? x.map(String) : []; } catch { return []; } };
+
 // ---------- rotas ----------
 const rota = (f: (req: express.Request, res: express.Response, u: UsuarioSessao) => Promise<any>): express.RequestHandler => async (req, res) => {
   try { const u = await autenticarSessao(req); await garantirDocs(); await f(req, res, u); }
@@ -225,7 +228,7 @@ docsRouter.post("/escrever", rota(async (req, res, u) => {
     const [h] = await banco().query<any[]>("SELECT data FROM history WHERE tenant=? AND id=?", [gh, a.id]);
     const atual = h.length ? JSON.parse(h[0].data) : undefined;
     if (a.tipo === "delete") {
-      if (atual && !u.superAdmin && atual.createdBy && atual.createdBy !== "anonymous" && atual.createdBy !== u.uid) throw erro(403, "Só quem gerou a minuta pode excluí-la.");
+      if (atual && !u.superAdmin && atual.createdBy && atual.createdBy !== "anonymous" && atual.createdBy !== u.uid && !idsAntigosDoUsuario(u).includes(atual.createdBy)) throw erro(403, "Só quem gerou a minuta pode excluí-la.");
       await apagarAtoDoTenant(gh, a.id); continue;
     }
     if (a.tipo === "update" && atual === undefined) throw erro(404, "documento não existe: " + a.col + "/" + a.id);

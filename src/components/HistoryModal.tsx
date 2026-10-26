@@ -53,7 +53,7 @@ import {
   getHistoryCompleto,
 } from "../utils/historyDb";
 import { auth } from "../lib/firebase";
-import { getUserProfile } from "../lib/firestoreUtils";
+import { getUserProfile, ehIdAntigoHistorico } from "../lib/firestoreUtils";
 import { UserProfile, ProcessDossier } from "../types";
 import { useAuth } from "../lib/AuthContext";
 import { groupAnalysesIntoDossiers } from "../utils/dossierUtils";
@@ -408,7 +408,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     if (lancFilter === "lancados" && !item.lancadoProjudi && !recemMarcados.has(item.id)) return false;
 
     if (scopeFilter === "meus") {
-      if (currentUid && item.createdBy !== currentUid) return false;
+      // minhas = id atual, ids do sistema antigo vinculados pelo Super Admin ou o mesmo e-mail de autor
+      if (currentUid && item.createdBy !== currentUid && !ehIdAntigoHistorico(item.createdBy) && !(perfilAuth?.email && String(item.creatorEmail || "").toLowerCase() === perfilAuth.email.toLowerCase())) return false;
     } else if (podeVerGabinete && usuarioFiltro !== "todos") {
       const dono = item.createdBy && item.createdBy !== "anonymous" ? item.createdBy : "__sem__";
       if (dono !== usuarioFiltro) return false;

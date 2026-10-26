@@ -195,6 +195,19 @@ authRouter.get("/users", rota(async (req, res) => {
   res.json({ usuarios: rows.map((r) => { const i = importados.get(r.email); return { ...perfilPublico(r), status: r.status, ...(i ? { perfilImportado: { tenantId: i.tenantId, role: i.role, isJudge: !!i.isJudge, judgeTitle: i.judgeTitle || "" } } : {}) }; }) });
 }));
 
+/** Autores das minutas do Histórico (por id e e-mail gravados nelas), com quantas minutas cada um tem: o Super Admin usa para vincular o histórico antigo a quem mudou de cadastro ou de e-mail. */
+authRouter.get("/historico-autores", rota(async (req, res) => {
+  await soSuperAdmin(req);
+  await garantirEsquema().catch(() => {});
+  const [rows] = await banco().query<any[]>(`SELECT tenant, created_by, COUNT(*) n, MAX(date) ultima,
+      MAX(JSON_UNQUOTE(JSON_EXTRACT(data,'$.creatorEmail'))) email, MAX(JSON_UNQUOTE(JSON_EXTRACT(data,'$.creatorName'))) nome
+    FROM history_index GROUP BY tenant, created_by ORDER BY n DESC LIMIT 400`);
+  const [us] = await banco().query<any[]>("SELECT id, email, name, extras FROM users LIMIT 2000");
+  const doUsuario = new Map<string, string>();      // id antigo -> e-mail de quem já o tem vinculado, ou id do cadastro atual
+  for (const x of us) { doUsuario.set(x.id, x.email); try { for (const a of JSON.parse(x.extras || "{}").uidsAntigos || []) doUsuario.set(String(a), x.email); } catch { /* sem vínculo */ } }
+  res.json({ autores: rows.map((r) => ({ tenant: r.tenant, criador: r.created_by, minutas: Number(r.n), ultima: Number(r.ultima) || 0, email: r.email && r.email !== "null" ? String(r.email) : "", nome: r.nome && r.nome !== "null" ? String(r.nome) : "", pertenceA: doUsuario.get(r.created_by) || "" })) });
+}));
+
 /** { acao: "aprovar" | "recusar" | "desativar" | "reativar", tenantId?, role?, isJudge?, judgeTitle?, allowedUnits? } */
 authRouter.post("/users/:id/acao", rota(async (req, res) => {
   const adm = await soSuperAdmin(req), b = req.body || {};
@@ -211,6 +224,12 @@ authRouter.post("/users/:id/acao", rota(async (req, res) => {
     if (nome.length < 2) throw erro(400, "informe o nome (mínimo 2 letras)");
     await banco().query("UPDATE users SET name=?, updated_at=? WHERE id=?", [nome, Date.now(), r.id]);
     return void res.json({ ok: true, nome });
+  }
+  if (b.acao === "vincular_historico") {      // não altera nenhuma minuta: só registra, no cadastro, quais ids antigos de autor passam a ser deste usuário
+    const ids = Array.from(new Set((Array.isArray(b.criadores) ? b.criadores : []).map((x: any) => String(x).trim().slice(0, 128)).filter((x: string) => x && x !== "anonymous" && x !== r.id))).slice(0, 50);
+    const extras = { ...(r.extras ? JSON.parse(r.extras) : {}), uidsAntigos: ids };
+    await banco().query("UPDATE users SET extras=?, updated_at=? WHERE id=?", [JSON.stringify(extras), Date.now(), r.id]);
+    return void res.json({ ok: true, vinculados: ids.length });
   }
   const status = { aprovar: "aprovado", reativar: "aprovado", recusar: "recusado", desativar: "desativado" }[b.acao as string];
   if (!status) throw erro(400, "ação desconhecida");
