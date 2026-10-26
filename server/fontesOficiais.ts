@@ -5,6 +5,7 @@ import express from "express";
 import * as he from "he";
 import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
+import { decodificarPagina } from "../src/utils/legislacaoPlanalto";
 import { gzipSync, gunzipSync } from "zlib";
 
 export const fontesRouter = express.Router();
@@ -169,7 +170,11 @@ export function descobrirLei(nomeArquivo: string, texto: string): LeiConfig | nu
 }
 export async function importarArquivoLei(nomeArquivo: string, buf: Buffer, idForcado?: string): Promise<ResumoLei> {
   let texto: string;
-  try { texto = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch { texto = decodificar(buf); }      // arquivo salvo pelo navegador: UTF-8 válido ou windows-1252
+  // páginas do Planalto salvas em UTF-16 (ex.: Lei Maria da Penha) davam "0 artigos reconhecidos": detecta pelo marcador (BOM) ou pelos bytes zero e lê como UTF-16
+  const zeros = Array.from(buf.subarray(0, 600)).filter((x) => x === 0).length;
+  const utf16 = (buf.length >= 2 && ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff))) || (buf.length >= 20 && zeros / Math.min(buf.length, 600) > 0.25);
+  if (utf16) texto = decodificarPagina(buf);
+  else try { texto = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch { texto = decodificar(buf); }      // arquivo salvo pelo navegador: UTF-8 válido ou windows-1252
   const cfg = idForcado ? LEIS.find((l) => l.id === idForcado) : descobrirLei(nomeArquivo, texto);
   if (!cfg) throw Object.assign(new Error(`não reconheci qual lei é o arquivo “${nomeArquivo}”. Use o nome original da página (ex.: l13105.htm) ou escolha a lei na lista.`), { status: 400 });
   try { return await processarHtmlLei(cfg, texto); } catch (e: any) { return anotarErro(cfg, e); }
@@ -266,6 +271,15 @@ const SITES: { id: string; grupo: string; nome: string; url: string }[] = [
   { id: "tjgo-sumulas", grupo: "TJGO", nome: "TJGO • Súmulas", url: "https://www.tjgo.jus.br/sumulas" },
   { id: "planalto-cpc", grupo: "Planalto", nome: "Planalto • CPC (Lei 13.105/2015)", url: LEIS.find((l) => l.id === "cpc")!.url },
   { id: "planalto-cdc", grupo: "Planalto", nome: "Planalto • CDC (Lei 8.078/1990)", url: LEIS.find((l) => l.id === "cdc")!.url },
+  // outras fontes de legislação, só para saber quais o servidor da Hostinger alcança (se o Planalto bloquear, uma delas pode servir de reserva ou cobrir leis estaduais e municipais)
+  { id: "lexml", grupo: "Outras fontes de legislação", nome: "LexML • Lei 8.987/1995 (federal, estadual e municipal)", url: "https://www.lexml.gov.br/urn/urn:lex:br:federal:lei:1995-02-13;8987" },
+  { id: "normas-leg", grupo: "Outras fontes de legislação", nome: "Normas.leg.br • busca", url: "https://normas.leg.br/busca?q=8987" },
+  { id: "camara-leg", grupo: "Outras fontes de legislação", nome: "Câmara dos Deputados • Legislação", url: "https://www2.camara.leg.br/legislacao" },
+  { id: "senado-leg", grupo: "Outras fontes de legislação", nome: "Senado • Legislação", url: "https://legis.senado.leg.br/" },
+  { id: "casacivil-go", grupo: "Outras fontes de legislação", nome: "Casa Civil de Goiás", url: "https://goias.gov.br/casacivil/" },
+  { id: "leis-municipais", grupo: "Outras fontes de legislação", nome: "Leis municipais (leis.org)", url: "https://leis.org/municipais" },
+  { id: "leisestaduais", grupo: "Outras fontes de legislação", nome: "Leis estaduais (leisestaduais.com.br)", url: "https://leisestaduais.com.br/" },
+  { id: "jusbrasil-leg", grupo: "Outras fontes de legislação", nome: "JusBrasil • Legislação", url: "https://www.jusbrasil.com.br/legislacao/" },
 ];
 export async function reconhecer(): Promise<any[]> {
   const rodar = async (s: (typeof SITES)[number]) => {
