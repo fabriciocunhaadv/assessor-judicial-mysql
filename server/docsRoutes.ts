@@ -41,7 +41,7 @@ const podeLer = (u: UsuarioSessao, col: string): boolean => {
 };
 const podeEscrever = (u: UsuarioSessao, col: string): boolean => {
   const seg = col.split("/");
-  if (seg[0] === "tenants" || seg[0] === "system_snapshots" || seg[0] === "perfis_importados" || seg[0] === "precedentes" || seg[0] === "precedentes_conferencia") return u.superAdmin;      // precedentes: quem anexa passa pela rota própria; aqui só o super admin
+  if (seg[0] === "tenants" || seg[0] === "taxonomia_normativa" || seg[0] === "system_snapshots" || seg[0] === "perfis_importados" || seg[0] === "precedentes" || seg[0] === "precedentes_conferencia") return u.superAdmin;      // precedentes: quem anexa passa pela rota própria; aqui só o super admin
   if (seg[0] === "settings") return u.superAdmin;
   return podeLer(u, col);
 };

@@ -316,12 +316,12 @@ const citacaoDoRegime = (l: LegalFramework["principaisLeis"][number]) => {
   return /\b(?:do|da|de)\s+\S/i.test(arts) ? arts : `${arts} do ${l.diploma}`;
 };
 /** Descobre o que consultar: citações digitadas, citações dos autos e os diplomas do regime identificado (juros, consumo, Fazenda etc.). Nunca lança erro. */
-export async function pesquisarLegislacao(consulta: string, contexto: string, opts: { maxArtigos?: number; timeoutMs?: number } = {}): Promise<ResultadoPesquisaLegal> {
+export async function pesquisarLegislacao(consulta: string, contexto: string, opts: { maxArtigos?: number; timeoutMs?: number; regimesExtras?: LegalFramework[] } = {}): Promise<ResultadoPesquisaLegal> {
   const out: ResultadoPesquisaLegal = { itens: [], naoAchados: [], falhas: [], locais: [], regimes: [] };
   try {
     const max = opts.maxArtigos ?? 14;
     const base = `${consulta}\n${contexto}`;
-    out.regimes = detectApplicableLegalFrameworks(base).slice(0, 2);
+    out.regimes = detectApplicableLegalFrameworks(base, opts.regimesExtras || []).slice(0, 2);
     const fontes: Array<{ origem: ItemPesquisaLegal["origem"]; citacoes: Citacao[] }> = [];
     const digit = extrairTudo(consulta, max); fontes.push({ origem: "digitado", citacoes: digit.citacoes });
     const autos = extrairTudo(contexto, max); fontes.push({ origem: "autos", citacoes: autos.citacoes });

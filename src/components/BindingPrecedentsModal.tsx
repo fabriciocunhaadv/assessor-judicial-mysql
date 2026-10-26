@@ -162,6 +162,28 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
         throw new Error(data.error || data.message || `Erro na indexação (Status ${res.status}).`);
       }
 
+      // A indexação roda em segundo plano no servidor (cada lote já fica gravado); aqui só se acompanha o andamento
+      if (data.jobId) {
+        setPdfUploadStatus(`Indexando com IA: 0 de ${data.total} lote(s)... (pode levar alguns minutos)`);
+        let fim: any = null;
+        for (let t = 0; t < 600; t++) {
+          await new Promise((r) => setTimeout(r, 3000));
+          const rj = await fetch(`/api/parse-precedents-pdf/${encodeURIComponent(data.jobId)}`, { headers: getApiHeaders() });
+          const j = await rj.json().catch(() => ({} as any));
+          if (!rj.ok || !j.success) throw new Error(j.error || `Não consegui acompanhar a indexação (Status ${rj.status}).`);
+          setPdfUploadStatus(`Indexando com IA: ${j.feitos} de ${j.total} lote(s)... ${j.adicionados} julgado(s) novo(s) até agora.`);
+          if (j.status !== "rodando") { fim = j; break; }
+        }
+        if (!fim) throw new Error("A indexação está demorando mais que o normal. Confira a lista daqui a alguns minutos: os lotes prontos já ficam gravados.");
+        await recarregarLista();
+        setSelectedTribunal("CUSTOM");
+        setCurrentPage(1);
+        if (fim.status === "erro") throw new Error(fim.mensagem || "Falha na indexação.");
+        setPdfUploadStatus(`${fim.adicionados > 0 ? "🎉" : "ℹ️"} ${fim.mensagem}${fim.erros?.length ? " Problemas: " + fim.erros.slice(0, 2).join(" | ") : ""}`);
+        setTimeout(() => setPdfUploadStatus(null), 20000);
+        return;
+      }
+
       // Se o documento já estava previamente indexado no banco do servidor
       if (data.alreadyIndexed) {
         if (data.allPrecedents && Array.isArray(data.allPrecedents)) {
@@ -190,7 +212,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
       setTimeout(() => setPdfUploadStatus(null), 8000);
     } catch (err: any) {
       setPdfUploadStatus(`❌ Falha na importação: ${err?.message || "Erro desconhecido"}`);
-      setTimeout(() => setPdfUploadStatus(null), 8000);
+      setTimeout(() => setPdfUploadStatus(null), 20000);
     } finally {
       setIsUploadingPdf(false);
       if (e.target) e.target.value = "";
@@ -284,7 +306,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
-                Base de precedentes do gabinete: itens da base interna e documentos anexados por PDF. Os marcados como “Conferido” foram verificados na fonte oficial pelo Super Administrador; os demais devem ser conferidos antes de citar.
+                Base compartilhada por todos os gabinetes: itens da base interna e documentos anexados por PDF pelo Super Administrador. Os marcados como “Conferido” foram verificados na fonte oficial pelo Super Administrador; os demais devem ser conferidos antes de citar.
               </p>
             </div>
           </div>
@@ -352,8 +374,8 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
         {/* Barra de Ações: Sincronização Semanal Automatizada + Anexar PDF no Repositório */}
         <div className="shrink-0 px-4 sm:px-6 py-2.5 bg-slate-50/95 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Botão de Anexar PDF de Informativo / Súmulas */}
-            <label className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition shadow-2xs ${
+            {/* Botão de Anexar PDF de Informativo / Súmulas (só o Super Admin alimenta a base compartilhada) */}
+            {isSuperAdmin ? <label className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition shadow-2xs ${
               isUploadingPdf 
                 ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed" 
                 : "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 cursor-pointer active:scale-98"
@@ -367,7 +389,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
                 onChange={handleUploadPrecedentPdf}
                 className="hidden"
               />
-            </label>
+            </label> : <span className="text-[11px] text-slate-500">Base compartilhada por todos os gabinetes, mantida pelo Super Administrador.</span>}
 
             {/* Botão Super Admin: Sincronizar Agora */}
             {isSuperAdmin && (
@@ -406,8 +428,8 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
         )}
 
         {/* Portais Oficiais Rápidos */}
-        <div className="shrink-0 px-4 sm:px-6 py-2 bg-slate-50 dark:bg-slate-950/70 border-b border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-none">
-          <div className="flex items-center gap-2 whitespace-nowrap min-w-max">
+        <div className="shrink-0 px-4 sm:px-6 py-2 bg-slate-50 dark:bg-slate-950/70 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1 shrink-0 mr-1">
               <Globe className="w-3.5 h-3.5 text-emerald-500" />
               Bases Oficiais:
@@ -433,7 +455,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
         </div>
 
         {/* Search & Filter Bar */}
-        <div className="shrink-0 p-3 sm:p-4 sm:px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-2.5 sm:gap-3 items-stretch sm:items-center justify-between">
+        <div className="shrink-0 p-3 sm:p-4 sm:px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:flex-wrap gap-2.5 sm:gap-3 items-stretch sm:items-center justify-between">
           <div className="relative w-full sm:w-80">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -445,7 +467,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
             />
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1 sm:pb-0">
+          <div className="flex flex-wrap items-center gap-1.5 pb-1 sm:pb-0 min-w-0">
             <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 whitespace-nowrap cursor-pointer pr-1" title="Mostrar só os itens conferidos na fonte oficial">
               <input type="checkbox" checked={soConferidos} onChange={(e) => { setSoConferidos(e.target.checked); setCurrentPage(1); }} /> Só conferidos
             </label>

@@ -19,6 +19,9 @@ import {
 } from "lucide-react";
 import { LEGAL_FRAMEWORKS, LegalFramework } from "../data/legalTaxonomy";
 import { LegislationLookupResult } from "../types";
+import { useAuth } from "../lib/AuthContext";
+import { getApiHeaders } from "../utils/apiKeyManager";
+import { RegimeEditor } from "./RegimeEditor";
 
 const ORIGEM: Record<string, string> = { digitado: "citado na sua consulta", autos: "citado nos autos", regime: "dispositivo do regime jurídico identificado no processo" };
 /** Resposta de /api/lookup-legislation (consulta automática ao Planalto) no formato que a tela já mostra. */
@@ -61,16 +64,34 @@ export const LegislativeLookupModal: React.FC<LegislativeLookupModalProps> = ({
   const [copiedClause, setCopiedClause] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<"taxonomia" | "pesquisa_ia">("taxonomia");
 
+  // Regimes do sistema + os cadastrados pelo Super Admin (base única, compartilhada por todos os gabinetes)
+  const { isSuperAdmin } = useAuth();
+  const [regimesCustom, setRegimesCustom] = useState<LegalFramework[]>([]);
+  const [editandoRegime, setEditandoRegime] = useState<LegalFramework | "novo" | null>(null);
+  const carregarRegimes = async () => {
+    try { const r = await fetch("/api/taxonomia", { headers: getApiHeaders() }); const j = await r.json(); if (j?.success) setRegimesCustom(Array.isArray(j.regimes) ? j.regimes : []); } catch { /* fica só o catálogo do sistema */ }
+  };
+  useEffect(() => { if (isOpen) void carregarRegimes(); }, [isOpen]);
+  const todosRegimes = useMemo(() => [...LEGAL_FRAMEWORKS, ...regimesCustom], [regimesCustom]);
+  const excluirRegime = async (fw: LegalFramework) => {
+    if (!window.confirm(`Excluir o regime "${fw.name}" da base? Isso vale para todos os gabinetes.`)) return;
+    try {
+      const r = await fetch(`/api/taxonomia/${encodeURIComponent(fw.id)}`, { method: "DELETE", headers: getApiHeaders() });
+      const j = await r.json().catch(() => ({} as any)); if (!r.ok || !j.success) throw new Error(j.error || `Erro ${r.status}`);
+      setSelectedFrameworkId(LEGAL_FRAMEWORKS[0].id); await carregarRegimes();
+    } catch (e: any) { window.alert("Não consegui excluir: " + (e?.message || e)); }
+  };
+
   // Selected local framework
   const currentFramework = useMemo(() => {
-    return LEGAL_FRAMEWORKS.find((f) => f.id === selectedFrameworkId) || LEGAL_FRAMEWORKS[0];
-  }, [selectedFrameworkId]);
+    return todosRegimes.find((f) => f.id === selectedFrameworkId) || todosRegimes[0];
+  }, [selectedFrameworkId, todosRegimes]);
 
   // Filter frameworks by search text
   const filteredFrameworks逃 = useMemo(() => {
-    if (!searchQuery.trim()) return LEGAL_FRAMEWORKS;
+    if (!searchQuery.trim()) return todosRegimes;
     const q = searchQuery.toLowerCase();
-    return LEGAL_FRAMEWORKS.filter(
+    return todosRegimes.filter(
       (f) =>
         f.name.toLowerCase().includes(q) ||
         f.category.toLowerCase().includes(q) ||
@@ -240,9 +261,16 @@ export const LegislativeLookupModal: React.FC<LegislativeLookupModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
               {/* Left Column: Framework Selector */}
               <div className="md:col-span-4 space-y-2 border-r border-slate-100 pr-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                   Microssistemas e Regimes
                 </h4>
+                {isSuperAdmin && (
+                  <button onClick={() => setEditandoRegime("novo")} className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold cursor-pointer" title="Cadastrar um regime na base compartilhada por todos os gabinetes">
+                    + Novo regime
+                  </button>
+                )}
+                </div>
                 <div className="space-y-1.5 max-h-[500px] overflow-y-auto pr-1">
                   {filteredFrameworks逃.map((fw) => {
                     const isSelected = fw.id === selectedFrameworkId;
@@ -294,6 +322,15 @@ export const LegislativeLookupModal: React.FC<LegislativeLookupModalProps> = ({
                         {currentFramework.name}
                       </h4>
                     </div>
+                    {currentFramework.id.startsWith("custom_") && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">Cadastrado pelo Super Admin</span>
+                        {isSuperAdmin && (<>
+                          <button onClick={() => setEditandoRegime(currentFramework)} className="px-2 py-0.5 rounded border border-indigo-300 text-indigo-700 hover:bg-indigo-50 text-[10px] font-bold cursor-pointer">Alterar</button>
+                          <button onClick={() => excluirRegime(currentFramework)} className="px-2 py-0.5 rounded border border-red-300 text-red-700 hover:bg-red-50 text-[10px] font-bold cursor-pointer">Excluir</button>
+                        </>)}
+                      </div>
+                    )}
                   </div>
 
                   {/* Leis e Artigos */}
@@ -625,6 +662,13 @@ export const LegislativeLookupModal: React.FC<LegislativeLookupModalProps> = ({
           </button>
         </div>
       </div>
+      {editandoRegime && (
+        <RegimeEditor
+          inicial={editandoRegime === "novo" ? null : editandoRegime}
+          onCancelar={() => setEditandoRegime(null)}
+          onSalvo={async (fw) => { setEditandoRegime(null); await carregarRegimes(); setSelectedFrameworkId(fw.id); }}
+        />
+      )}
     </div>
   );
 };
