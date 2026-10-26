@@ -27,6 +27,10 @@ export async function fetchRecuperavel(url: string, init: RequestInit & { header
   try {
     const r = await fetch(url, { ...init, headers });
     const texto = await r.text();      // lê tudo aqui: se a conexão cair no meio da leitura, também cai no plano B
+    if ([408, 502, 503, 504, 524].includes(r.status) && !/^\s*\{/.test(texto)) {      // o proxy da hospedagem cortou a espera, mas o servidor pode ter terminado: busca o resultado guardado
+      const rec = await esperarResultado(progId, opcoes.esperaMaxMs ?? 12 * 60_000);
+      if (rec) return new Response(rec.body, { status: rec.status >= 200 && rec.status <= 599 ? rec.status : 200, headers: { "Content-Type": "application/json" } });
+    }
     return new Response(texto, { status: r.status, statusText: r.statusText, headers: { "Content-Type": r.headers.get("Content-Type") || "application/json" } });
   } catch (e: any) {
     if (e?.name === "AbortError" || (init.signal as AbortSignal | undefined)?.aborted) throw e;      // cancelado de propósito (ou limite de tempo): não recupera
