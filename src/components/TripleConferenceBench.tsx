@@ -438,15 +438,21 @@ export const TripleConferenceBench: React.FC<TripleConferenceBenchProps> = ({
             <div className="px-3.5 py-2 bg-rose-950/70 border-b border-rose-500/50 flex items-start gap-2 text-xs text-rose-200 shrink-0">
               <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <span className="font-bold text-rose-300 block">
-                  {auditResult.criticalAlerts.length} Alerta(s) Crítico(s) Detectado(s):
-                </span>
-                <p className="text-[11px] text-rose-200/90 truncate">
-                  {auditResult.criticalAlerts
-                    .map((a: any) => (typeof a === "string" ? a : a?.title || a?.description || ""))
-                    .filter(Boolean)
-                    .join(" • ")}
-                </p>
+                {(() => {
+                  const lista = auditResult.criticalAlerts as any[];
+                  const obs = lista.filter((a) => typeof a !== "string" && a?.severity === "informativo").length;
+                  const res = lista.length - obs;
+                  return (
+                    <>
+                      <span className="font-bold text-rose-300 block">
+                        {res > 0 ? `${res} ressalva(s)` : "Sem ressalva"}{obs > 0 ? `${res > 0 ? " e " : ", "}${obs} observação(ões) a conferir` : ""}:
+                      </span>
+                      <ul className="text-[11px] text-rose-200/90 max-h-24 overflow-y-auto pr-1 space-y-0.5 list-disc pl-4">
+                        {lista.map((a: any, i: number) => <li key={i} className="break-words">{typeof a === "string" ? a : a?.title || a?.description || ""}</li>)}
+                      </ul>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           )}
