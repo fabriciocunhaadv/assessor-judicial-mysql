@@ -16,7 +16,7 @@ interface Linha {
 }
 const vazio = (): Record<Modulo, Uso> => Object.fromEntries(MODULOS.map((m) => [m, { n: 0, tokens: 0, custo: 0 }])) as Record<Modulo, Uso>;
 const dia = (s: any, fim: boolean, padrao: number) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || "")); return m ? Date.parse(`${m[1]}-${m[2]}-${m[3]}T${fim ? "23:59:59.999" : "00:00:00"}-03:00`) : padrao; };      // dias no horário de Brasília
-const json = (t: any): any => { try { return JSON.parse(String(t)); } catch { return {}; } };
+const json = (t: any): any => { try { const v = JSON.parse(String(t)); return v && typeof v === "object" ? v : {}; } catch { return {}; } };      // "null", texto solto ou vazio viram {} (usuário sem dados extras não derruba a conta)
 
 utilizacaoRouter.get("/", async (req: any, res) => {
   try {
