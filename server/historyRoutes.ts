@@ -5,6 +5,7 @@ import express from "express";
 import mysql from "mysql2/promise";
 import { autenticarSessao, mensagemDeErro } from "./authRoutes";
 import { resumoLeve, digitosDoProcesso } from "../src/utils/historicoLeve";
+import { aplicarUnidade, lerPedidoDeLote } from "../src/utils/mudarUnidade";
 
 export const historyRouter = express.Router();
 
@@ -190,6 +191,18 @@ historyRouter.post("/processo/atualizar", rota(async (req, res, u) => {
     await gravarAto(u, limparNaoDefinidos(ato));
   }
   res.json({ atualizados: atos.length });
+}));
+
+/** Super Admin: muda a comarca/unidade de vários atos (ids) e/ou de todos os atos de vários processos, de uma vez. { ids?, processos?, unitId, judicialUnit, comarca?, vara? } */
+historyRouter.post("/lote/unidade", rota(async (req, res, u) => {
+  if (!u.superAdmin) throw Object.assign(new Error("Somente o Super Administrador muda a comarca/unidade em lote."), { status: 403 });
+  const p = lerPedidoDeLote(req.body);
+  if ("erro" in p) throw Object.assign(new Error(p.erro), { status: 400 });
+  const atos = new Map<string, any>();
+  for (const id of p.ids) { const a = await lerAto(u, id); if (a) atos.set(String(a.id || id), a); }
+  for (const num of p.processos) for (const a of await atosDoProcesso(u, num)) atos.set(String(a.id), a);
+  for (const a of atos.values()) await gravarAto(u, limparNaoDefinidos(aplicarUnidade(a, p.destino)));      // um ato por vez: leve para o banco
+  res.json({ atualizados: atos.size });
 }));
 
 /** Exclui o dossiê (só as minutas do próprio usuário) na unidade indicada. */

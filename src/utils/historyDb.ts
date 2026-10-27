@@ -627,6 +627,35 @@ export const updateProcessUnit = async (
   }
 };
 
+/** Super Admin: muda a comarca/unidade de vários atos e/ou processos de uma vez; depois acerta o que o navegador guardou da lista. */
+export const mudarUnidadeEmLote = async (
+  alvos: { ids?: string[]; processos?: string[] },
+  destino: { unitId: string; judicialUnit: string; comarca?: string; vara?: string },
+  progresso?: (feitos: number, total: number) => void
+): Promise<number> => {
+  const { updateUnitEmLoteInDb } = await import("../lib/firestoreUtils");
+  const n = await updateUnitEmLoteInDb(alvos, destino, progresso);
+  try {
+    const ids = new Set(alvos.ids || []), nums = new Set((alvos.processos || []).map((x) => x.replace(/[^\d]/g, "")).filter((x) => x.length >= 5));
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith("assessor_fabricio_history_cache_")) continue;
+      const raw = safeGetItem(key); if (!raw) continue;
+      try {
+        const list = JSON.parse(raw);
+        if (!Array.isArray(list)) continue;
+        safeSetItem(key, JSON.stringify(list.map((item: SavedAnalysis) => {
+          if (!item) return item;
+          const num = (item.processNumber || item.result?.minute?.processNumber || "").replace(/[^\d]/g, "");
+          if (!ids.has(item.id) && !(num.length >= 5 && nums.has(num))) return item;
+          return { ...item, unitId: destino.unitId, ...(item.result ? { result: { ...item.result, minute: { ...item.result.minute, judicialUnit: destino.judicialUnit } } } : {}) };
+        })));
+      } catch { /* cache ilegível: a lista é recarregada do banco */ }
+    }
+  } catch (e) { console.warn("Error updating local history cache after bulk unit change:", e); }
+  return n;
+};
+
 export const updateAnalysisCategory = async (
   id: string,
   categoryData: { promptCategory: string; vara?: string }

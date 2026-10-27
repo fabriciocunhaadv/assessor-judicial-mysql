@@ -577,6 +577,24 @@ export const updateProcessUnitInDb = async (
   }
 };
 
+/** Super Admin: muda a comarca/unidade de vários atos e/ou processos de uma vez (em pedaços pequenos, para o banco não sentir). */
+export const updateUnitEmLoteInDb = async (
+  alvos: { ids?: string[]; processos?: string[] },
+  destino: { unitId: string; judicialUnit: string; comarca?: string; vara?: string },
+  progresso?: (feitos: number, total: number) => void
+): Promise<number> => {
+  if (!auth.currentUser) return 0;
+  const ids = alvos.ids || [], processos = alvos.processos || [], total = ids.length + processos.length;
+  let atualizados = 0, feitos = 0;
+  const pedaco = async (corpo: { ids?: string[]; processos?: string[] }, n: number) => {
+    atualizados += (await chamarHistorico<{ atualizados: number }>(globalTenantId, 'POST', '/lote/unidade', { ...corpo, ...destino })).atualizados;
+    feitos += n; progresso?.(feitos, total);
+  };
+  for (let i = 0; i < ids.length; i += 25) { const c = ids.slice(i, i + 25); await pedaco({ ids: c }, c.length); }
+  for (let i = 0; i < processos.length; i += 10) { const c = processos.slice(i, i + 10); await pedaco({ processos: c }, c.length); }
+  return atualizados;
+};
+
 export const updateAnalysisCategoryInDb = async (
   analysisId: string,
   categoryData: { promptCategory: string; vara?: string }

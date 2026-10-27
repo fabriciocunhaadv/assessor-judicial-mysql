@@ -14,6 +14,8 @@ interface EditProcessUnitModalProps {
   analysisId?: string;
   allowedUnits: JudicialUnit[];
   onUnitUpdated: (updated: { unitId: string; judicialUnit: string; category?: string }) => void;
+  /** Modo em lote (Super Admin): troca só a comarca/unidade de vários itens de uma vez; sem a escolha de vara/competência. */
+  lote?: { descricao: string; confirmar: (destino: { unitId: string; judicialUnit: string }) => Promise<void> };
 }
 
 export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
@@ -26,6 +28,7 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
   analysisId,
   allowedUnits,
   onUnitUpdated,
+  lote,
 }) => {
   const [selectedUnitId, setSelectedUnitId] = useState<string>(currentUnitId);
   const [customUnitName, setCustomUnitName] = useState<string>(currentJudicialUnit || "");
@@ -79,6 +82,13 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
     setIsSaving(true);
     setError(null);
 
+    if (lote) {
+      try { await lote.confirmar({ unitId: finalUnitId, judicialUnit: finalUnitName }); onClose(); }
+      catch (err: any) { setError(err?.message || "Erro ao mudar a comarca/unidade no banco de dados."); }
+      finally { setIsSaving(false); }
+      return;
+    }
+
     const catDef = AVAILABLE_PROCESS_CATEGORIES.find((c) => c.category === selectedCategory);
     const varaName = catDef ? catDef.label : undefined;
 
@@ -130,8 +140,8 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
               <Building2 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Alterar Vara & Lotação do Processo</h3>
-              <p className="text-xs text-slate-500 font-mono">Processo: {processNumber || "Sem Número"}</p>
+              <h3 className="text-base font-bold text-slate-900">{lote ? "Mudar Comarca / Unidade em lote" : "Alterar Vara & Lotação do Processo"}</h3>
+              <p className="text-xs text-slate-500 font-mono">{lote ? lote.descricao : `Processo: ${processNumber || "Sem Número"}`}</p>
             </div>
           </div>
           <button
@@ -151,8 +161,8 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
             </div>
           )}
 
-          {/* 1. SELEÇÃO DA VARA / COMPETÊNCIA DO PROCESSO */}
-          <div>
+          {/* 1. SELEÇÃO DA VARA / COMPETÊNCIA DO PROCESSO (não aparece em lote: a competência de cada item fica como está) */}
+          {!lote && <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Tag className="w-3.5 h-3.5 text-indigo-600" />
               <span>1. Competência / Vara na Etiqueta:</span>
@@ -177,7 +187,7 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
                 );
               })}
             </div>
-          </div>
+          </div>}
 
           {/* 2. SELEÇÃO DA UNIDADE / COMARCA */}
           <div className="pt-2 border-t border-slate-100">
@@ -243,6 +253,7 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
             )}
           </div>
 
+          {lote && <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-900 leading-relaxed">Os itens escolhidos <strong>saem da lista da unidade atual</strong> e passam a aparecer na unidade de destino. Troque a unidade ativa para vê-los lá.</div>}
           <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-900 leading-relaxed">
             <strong>Atualização Imediata:</strong> A alteração de Vara e Lotação é sincronizada para todos os membros do gabinete e refletirá imediatamente na etiqueta do processo e no dossiê de histórico.
           </div>
@@ -265,7 +276,7 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
             className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer disabled:opacity-50"
           >
             {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            <span>Salvar Alterações</span>
+            <span>{lote ? "Mudar de unidade" : "Salvar Alterações"}</span>
           </button>
         </div>
       </div>

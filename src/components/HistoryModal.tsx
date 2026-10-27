@@ -51,6 +51,7 @@ import {
   type OpcoesListaHistorico,
   abrirAtoCompleto,
   getHistoryCompleto,
+  mudarUnidadeEmLote,
 } from "../utils/historyDb";
 import { auth } from "../lib/firebase";
 import { getUserProfile, ehIdAntigoHistorico } from "../lib/firestoreUtils";
@@ -153,6 +154,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const [viewMode, setViewMode] = useState<"dossiers" | "flat">("dossiers");
   // seleção em lote: ids dos dossiês (visão Dossiês) ou dos atos (visão Atos) marcados para apagar
   const [modoSelecao, setModoSelecao] = useState(false);
+  const [unidadeLote, setUnidadeLote] = useState<{ ids: string[]; processos: string[]; descricao: string } | null>(null);      // Super Admin: mudar a comarca/unidade de vários itens
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [apagandoLote, setApagandoLote] = useState<{ feitos: number; total: number } | null>(null);
   const [lancFilter, setLancFilter] = useState<"todos" | "pendentes" | "lancados">("pendentes");      // o que interessa no dia a dia: o que ainda falta lançar
@@ -359,6 +361,23 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   // ---------- apagar vários ou todos (só as minutas que o próprio usuário pode excluir; as de outros ficam) ----------
   const alternarSelecao = (chave: string) => setSelecionados((s) => { const n = new Set(s); if (n.has(chave)) n.delete(chave); else n.add(chave); return n; });
   const sairDaSelecao = () => { setModoSelecao(false); setSelecionados(new Set()); };
+  // ---------- Super Admin: mudar a comarca/unidade dos itens marcados (um ou vários) ----------
+  const abrirMudancaDeUnidade = () => {
+    const dossies = viewMode === "dossiers" ? processDossiers.filter((d) => selecionados.has(d.id)) : [];
+    const atos = viewMode === "flat" ? filteredHistory.filter((a) => selecionados.has(a.id)) : [];
+    if (!dossies.length && !atos.length) { showFeedback("Nada selecionado."); return; }
+    const processos = dossies.filter((d) => (d.processNumber || "").replace(/\D/g, "").length >= 5).map((d) => d.processNumber);
+    const ids = [...atos.map((a) => a.id), ...dossies.filter((d) => !processos.includes(d.processNumber)).flatMap((d) => d.analyses.map((a) => a.id))];
+    const nAtos = viewMode === "dossiers" ? dossies.reduce((n, d) => n + d.analyses.length, 0) : atos.length;
+    setUnidadeLote({ ids, processos, descricao: viewMode === "dossiers" ? `${dossies.length} processo(s), ${nAtos} minuta(s)` : `${atos.length} minuta(s)` });
+  };
+  const confirmarMudancaDeUnidade = async (destino: { unitId: string; judicialUnit: string }) => {
+    if (!unidadeLote) return;
+    const n = await mudarUnidadeEmLote({ ids: unidadeLote.ids, processos: unidadeLote.processos }, destino);
+    sairDaSelecao();
+    showFeedback(`${n} minuta(s) movida(s) para "${destino.judicialUnit}". Elas saem desta lista e aparecem na unidade de destino (troque a unidade ativa para vê-las).`);
+    await loadHistory();
+  };
   const apagarEmLote = async (escopo: "selecionados" | "todos") => {
     const dossies = viewMode === "dossiers" ? processDossiers.filter((d) => escopo === "todos" || selecionados.has(d.id)) : [];
     const atosEscolhidos = viewMode === "flat" ? filteredHistory.filter((a) => escopo === "todos" || selecionados.has(a.id)) : [];
@@ -649,12 +668,13 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
         {filteredHistory.length > 0 && (
           <div className="shrink-0 px-3 sm:px-4 py-1.5 border-b border-slate-200 bg-white flex flex-wrap items-center gap-2 text-[11px]" data-testid="barra-selecao">
             {!modoSelecao ? (
-              <button onClick={() => setModoSelecao(true)} className="px-2.5 py-1 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer" title="Marcar vários processos ou atos para apagar de uma vez">Selecionar para apagar</button>
+              <button onClick={() => setModoSelecao(true)} className="px-2.5 py-1 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer" title={isSuperAdmin ? "Marcar um ou vários processos ou atos para apagar ou mudar de comarca/unidade" : "Marcar vários processos ou atos para apagar de uma vez"} data-testid="selecionar-varios">{isSuperAdmin ? "Selecionar (apagar ou mudar de unidade)" : "Selecionar para apagar"}</button>
             ) : (<>
               <button onClick={() => { const todos = viewMode === "dossiers" ? processDossiers.map((d) => d.id) : filteredHistory.map((a) => a.id); setSelecionados(selecionados.size === todos.length ? new Set() : new Set(todos)); }} className="px-2.5 py-1 rounded-lg border border-indigo-300 text-indigo-800 bg-indigo-50 font-bold cursor-pointer">
                 {selecionados.size === (viewMode === "dossiers" ? processDossiers.length : filteredHistory.length) ? "Desmarcar todos" : `Marcar todos (${viewMode === "dossiers" ? processDossiers.length : filteredHistory.length})`}
               </button>
               <span className="font-semibold text-slate-600">{selecionados.size} {viewMode === "dossiers" ? "processo(s)" : "ato(s)"} marcado(s)</span>
+              {isSuperAdmin && <button disabled={!selecionados.size || !!apagandoLote} onClick={abrirMudancaDeUnidade} className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-bold disabled:opacity-40 cursor-pointer" data-testid="mudar-unidade-lote" title="Muda a comarca/unidade dos itens marcados (só o Super Admin)">Mudar comarca/unidade</button>}
               <button disabled={!selecionados.size || !!apagandoLote} onClick={() => void apagarEmLote("selecionados")} className="px-2.5 py-1 rounded-lg bg-red-600 text-white font-bold disabled:opacity-40 cursor-pointer">Apagar selecionados</button>
               <button disabled={!!apagandoLote} onClick={() => void apagarEmLote("todos")} className="px-2.5 py-1 rounded-lg border border-red-300 text-red-700 font-bold hover:bg-red-50 disabled:opacity-40 cursor-pointer" title="Apaga tudo o que aparece na lista atual (respeita busca e filtros); só as suas minutas">Apagar todos da lista</button>
               <button disabled={!!apagandoLote} onClick={sairDaSelecao} className="px-2 py-1 text-slate-500 underline cursor-pointer">Cancelar</button>
@@ -1158,6 +1178,19 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
               </div>
             </div>
           </div>
+        )}
+
+        {unidadeLote && (
+          <EditProcessUnitModal
+            isOpen
+            onClose={() => setUnidadeLote(null)}
+            processNumber=""
+            currentUnitId={activeUnit?.id}
+            currentJudicialUnit={activeUnit?.name}
+            allowedUnits={allowedUnits}
+            onUnitUpdated={() => {}}
+            lote={{ descricao: unidadeLote.descricao, confirmar: confirmarMudancaDeUnidade }}
+          />
         )}
 
         {/* Modal de Alteração de Vara e Lotação do Processo */}
