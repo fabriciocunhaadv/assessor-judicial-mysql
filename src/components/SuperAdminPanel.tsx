@@ -67,6 +67,7 @@ import {
 import { collection, getDocs, setDoc, doc, deleteDoc } from '../lib/docstore';
 import { MonitorErrosPanel } from './MonitorErrosPanel';
 import { MonitorOperacaoPanel } from './MonitorOperacaoPanel';
+import { UtilizacaoPanel } from './UtilizacaoPanel';
 import { db } from '../lib/firebase';
 import { linkDeAcesso } from '../utils/linkAcesso';
 import { ChavesResumo } from './ChavesResumo';
@@ -135,7 +136,7 @@ interface SuperAdminPanelProps {
 let limpezaSnapsFeita = false;
 export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClose, onOpenTicketsModal }) => {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'tenants' | 'users' | 'snapshots' | 'broadcast' | 'migration' | 'tokens' | 'erros' | 'operacao'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'users' | 'snapshots' | 'broadcast' | 'migration' | 'tokens' | 'erros' | 'operacao' | 'utilizacao'>('tenants');
 
   // Snapshots & Healing State
   const [snapshots, setSnapshots] = useState<GlobalDatabaseSnapshot[]>([]);
@@ -1815,6 +1816,20 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
           </button>
 
           <button
+            onClick={() => setActiveTab('utilizacao')}
+            data-testid="aba-utilizacao"
+            title="Utilização: quanto cada pessoa usou o sistema e os módulos liberados"
+            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
+              activeTab === 'utilizacao'
+                ? 'border-amber-500 text-amber-400 bg-amber-500/10'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-400" />
+            <span>Utilização</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('erros')}
             title="Monitor de erros"
             data-testid="aba-monitor-erros"
@@ -3433,6 +3448,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
           {/* ============================================================== */}
           {activeTab === 'erros' && <MonitorErrosPanel />}
           {activeTab === 'operacao' && <MonitorOperacaoPanel />}
+          {activeTab === 'utilizacao' && <UtilizacaoPanel />}
 
           {activeTab === 'tokens' && (
             <div className="space-y-6">
