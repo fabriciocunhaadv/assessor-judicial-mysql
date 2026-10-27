@@ -1227,6 +1227,13 @@ DIRETRIZES DA ANÁLISE JUDICIAL TURBO:
 7. III - DISPOSITIVO OPERACIONAL:
    - Comandos judiciais claros, práticos, imperativos e executáveis que resolvem categoricamente a matéria pendente.
    - Estruture em alíneas ou itens numerados (1., 2., 3.), com prazos expressos em dias, advertências legais com cominações específicas, determinações aos órgãos ou ao cartório e ordens mandamentais.
+
+8. COERÊNCIA E COESÃO DO ATO (OBRIGATÓRIO):
+   - Defina PRIMEIRO a "teseCentral" (o que será decidido e por quê) e construa o ato inteiro a partir dela.
+   - RELATÓRIO: narra só os fatos e atos processuais que a tese usa, em ordem cronológica e sem repetir o que a fundamentação vai analisar.
+   - FUNDAMENTAÇÃO: texto ENCADEADO. Cada parágrafo parte do anterior e conduz ao seguinte, com conectivos de raciocínio ("Assim,", "Nesse contexto,", "Por essa razão,", "Em consequência,"); o último parágrafo conclui exatamente a tese. Título de subtópico só diz o assunto concreto do trecho (nunca genérico), e todo subtópico tem ligação clara com o seguinte. Cite a prova (Mov./Arq./Pág.) no ponto em que ela sustenta o argumento.
+   - DISPOSITIVO: reproduz exatamente o que a fundamentação concluiu (mesmas partes, prazos, valores, datas e comandos); nada novo, nada omitido.
+   - Revise mentalmente antes de responder: relatório, fundamentação e dispositivo contam a MESMA história e chegam à MESMA decisão.
 ${promptTitle || promptText ? `\nDIRETRIZES DO PROMPT ESPECIALIZADO (${promptTitle}):\n${promptText}` : ""}
 ${specificInstructions ? `\nDIRETRIZ ESPECÍFICA DO MAGISTRADO / ASSESSOR:\n${specificInstructions}` : ""}
 ${promptHint ? `\nDIRETRIZ ADICIONAL:\n${promptHint}` : ""}`;
@@ -1243,14 +1250,14 @@ Retorne ESTRITAMENTE um objeto JSON válido no formato abaixo, analisando primei
   "priorDecisionsSummary": "Síntese cronológica das decisões anteriores e comandos já exarados nos autos (o que já havia sido decidido)",
   "pendingMatter": "A matéria exata pendente de deliberação atual (qual é a próxima decisão cabível no andamento dos autos)",
   "title": "SENTENÇA" ou "DECISÃO INTERLOCUTÓRIA" ou "DESPACHO",
+  "teseCentral": "Em 2 a 3 frases: o que será decidido e por quê. Escreva ESTE campo antes do relatório: é a tese que o relatório prepara, a fundamentação desenvolve e o dispositivo executa",
   "processNumber": "0000000-00.0000.0.00.0000",
   "author": "Nome real do Autor / Exequente",
   "defendant": "Nome real do Réu / Executado",
   "judicialUnit": "${comarcaVara || "Vara Única"}",
   "relatorio": "Texto completo do relatório em parágrafos bem espaçados narrando a gênese, decisões anteriores e a inércia/atos subsequentes, com indicação obrigatória de movimento, arquivo e página de cada ato: ex: (mov. 1, arq. 1, p. 12)...",
   "fundamentacao": "Texto completo da fundamentação substancial e aprofundada (nunca simples), dividida em subtópicos analíticos (###), múltiplos parágrafos, justificando a decisão com as provas do PDF e citando obrigatoriamente movimento, arquivo e página: ex: (mov. 18, arq. 'Certidão', p. 1), negritos, termos latinos em itálico e citação de artigos de lei/súmulas em blocos '>...",
-  "dispositivo": "Texto completo do dispositivo em itens numerados com comandos executáveis da próxima decisão...",
-  "fullFormattedText": "Texto integral compilado do ato judicial em Markdown com cabeçalho, títulos, relatório, fundamentação com citação de movimentos/páginas e dispositivo formatados..."
+  "dispositivo": "Texto completo do dispositivo em itens numerados com comandos executáveis da próxima decisão..."
 }
 
 ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não pode retroceder (arts. 505 e 507 do CPC). O ato deve dar sequência exata aos comandos e decisões pretéritas proferidas no feito. Extraia do PDF todas as informações necessárias para justificar o pronunciamento judicial e coloque SEMPRE o movimento, arquivo e página de onde cada informação, prova ou decisão foi extraída: ex: (mov. 1, p. 5), (mov. 18, arq. Certidão, p. 2). A fundamentação deve ser substantiva e não simplória. Formate com parágrafos bem espaçados, negrito, itálico e citação de artigos.`;
@@ -1261,10 +1268,10 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
             isNativeAllowed: isRequestNativeAllowed(req),
             res,
             keepSchema: true,
-            primaryModel: "gemini-3.1-flash-lite",
-            fallbackModel: "gemini-flash-latest",
-            customModelQueue: ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash"],
-            timeoutMs: 35000,
+            primaryModel: "gemini-3.6-flash",      // o mesmo modelo de profundidade da análise normal; o leve fica só como reserva (antes abria a fila e resumia a minuta)
+            fallbackModel: "gemini-3.8-flash",
+            customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+            timeoutMs: 100000,
             maxCycles: 2,
             cycleDelayMs: 8000,
             contents: [
@@ -1273,7 +1280,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
             config: {
                 systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
                 temperature: 0.1,
-                maxOutputTokens: 8192,
+                maxOutputTokens: 16384,      // era 8192, e parte dele era gasta repetindo o texto inteiro em fullFormattedText
                 responseMimeType: "application/json",
                 responseSchema: {
                     type: Type.OBJECT,
@@ -1282,14 +1289,14 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
                         priorDecisionsSummary: { type: Type.STRING, description: "Síntese cronológica das decisões e comandos anteriores já exarados nos autos (o que já foi decidido)" },
                         pendingMatter: { type: Type.STRING, description: "Matéria pendente de deliberação judicial atual (qual é a próxima decisão cabível)" },
                         title: { type: Type.STRING, description: "Título do ato: SENTENÇA, DECISÃO INTERLOCUTÓRIA ou DESPACHO" },
+                        teseCentral: { type: Type.STRING, description: "Em 2 a 3 frases: o que será decidido e por quê (a tese que o relatório prepara, a fundamentação desenvolve e o dispositivo executa)" },
                         processNumber: { type: Type.STRING, description: "Número CNJ do processo extraído dos autos (ex: 5783822-08.2026.8.09.0166)" },
                         author: { type: Type.STRING, description: "Nome real da parte autora / promovente / exequente" },
                         defendant: { type: Type.STRING, description: "Nome real da parte ré / promovida / executada" },
                         judicialUnit: { type: Type.STRING, description: "Vara e Comarca" },
                         relatorio: { type: Type.STRING, description: "Texto completo do Relatório circunstanciado em múltiplos parágrafos, narrando a marcha processual e decisões anteriores, com citação obrigatória de movimento, arquivo e página de cada ato do PDF: ex: (mov. 1, arq. 1, p. 12), com formatação rica (parágrafos com \\n\\n, negritos e datas)." },
                         fundamentacao: { type: Type.STRING, description: "Texto completo e substancial da Fundamentação Jurídica (art. 489 do CPC), dividido em subtópicos analíticos (###). Cada subtópico deve conter múltiplos parágrafos densos justificando a decisão com as provas do PDF, citando expressamente movimento, arquivo e página de cada prova ou documento: ex: (mov. 18, arq. 'Certidão', p. 1), com formatação rica em Markdown (parágrafos com \\n\\n, negrito em teses/provas, itálico em expressões latinas e blocos de citação '>' com artigos de lei e súmulas)." },
-                        dispositivo: { type: Type.STRING, description: "Texto completo e imperativo do Dispositivo com comandos judiciais claros organizados em itens numerados, prazos expressos e ordens mandamentais." },
-                        fullFormattedText: { type: Type.STRING, description: "Texto integral da minuta compilado em Markdown com cabeçalho completo, títulos (# e ##), relatório com indicação de movimentos/páginas, fundamentação substantiva e dispositivo formatados." }
+                        dispositivo: { type: Type.STRING, description: "Texto completo e imperativo do Dispositivo com comandos judiciais claros organizados em itens numerados, prazos expressos e ordens mandamentais." }
                     },
                     required: ["proceduralPhase", "priorDecisionsSummary", "pendingMatter", "title", "processNumber", "author", "defendant", "relatorio", "fundamentacao", "dispositivo"]
                 }
