@@ -59,18 +59,6 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
               </div>
   ) });
 
-  const caixa = (testid: string, children: React.ReactNode) => <div data-testid={testid} className="max-w-4xl mx-auto rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">{children}</div>;
-  const cit = result?.avisoCitacao;
-  if (cit?.length) itens.push({ id: "citacao", tom: "atencao", rotulo: `📍 Arquivo/página inexistente (${cit.length})`, conteudo: caixa("aviso-citacao", <><strong>Conferir citação:</strong> {cit.join("; ")} — o arquivo ou a página não existe nos carimbos dos autos enviados.</>) });
-  const pend = result?.avisoPendencia;
-  if (pend?.length) itens.push({ id: "pendencia", tom: "atencao", rotulo: `🧾 Movimentações posteriores não citadas (${pend.length})`, conteudo: caixa("aviso-pendencia", <><strong>Conferir pendências:</strong> {pend.map((n: number) => `Mov. ${n}`).join(", ")} chegaram depois da última decisão e a minuta não as cita. Confirme se foram apreciadas.</>) });
-  const dt = result?.avisoData;
-  if (dt) itens.push({ id: "data", tom: "atencao", rotulo: "📅 Data muito próxima da conclusão", conteudo: caixa("aviso-data", <><strong>Conferir data:</strong> a minuta designa {dt}, menos de 10 dias depois da conclusão. Confirme se há tempo para as intimações.</>) });
-  const lat = result?.avisoLatim;
-  if (lat?.length) itens.push({ id: "latim", tom: "info", rotulo: `🔤 Latim sem tradução (${lat.length})`, conteudo: caixa("aviso-latim", <><strong>Traduza entre parênteses:</strong> {lat.join(", ")}.</>) });
-  const ato = result?.avisoAto;
-  if (ato) itens.push({ id: "ato", tom: "info", rotulo: "⚖️ Ato pedido difere da conclusão", conteudo: caixa("aviso-ato", <><strong>Conferir o ato:</strong> foi pedido “{ato.pedido}”, mas os autos estão conclusos “P/ {ato.conclusao}”. A minuta segue o que os autos exigem.</>) });
-
   if (itens.length === 0) return null;
   return (
     <div className="max-w-4xl mx-auto space-y-2" data-testid="avisos-da-minuta">
