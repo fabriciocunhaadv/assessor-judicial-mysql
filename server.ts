@@ -3377,6 +3377,10 @@ export function checkIsDispositivoSentenca(text: string): boolean {
     if (!text || typeof text !== 'string') return false;
     const lower = text.toLowerCase();
 
+    // Saneamento (art. 357 do CPC) não é sentença, mesmo decidindo pedidos, habilitação ou prazos; só vira sentença com marcador forte de julgamento do mérito ou extinção.
+    if (/\bdou\s+(?:o\s+)?(?:processo\s+)?por\s+saneado|decis[aã]o\s+saneadora|art(?:igo|\.)\s*357/.test(lower)
+        && !/julgo\s+(?:im)?procedente|julgo\s+parcialmente|extingo\s+o\s+processo|resolu[cç][aã]o\s+d[eo]\s+m[eé]rito/.test(lower)) return false;
+
     // Salvaguarda: Se o dispositivo é de tutela provisória / liminar / decisão interlocutória inaugural
     // (ex: defere tutela, alimentos provisórios, guarda provisória, citação e audiência) sem resolução definitiva da lide
     const isExplicitInterlocutory = (
@@ -3451,11 +3455,8 @@ export function checkIsDispositivoSentenca(text: string): boolean {
         lower.includes("declaro a procedencia") ||
         lower.includes("declaro a improcedência") ||
         lower.includes("declaro a improcedencia") ||
-        (lower.includes("acolho o pedido") && !lower.includes("acolho o pedido de tutela") && !lower.includes("acolho o pedido liminar")) ||
-        (lower.includes("acolho os pedidos") && !lower.includes("acolho os pedidos de tutela") && !lower.includes("acolho os pedidos liminares")) ||
         lower.includes("acolho em parte o mérito") ||
-        (lower.includes("rejeito o pedido") && !lower.includes("rejeito o pedido de tutela") && !lower.includes("rejeito o pedido liminar")) ||
-        (lower.includes("rejeito os pedidos") && !lower.includes("rejeito os pedidos de tutela") && !lower.includes("rejeito os pedidos liminares")) ||
+        /\b(acolho|rejeito)\s+(em\s+parte\s+)?(o|os)\s+pedidos?\s+(formulados?\s+)?(na|da)\s+(inicial|exordial)|\b(acolho|rejeito)\s+(o|os)\s+pedidos?\s+(autorais?|iniciais?|principais?)/.test(lower) ||      // só o pedido da inicial; "acolho o pedido de habilitação" etc. é decisão, não sentença
         lower.includes("resolução do mérito") ||
         lower.includes("resolucao do merito") ||
         lower.includes("resolvendo o mérito") ||
@@ -3476,11 +3477,7 @@ export function checkIsDispositivoSentenca(text: string): boolean {
         lower.includes("condeno a parte requerida a pagar") ||
         lower.includes("condeno o réu a pagar") ||
         lower.includes("condeno o requerido a pagar") ||
-        lower.includes("condeno a reclamada a pagar") ||
-        lower.includes("art. 487") ||
-        lower.includes("artigo 487") ||
-        lower.includes("art. 485") ||
-        lower.includes("artigo 485")
+        lower.includes("condeno a reclamada a pagar")
     );
 }
 
