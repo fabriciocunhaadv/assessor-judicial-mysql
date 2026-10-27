@@ -561,7 +561,7 @@ export function matchApplicableBindingPrecedents(contextText: string, extra: Bin
   }
 
   const normalized = contextText.toLowerCase();
-  const matched: BindingPrecedent[] = [];
+  const matched: Array<{ p: BindingPrecedent; score: number }> = [];
   // `extra`: precedentes anexados (guardados no MySQL); no servidor a lista local do navegador não existe
   const allList = [...extra, ...getAllBindingPrecedents().filter((p) => !extra.some((e) => e.id === p.id))];
 
@@ -607,12 +607,12 @@ export function matchApplicableBindingPrecedents(contextText: string, extra: Bin
 
     // If score passes threshold, include automatically
     if (score >= 3) {
-      matched.push(precedent);
+      matched.push({ p: precedent, score });
     }
   }
 
-  // Limit to top 8 most relevant to maintain prompt focus
-  return matched.slice(0, 8);
+  // os de MAIOR aderência ao caso vêm primeiro (antes saíam na ordem do cadastro); empate fica na ordem original. Limite de 8 para manter o prompt focado
+  return matched.map((m, i) => ({ ...m, i })).sort((a, b) => b.score - a.score || a.i - b.i).slice(0, 8).map((m) => m.p);
 }
 
 export const GROUNDING_STORAGE_KEY = "assessor_grounding_enabled";

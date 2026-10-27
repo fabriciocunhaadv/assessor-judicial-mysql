@@ -6,12 +6,14 @@ import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
 import { calculateCostBrl } from "../src/utils/custoIA";
 
-type Modulo = "minuta" | "turbo" | "lupa_magistrado" | "audiencia";
+type Modulo = "minuta" | "turbo" | "lupa_magistrado" | "audiencia" | "outros";
 const ROTAS: Record<string, { modulo: Modulo; rotulo: string }> = {
   "/api/generate-minute": { modulo: "minuta", rotulo: "Minuta" },
   "/api/generate-minute-turbo": { modulo: "turbo", rotulo: "Minuta Turbo" },
   "/api/audit-assessor-draft": { modulo: "lupa_magistrado", rotulo: "Auditoria: Lupa do Magistrado" },
   "/api/hearing-copilot": { modulo: "audiencia", rotulo: "Mesa de Audiência" },
+  "/api/advogado-peticao/auto-extract-evidence": { modulo: "outros", rotulo: "Petição 360°: leitura dos autos e provas" },
+  "/api/advogado-peticao/generate-full-petition": { modulo: "outros", rotulo: "Petição 360°: redação da peça" },
 };
 
 export interface UsoExtraido { prompt: number; saida: number; total: number; modelo: string; processo: string }

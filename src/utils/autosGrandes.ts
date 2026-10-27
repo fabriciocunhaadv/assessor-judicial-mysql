@@ -229,3 +229,61 @@ export async function gerarComAutosGrandes(gerar: (o: any) => Promise<any>, opts
         return resposta;
     }
 }
+
+export interface ReducaoPorRelevancia { texto: string; resumo: string; paginasTotal: number; essenciais: number; omitidas: number; abreviadas: number; cabe: boolean }
+
+/** Reduz autos que passam de `permitido` caracteres SEM cortar o miolo às cegas: compacta sem perda, a IA classifica cada página (essencial / relevante / dispensável),
+ *  tira só o dispensável e, se preciso, abrevia páginas apenas relevantes. As essenciais nunca são tocadas. Mesma regra da análise normal; usada pela Lupa do Magistrado.
+ *  Devolve null quando os autos não têm marcadores "[Página N de M]" suficientes (não dá para classificar) e `cabe:false` se só as essenciais já passam do permitido. */
+export async function reduzirPorRelevancia(gerar: (o: any) => Promise<any>, opts: { texto: string; permitido: number; contexto?: string; base: any; limiteTokens?: number; onProgresso?: (t: string) => void }): Promise<ReducaoPorRelevancia | null> {
+    const log = (m: string) => console.log(m);
+    const pausa = Number(process.env.AUTOS_GRANDES_PAUSA_MS || 62000);
+    const limite = opts.limiteTokens || 250000;
+    let unidades = opts.texto.split(/(?=\[Página \d+ de \d+\])/).filter(x => x.length > 0).map((t, i) => ({ n: Number(t.match(/^\[Página (\d+) de/)?.[1] || 0), t }));
+    if (unidades.filter(u => u.n > 0).length < 20) return null;
+    const antes = unidades.reduce((n, u) => n + u.t.length, 0);
+    const freq = new Map<string, number>();
+    for (const u of unidades) for (const l of new Set(u.t.split("\n").map(x => x.trim()))) if (l && l.length < 200 && !LOCALIZADOR.test(l)) freq.set(l, (freq.get(l) || 0) + 1);
+    const repetidas = new Set([...freq].filter(([, c]) => c >= Math.max(5, Math.ceil(unidades.length * 0.04))).map(([l]) => l));
+    unidades = removerRepeticoes(unidades.map(u => ({ ...u, t: compactar(u.t, repetidas) })));
+    const depois = unidades.reduce((n, u) => n + u.t.length, 0);
+    log(`[Autos Grandes][Lupa] Compactação sem perda: ${Math.round(antes / 1000)}k → ${Math.round(depois / 1000)}k caracteres (cabem ${Math.round(opts.permitido / 1000)}k).`);
+    if (depois <= opts.permitido) return { texto: unidades.map(u => u.t).join(""), resumo: `Autos extensos (${unidades.length} páginas): compactados sem perda de conteúdo (cabeçalhos e avisos repetidos ficaram só na primeira ocorrência). Nenhuma página foi omitida.`, paginasTotal: unidades.length, essenciais: unidades.length, omitidas: 0, abreviadas: 0, cabe: true };
+
+    const partes = dividir(unidades, Math.floor(limite * 0.55 * CPT));
+    const classe = new Map<number, { c: Classe; m: string }>();
+    for (let i = 0; i < partes.length; i++) {
+        opts.onProgresso?.(`classificando as páginas por relevância (parte ${i + 1} de ${partes.length})…`);
+        const texto = partes[i].map(u => u.t).join("");
+        let ok = false;
+        for (let tent = 1; tent <= 2 && !ok; tent++) {
+            const resp = await chamar(gerar, opts.base, {
+                timeoutMs: 240000,
+                contents: [{ role: "user", parts: [{ text: `Contexto: auditoria de uma minuta judicial contra os autos (${opts.contexto || "minuta judicial"}). Parte ${i + 1} de ${partes.length} dos autos (páginas ${partes[i][0].n} a ${partes[i][partes[i].length - 1].n}).\n\nAUTOS:\n"""\n${texto}\n"""` }] }],
+                config: { systemInstruction: SISTEMA_CLASSIFICADOR, temperature: 0, maxOutputTokens: 8192, responseMimeType: "application/json" }
+            }, pausa, log, `classificação (Lupa) ${i + 1}/${partes.length}`);
+            let j: any = null; try { j = JSON.parse(String(resp?.text || "").replace(/^```json|```$/g, "").trim()); } catch { /* tenta de novo */ }
+            if (j && Array.isArray(j.segmentos)) {
+                for (const s of j.segmentos) {
+                    const c: Classe = s?.classe === "dispensavel" ? "dispensavel" : s?.classe === "relevante" ? "relevante" : "essencial";
+                    for (let n = Number(s?.de); n <= Number(s?.ate) && n - Number(s?.de) < 5000; n++) classe.set(n, { c, m: String(s?.motivo || "").slice(0, 80) });
+                }
+                ok = true;
+            }
+        }
+        if (!ok) log(`[Autos Grandes][Lupa] Parte ${i + 1}: classificação inválida; as páginas ficam como ESSENCIAIS.`);
+    }
+    const saida = unidades.map(u => ({ ...u, c: (classe.get(u.n)?.c || "essencial") as Classe, m: classe.get(u.n)?.m || "", out: u.t }));
+    const total = () => saida.reduce((n, u) => n + u.out.length, 0);
+    let removidas = 0, abreviadas = 0;
+    for (const u of saida) if (u.c === "dispensavel") { u.out = `[Página ${u.n} omitida: ${u.m || "sem relevância para a minuta"}]\n`; removidas++; }
+    if (total() > opts.permitido) {
+        for (const u of [...saida].filter(x => x.c === "relevante").sort((a, b) => b.t.length - a.t.length)) {
+            if (total() <= opts.permitido) break;
+            if (u.t.length > 2500) { u.out = u.t.slice(0, 1500) + `\n[... página ${u.n}: trecho do meio omitido (documento de relevância secundária) ...]\n` + u.t.slice(-700) + "\n"; abreviadas++; }
+        }
+    }
+    const nEss = saida.filter(u => u.c === "essencial").length;
+    log(`[Autos Grandes][Lupa] ${nEss} essenciais mantidas; ${removidas} dispensável(is) omitida(s); ${abreviadas} relevante(s) abreviada(s): ${Math.round(antes / 1000)}k → ${Math.round(total() / 1000)}k caracteres.`);
+    return { texto: saida.map(u => u.out).join(""), resumo: `Autos grandes (${unidades.length} páginas): para a auditoria caber, ${removidas ? `foram omitidas ${removidas} página(s) sem relevância para a conferência` : "nenhuma página foi omitida"}${abreviadas ? ` e ${abreviadas} página(s) de documentos secundários foram abreviadas` : ""}. As ${nEss} páginas essenciais (peças das partes, decisões, laudos, certidões) foram mantidas integralmente.`, paginasTotal: unidades.length, essenciais: nEss, omitidas: removidas, abreviadas, cabe: total() <= opts.permitido };
+}

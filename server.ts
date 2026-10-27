@@ -13,7 +13,7 @@ import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
 import { fontesRouter, verificarCitacoes, avisoDispositivosRevogados, lerCopiaLocal } from './server/fontesOficiais';
-import { consultarLegislacao, diagnosticoLegislacao, testarLegislacao, definirLeitorLocal, definirProvedorOutrasLeis, pesquisarLegislacao } from './src/utils/legislacaoPlanalto';
+import { legislacaoAplicavelAoCaso, consultarLegislacao, diagnosticoLegislacao, testarLegislacao, definirLeitorLocal, definirProvedorOutrasLeis, pesquisarLegislacao } from './src/utils/legislacaoPlanalto';
 import { outrasLeisRouter, consultarOutrasLeis } from './server/outrasLeis';
 import { listarRegimes, gravarRegime, apagarRegime, sanearRegime } from './server/taxonomiaDb';
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
@@ -23,14 +23,15 @@ import { getApplicableTaxonomySummary } from './src/data/legalTaxonomy';
 import { filterInnocuousCertificates, cleanJudicialPdfText } from './src/utils/judicialTextCleaner';
 import { deduplicateJudicialPdfFiles, deduplicateTextBlocks } from './src/utils/documentDeduplicator';
 import { extractFromCoverPage } from './src/utils/judicialMetadataExtractor';
-import { gerarComAutosGrandes } from './src/utils/autosGrandes';
+import { gerarComAutosGrandes, reduzirPorRelevancia } from './src/utils/autosGrandes';
 import { detectarInjecao, instrucaoDefesaInjecao } from './src/utils/promptInjection';
 import { descreverCorte, textoDoCorte, CorteArquivo } from './src/utils/corteAutos';
+import { montarCobertura } from './server/coberturaLeitura';
 import { textoOcultoDeDocumento, blocoTextoOculto } from './src/utils/pdfTextoOculto';
 import fs from 'fs';
 import { blocoPerfilMateria } from './src/utils/perfisMateria';
 import { REGRAS_MECANICA_JUDICIAL, REGRAS_FIDELIDADE_AUTOS, conferenciasMecanica } from './src/utils/mecanicaJudicial';
-import { corrigirCitacoesDaMinuta } from './src/utils/localizacaoAutos';
+import { corrigirCitacoesDaMinuta, citacoesInexistentes } from './src/utils/localizacaoAutos';
 // Abertura padrão do relatório de TODA minuta (pedido do magistrado). Vale para qualquer área e ato; entra nas etapas 1 e 2 e no Turbo.
 const REGRA_ABERTURA_RELATORIO = `
 
@@ -222,6 +223,7 @@ app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
 app.use("/api", exigirSessao);      // tudo em /api exige login (exceto /api/auth e a informação /api/native-key-info)
+app.use(["/api/advogado-peticao/auto-extract-evidence", "/api/advogado-peticao/generate-full-petition"], contarUsoNoServidor((req: any) => isRequestNativeAllowed(req)));      // consumo da Petição 360° contado no servidor
 app.use("/api/advogado-peticao", petitionRouter);
 app.use("/api/db/history", historyRouter);
 app.use("/api/auth", authRouter);
@@ -334,49 +336,6 @@ app.post("/api/extract-pdf-text", async (req, res) => {
         return res.json({ text: "", pageCount: 0, hasText: false });
     }
 });
-
-// Cobertura da leitura: páginas que o sistema não conseguiu ler não podem virar "ausência de prova" na minuta (usada na análise principal, no Turbo e na Lupa)
-function montarCobertura(body: any, textoCortado: boolean, cortes: CorteArquivo[] = []): { cobertura: any; regra: string; partes: any[] } {
-    let cobertura: any = null; let regra = ""; const partes: any[] = [];
-    try {
-        const cob = body?.coberturaLeitura;
-        const faixa = (nums: any): string => {
-            const v: number[] = (Array.isArray(nums) ? nums : []).map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n) && n > 0).sort((a: number, b: number) => a - b);
-            const out: string[] = []; let i = 0;
-            while (i < v.length) { let j = i; while (j + 1 < v.length && v[j + 1] === v[j] + 1) j++; out.push(j > i ? `${v[i]}-${v[j]}` : `${v[i]}`); i = j + 1; }
-            return out.join(", ");
-        };
-        const arquivos: any[] = Array.isArray(cob?.arquivos) ? cob.arquivos : [];
-        const lacunas = arquivos.map((a: any) => ({ arquivo: String(a?.nome || "arquivo"), total: Number(a?.totalPaginas) || 0, paginas: faixa([...(a?.semTexto || []), ...(a?.naoLidas || [])]), qtd: Math.max(Number(a?.semTextoTotal) || 0, Array.isArray(a?.semTexto) ? a.semTexto.length : 0) + Math.max(Number(a?.naoLidasTotal) || 0, Array.isArray(a?.naoLidas) ? a.naoLidas.length : 0) })).filter((l: any) => l.qtd > 0);
-        const imagens: any[] = Array.isArray(body?.paginasImagens) ? body.paginasImagens.slice(0, 40) : [];
-        let nImagens = 0;
-        for (const im of imagens) {
-            const d = String(im?.data || "").replace(/^data:[^;]+;base64,/, "");
-            if (d) { nImagens++; partes.push({ text: `[IMAGEM DA PÁGINA ${Number(im.pagina) || "?"} DOS AUTOS (${String(im.arquivo || "")}) - sem camada de texto; leia visualmente como parte dos autos]` }); partes.push({ inlineData: { mimeType: "image/jpeg", data: d } }); }
-        }
-        if (cob || textoCortado) {
-            cobertura = {
-                totalPaginas: arquivos.reduce((n: number, a: any) => n + (Number(a?.totalPaginas) || 0), 0),
-                lacunas: lacunas.map((l: any) => ({ arquivo: l.arquivo, paginas: l.paginas, qtd: l.qtd })),
-                escolha: String(cob?.escolha || ""),
-                paginasOcr: Number(cob?.paginasOcr) || 0,
-                paginasImagem: nImagens,
-                textoCortado,
-                cortes,
-                completa: lacunas.length === 0 && !textoCortado,
-            };
-        }
-        if (lacunas.length > 0 || textoCortado) {
-            regra = `\n\n[COBERTURA DA LEITURA - REGRA MANDATÓRIA ANTI-FALSA-AUSÊNCIA-DE-PROVA]:\n`
-                + (lacunas.length > 0 ? `O sistema NÃO conseguiu ler o texto destas páginas dos autos (imagem/escaneado sem texto): ${lacunas.map((l: any) => `${l.arquivo}: págs. ${l.paginas}`).join("; ")}. Essas páginas PODEM conter provas, documentos, contestação ou decisões.\n` : "")
-                + (textoCortado ? `Os autos excederam o limite técnico e parte do FINAL do texto foi CORTADA: ${cortes.length ? cortes.map(textoDoCorte).join("; ") : "documentos posteriores"} NÃO foram lidos e podem conter provas, contestação ou decisões.\n` : "")
-                + `1. É PROIBIDO afirmar na minuta que "não há prova", "não foi juntado documento", "não consta dos autos", "a parte não comprovou" ou fundamentar procedência/improcedência por ausência probatória quando a prova poderia estar nas páginas não lidas.\n`
-                + `2. Quando faltar prova nos trechos lidos, use a redação: "não localizei, nos trechos lidos pelo sistema, ..." e inclua obrigatoriamente no início do Relatório a nota: "[CONFERIR PÁGINAS NÃO LIDAS PELO SISTEMA: ${[...lacunas.map((l: any) => `${l.arquivo} págs. ${l.paginas} (sem texto)`), ...cortes.map((c: CorteArquivo) => textoDoCorte(c) + " (cortado por limite de tamanho)")].join("; ") || "final dos autos"} - verificar antes de assinar]".\n`
-                + `3. Se a conclusão do mérito depender dessas lacunas, aponte a dependência e recomende a conferência humana em vez de decidir por ausência de prova.\n`;
-        }
-    } catch (eCob) { console.log("[Cobertura da leitura] falha (ignorada):", (eCob as any)?.message); }
-    return { cobertura, regra, partes };
-}
 
 // ====== PROCESSOS GIGANTES: leitura em lotes (ficha de cada trecho dos autos) e fusão das fichas ======
 const ESQUEMA_FICHA = `{
@@ -1617,6 +1576,10 @@ function conferenciasPorCodigo(minuta: string, autos: string): AlertaAuditoria[]
         const lista = [...carim].sort((a, b) => a - b);
         out.push(mk("atencao", "provas", "Movimentação citada que não existe nos autos", `A minuta cita ${vl.movsInexistentes.map((n) => "Mov. " + n).join(", ")}, que não aparece(m) nos carimbos dos autos enviados.`, "Conferir a localização; se o fato só consta no relato de uma decisão posterior, citar essa decisão.", "Relatório / Fundamentação", contexto(minuta, (minuta.match(new RegExp("Mov(?:imenta[cç][aã]o|\\.)?\\s*" + vl.movsInexistentes[0] + "\\b", "i")) || [""])[0] || ("Mov. " + vl.movsInexistentes[0])), `Movimentações com carimbo nos autos: ${lista.slice(0, 40).join(", ")}${lista.length > 40 ? "…" : ""}`));
     }
+    try {      // arquivo ou página citados que não existem nos autos (conferido só pelos carimbos Mov./Arq./Pág.)
+        const ci = citacoesInexistentes(minuta, autos);
+        if (ci.length) out.push(mk("atencao", "provas", `Citação de localização que não existe nos autos (${ci.length})`, `A minuta cita: ${ci.map((c) => `“${c.citacao}” (${c.motivo})`).join("; ")}.`, "Conferir a localização exata (movimentação, arquivo e página) no processo e corrigir a citação.", "Relatório / Fundamentação", ci[0].citacao, "Carimbos Mov./Arq./Pág. dos autos enviados"));
+    } catch { /* a conferência de citações nunca derruba a auditoria */ }
     const autosSoDigitos = autos.replace(/\D/g, "");      // o OCR às vezes separa o número com espaços ou muda a pontuação
     const cnjMin = [...new Set(minuta.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/g) || [])], cnjAut = [...new Set(autos.slice(0, 60000).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/g) || [])];
     if (cnjMin.length && cnjAut.length && !cnjMin.some((c) => autos.includes(c) || autosSoDigitos.includes(c.replace(/\D/g, "")))) out.push(mk("informativo", "adstricao", `Número do processo da minuta (${cnjMin[0]}) não aparece nos autos`, `A minuta traz o número ${cnjMin[0]}, que não consta no texto dos autos enviados, cujo número é ${cnjAut[0]}. Pode ser apenas referência a processo relacionado, ou a minuta pode ter sido preparada para outro processo. Atenção, Excelência: confirme se a minuta e os autos anexados são do mesmo processo (compare o cabeçalho da minuta com a capa dos autos).`, "Conferir se os autos anexados são do processo da minuta.", `Minuta, no trecho: “${contexto(minuta, cnjMin[0], 40)}”`, contexto(minuta, cnjMin[0], 90), `Capa/autos: processo ${cnjAut[0]}`));
@@ -1730,6 +1693,17 @@ app.post("/api/audit-assessor-draft", async (req, res) => {
         // PRESERVAÇÃO INTEGRAL DOS AUTOS PARA AUDITORIA (GEMINI 3.8 FLASH SUPORTA AMPLA JANELA)
         let generatedHolisticSynopsis = "";
         let safeProcessText = accumulatedProcessText;
+        // Autos acima de 400 mil caracteres: em vez de cortar o miolo às cegas, a IA classifica as páginas por relevância e só o dispensável sai (mesma regra da análise normal).
+        // As páginas essenciais (peças, decisões, laudos, certidões) ficam INTEGRAIS. Se não der para classificar (sem marcadores de página) ou nem as essenciais couberem, vale o corte antigo (início + fim).
+        let reduzidoL: Awaited<ReturnType<typeof reduzirPorRelevancia>> = null;
+        if (accumulatedProcessText.length > 400000) {
+            const progAutosL = String(req.headers["x-progresso-id"] || "").slice(0, 80);
+            try {
+                setProg(progAutosL, "Autos extensos — classificando as páginas por relevância para auditar sem perder o miolo…", 6, 38);
+                reduzidoL = await reduzirPorRelevancia(generateWithFallbackAndRetry, { texto: accumulatedProcessText, permitido: 380000, contexto: "auditoria de uma minuta contra os autos", base: { apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res }, onProgresso: (t) => setProg(progAutosL, "Autos extensos — " + t, 8, 38) });
+                if (reduzidoL && !reduzidoL.cabe) { console.log("[Lupa do Magistrado] As páginas essenciais ainda passam do limite; segue com início + fim dos autos."); reduzidoL = null; }
+            } catch (eRed) { console.warn("[Lupa do Magistrado] Redução por relevância indisponível; segue com início + fim dos autos:", (eRed as any)?.message || eRed); reduzidoL = null; }
+        }
         if (accumulatedProcessText.length > 90000) {
             console.log(`[Lupa do Magistrado] Autos volumosos detectados (${accumulatedProcessText.length} caracteres). Elaborando Sinopse Holística dos Autos em 5 pilares para enriquecer a auditoria sem corte de fatos ou provas...`);
             try {
@@ -1741,6 +1715,8 @@ app.post("/api/audit-assessor-draft", async (req, res) => {
                 if (generatedHolisticSynopsis && generatedHolisticSynopsis.length > 200) {
                     if (accumulatedProcessText.length <= 400000) {
                         safeProcessText = `\n\n[=== SINOPSE HOLÍSTICA FORENSE DOS AUTOS (INTEGRAL EM 5 PILARES - AUDITORIA DE CONFORMIDADE) ===]\n${generatedHolisticSynopsis}\n\n[=== AUTOS DO PROCESSO NA ÍNTEGRA (CRONOLOGIA EXAUSTIVA) ===]\n${accumulatedProcessText}\n`;
+                    } else if (reduzidoL) {
+                        safeProcessText = `\n\n[=== SINOPSE HOLÍSTICA FORENSE DOS AUTOS (INTEGRAL EM 5 PILARES - AUDITORIA DE CONFORMIDADE) ===]\n${generatedHolisticSynopsis}\n\n[=== AUTOS DO PROCESSO (PÁGINAS ESSENCIAIS INTEGRAIS; as omitidas estão marcadas "[Página N omitida: motivo]") ===]\n${reduzidoL.texto}\n`;
                     } else {
                         // Preserva amplamente os atos iniciais (exordial, contratos, contestações) e os atos finais (decisões do juiz, réplicas, laudos e certidões recentes)
                         const halfSlice = 180000;
@@ -1750,6 +1726,7 @@ app.post("/api/audit-assessor-draft", async (req, res) => {
             } catch (synErr) {
                 console.warn("[Lupa do Magistrado] Erro na elaboração da Sinopse Holística:", synErr);
             }
+            if (!generatedHolisticSynopsis && reduzidoL) safeProcessText = reduzidoL.texto;      // sem sinopse: ao menos os autos reduzidos por relevância, em vez dos autos inteiros
         } else if (safeProcessText.length > 350000) {
             const halfSlice = 160000;
             safeProcessText = safeProcessText.substring(0, halfSlice) + "\n\n... [AUTOS RESUMIDOS NO MIOLO PARA LIMITAÇÃO TÉCNICA - GÊNESE E ÚLTIMAS DECISÕES PRESERVADAS] ...\n\n" + safeProcessText.substring(safeProcessText.length - halfSlice);
@@ -1909,6 +1886,23 @@ CRITÉRIOS DE PONTUAÇÃO (SCORE):
 - 50 a 74: "Requer Correções Obrigatórias" (âmbar/amber). Omissão de pedido secundário, citação imprecisa de documento ou juros em desacordo com a lei.
 - 0 a 49: "Crítica / Risco de Nulidade" (vermelho/rose). Julgamento citra/ultra petita, invenção de fatos sem lastro, contradição com decisões anteriores ou ato em curso de prazo.`;
 
+        // CONFORMIDADE NORMATIVA: as súmulas/teses de maior aderência e a lei aplicável ao caso (texto oficial) entram na auditoria; a IA diz se a minuta as seguiu e o código só aceita itens da lista
+        const listaNormL: Array<{ tipo: "sumula" | "lei"; rotulo: string; chaves: string[]; texto: string }> = [];
+        let blocoNormL = "";
+        try {
+            const ctxL = [String(safeProcessText || "").slice(0, 150000), String(draftText || "")].join("\n");
+            const [anexL] = await Promise.all([listarPrecedentes().catch(() => [] as any[])]);
+            const precsL = matchApplicableBindingPrecedents(ctxL, anexL).slice(0, 5);
+            const leiL = await legislacaoAplicavelAoCaso(ctxL, { maxArtigos: 8, timeoutMs: 6000, regimesExtras: await listarRegimes().catch(() => []) });
+            for (const pr of precsL) listaNormL.push({ tipo: "sumula", rotulo: `${pr.tribunal} • ${pr.number}`, chaves: [normBusca(pr.number)], texto: String(pr.statement || "") });
+            for (const art of leiL.artigos) { const i = art.lastIndexOf(", art. "); if (i > 0) listaNormL.push({ tipo: "lei", rotulo: art, chaves: [normBusca("art. " + art.slice(i + 7).split(/\s/)[0]), normBusca(art.slice(0, i).replace(/\s*\(.*?\)\s*/g, " "))], texto: art }); }
+            if (precsL.length || leiL.bloco) {
+                blocoNormL = `\n\n[CONFORMIDADE NORMATIVA — SÚMULAS/TESES E LEIS APLICÁVEIS AO CASO (fonte do sistema)]:\n` +
+                    (precsL.length ? precsL.map((pr, i) => `${i + 1}. [${pr.tribunal} • ${pr.number} - ${pr.title}]: "${pr.statement}"`).join("\n") + "\n" : "") + (leiL.bloco || "") +
+                    `\n\nINSTRUÇÃO ADICIONAL: além dos campos do esquema, inclua no JSON o campo "conformidadeNormativa": array de {"tipo":"sumula"|"lei","referencia":"exatamente como listado acima (ex.: 'STJ • Súmula 297' ou 'Código de Defesa do Consumidor (Lei 8.078/1990), art. 14')","aplicavel":true|false,"seguida":true|false,"trechoDaMinuta":"trecho LITERAL da minuta que mostra como ela tratou o tema","observacao":"até 40 palavras"}. Inclua SOMENTE itens desta lista e só os que se aplicam aos fatos dos autos (aplicavel=true). "seguida":true quando a minuta adota o entendimento ou aplica o dispositivo; false quando decide em sentido contrário ou ignora o tema. Não invente súmula nem artigo fora da lista.`;
+            }
+        } catch (eNorm) { console.warn("[Lupa do Magistrado] Conformidade normativa indisponível:", (eNorm as any)?.message || eNorm); }
+
         const auditUserPrompt = `${fichaFeita ? `FICHA DOS AUTOS (mapa levantado na etapa 1; confirme nos autos):\n${fichaAutos}\n\n----------------------------------------\n` : ''}AUTOS DO PROCESSO:\n${safeProcessText || 'Texto dos autos não fornecido.'}
 
 ----------------------------------------
@@ -1925,7 +1919,7 @@ Alertas Anteriores: ${JSON.stringify(previousAuditResult?.criticalAlerts || [])}
 Notas de Correção do Assessor: ${assessorCorrectionNotes || 'Não especificadas'}
 Minuta Anterior: ${previousDraft ? previousDraft.substring(0, 5000) : 'N/A'}
 ` : ''}
-Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.`;
+Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.${blocoNormL}`;
 
         const options = {
             apiKey,
@@ -1952,7 +1946,19 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
         // Só vale apontamento com prova literal; o resto é descartado e contado. Mais as conferências por código (sem IA).
         const minutaAudit = String(draftText || "");
         const { validos, descartados, naoConfirmados } = validarAlertasIa(parsed.criticalAlerts, minutaAudit, safeProcessText);
-        const alertasFinais: AlertaAuditoria[] = [...conferenciasPorCodigo(minutaAudit, safeProcessText), ...validos];
+        // súmula/lei aplicável que a minuta NÃO seguiu: vale só se estiver na lista do sistema e o trecho da minuta existir de fato (a prova do outro lado é o próprio texto da súmula/lei)
+        const conformidadeNormativa: any[] = [], alertasNorma: AlertaAuditoria[] = [];
+        for (const it of Array.isArray(parsed.conformidadeNormativa) ? parsed.conformidadeNormativa : []) {
+            const ref = normBusca(String(it?.referencia || "")); if (!ref) continue;
+            const alvo = listaNormL.find((x) => x.chaves.length && x.chaves.every((c) => c && (" " + ref + " ").includes(" " + c + " ")));
+            if (!alvo || it?.aplicavel !== true) continue;
+            const trecho = String(it?.trechoDaMinuta || "").trim(), obs = String(it?.observacao || "").slice(0, 400);
+            conformidadeNormativa.push({ tipo: alvo.tipo, referencia: alvo.rotulo, seguida: it?.seguida === true, observacao: obs });
+            if (it?.seguida === true || !citacaoExiste(trecho, minutaAudit)) continue;
+            const fix = alvo.tipo === "sumula" ? "Adotar o entendimento da súmula/tese na fundamentação e no dispositivo, ou justificar expressamente a distinção do caso." : "Aplicar o dispositivo legal ao caso, citando-o conforme o texto oficial, ou justificar por que não incide.";
+            alertasNorma.push({ type: "warning", severity: "atencao", pillar: "preliminares_rito", title: `${alvo.tipo === "sumula" ? "Precedente aplicável" : "Dispositivo legal aplicável"} não seguido: ${alvo.rotulo}`.slice(0, 200), description: (obs || "A minuta trata o tema em sentido diverso do precedente/da lei aplicável ao caso.").slice(0, 1500), recommendation: fix, suggestedFix: fix, location: "Fundamentação / Dispositivo", tipoProva: "contradicao", minutaTrecho: trecho.slice(0, 600), autosTrecho: alvo.texto.slice(0, 600), origem: "ia" });
+        }
+        const alertasFinais: AlertaAuditoria[] = [...conferenciasPorCodigo(minutaAudit, safeProcessText), ...alertasNorma, ...validos];
         const nota = calcularNotaAuditoria(alertasFinais);
         const nBloq = alertasFinais.filter((x) => x.severity === "bloqueante").length;
         const resumoIa = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
@@ -1982,6 +1988,7 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
             evidentiary: pilarCom(parsed.evidentiary, nota.provas, "Não avaliado nesta auditoria."),
             procedural: pilarCom(parsed.procedural, nota.rito, "Não avaliado nesta auditoria."),
             criticalAlerts: alertasFinais,
+            conformidadeNormativa,
             apontamentosDescartados: descartados,
             confrontoMinutaAutos: Array.isArray(parsed.confrontoMinutaAutos) ? parsed.confrontoMinutaAutos : [],
             etapas: { fichaDosAutos: fichaFeita },
@@ -2004,6 +2011,7 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
         if (!finalResult.proceduralChain) delete finalResult.proceduralChain;
         if (!finalResult.documentInspection) delete finalResult.documentInspection;
 
+        if (reduzidoL) (finalResult as any).autosReduzidos = { resumo: reduzidoL.resumo, paginasTotal: reduzidoL.paginasTotal, essenciais: reduzidoL.essenciais, omitidas: reduzidoL.omitidas, abreviadas: reduzidoL.abreviadas };
         if (alertaInjecaoL) (finalResult as any).alertaInjecao = alertaInjecaoL;
         if (cobL.cobertura) (finalResult as any).coberturaLeitura = cobL.cobertura;
         setProg(progIdL, "Auditoria concluída.", 99, 99);
@@ -4504,6 +4512,13 @@ const fontesConsultadas: { legislacao: string[]; naoLocalizados: string[]; indis
 const somarFontes = (l: { conferidos?: string[]; naoAchados?: string[]; falhas?: string[]; locais?: string[] }, alvo: any = fontesConsultadas) => { for (const [k, v] of [["legislacao", l.conferidos], ["naoLocalizados", l.naoAchados], ["indisponiveis", l.falhas], ["locais", l.locais]] as const) for (const x of v || []) if (!alvo[k].includes(x)) alvo[k].push(x); };
 const fontesParaTela = (f: any = fontesConsultadas) => ({ ...f, consultado: true });      // sempre devolve: a tela mostra "nenhum artigo citado" em vez de parecer que a consulta não rodou
 const taxonomySummary = getApplicableTaxonomySummary(combinedContextForPrecedents, await listarRegimes().catch(() => []));      // regimes do sistema + os cadastrados pelo Super Admin
+// LEI APLICÁVEL AO CASO: artigos-chave do regime identificado (consumo, juros, Fazenda...) trazidos do Planalto para a minuta ser redigida com a lei aplicável (uma consulta por análise, usada nas duas etapas)
+let leiAplicavelPromessa: Promise<{ bloco: string; artigos: string[]; regimes: string[] }> | null = null;
+const pegarLeiAplicavel = (jaConferidos: string[] = []) => (leiAplicavelPromessa ||= (async () => {
+    const r = await legislacaoAplicavelAoCaso(combinedContextForPrecedents.slice(0, 200000), { maxArtigos: 12, timeoutMs: 6000, regimesExtras: await listarRegimes().catch(() => []), jaConferidos });
+    if (r.artigos.length) { somarFontes({ conferidos: r.artigos }); console.log(`[Legislação] lei aplicável ao caso: ${r.artigos.length} artigo(s) (${r.regimes.join("; ")}).`); }
+    return r;
+})());
 
 let liveGroundingPrecedents = "";
 let liveGroundingSources: Array<{ title: string; url: string }> = [];
@@ -4693,7 +4708,7 @@ if (matchedPrecedents.length > 0) {
     // os 5 julgados mais aplicáveis (súmulas nativas e anexados pelo gabinete) já na etapa 1, para a minuta preliminar nascer coerente com eles; a etapa 2 recebe a lista completa
     stage1SystemInstruction += `\n\n[SÚMULAS, TESES VINCULANTES E INFORMATIVOS MAIS APLICÁVEIS (STF • STJ • TNU • TJGO)]:\n` +
         matchedPrecedents.slice(0, 5).map((p, idx) => `${idx + 1}. [${p.tribunal} • ${p.number} - ${p.title}] (${conferenciasPrecedentes[p.id] ? "CONFERIDO na fonte oficial" : "NÃO CONFERIDO"}): "${p.statement}" (Fonte: ${p.sourceUrl})`).join("\n") +
-        `\nDIRETRIZ: ao levantar fatos e redigir a minuta preliminar, considere estes precedentes quando se aplicarem aos fatos dos autos; não cite precedente que não conste desta lista nem dos autos.\n`;
+        `\nDIRETRIZ: estes são os precedentes de MAIOR aderência ao caso, na ordem de aplicabilidade. Quando o precedente se aplicar aos fatos dos autos, SIGA o entendimento dele: adote a tese na fundamentação, cite-o e conduza o dispositivo de acordo. Se os fatos forem diferentes (distinção), não o aplique e, se for relevante, explique em uma frase por que não incide. Não cite precedente que não conste desta lista nem dos autos.\n`;
 }
 if (taxonomySummary) {
     stage1SystemInstruction += `\n\n[MAPEAMENTO TAXONÔMICO NORMATIVO & MICROSSISTEMAS]:\n${taxonomySummary}\n`;
@@ -4760,7 +4775,7 @@ if (matchedPrecedents.length > 0) {
             const situacao = c ? `CONFERIDO na fonte oficial por ${c.por} em ${new Date(c.em).toLocaleDateString("pt-BR")}` : ((p as any).origem === "anexo_pdf" ? "NÃO CONFERIDO — texto extraído por IA de documento anexado" : "NÃO CONFERIDO — base interna");
             return `${idx + 1}. [${p.tribunal} • ${p.number} - ${p.title}] (${situacao}): "${p.statement}" (Fonte: ${p.sourceUrl})`;
         }).join("\n") +
-        `\nDIRETRIZ JURISPRUDENCIAL VINCULANTE: Harmonize a fundamentação e o dispositivo com as súmulas/teses vinculantes superiores e do TJGO.\n` +
+        `\nDIRETRIZ JURISPRUDENCIAL VINCULANTE: a lista vem na ordem de aderência ao caso. Quando a súmula/tese se aplicar aos fatos, a fundamentação e o dispositivo devem SEGUIR o entendimento dela (cite-a e aplique a tese); quando não se aplicar, não a use (explique a distinção só se for relevante).\n` +
         `REGRA DE FIDELIDADE: cite número de súmula, tema ou informativo SOMENTE se constar da lista acima ou se você tiver certeza absoluta; nunca invente numeração nem transcreva enunciado de memória. Para item marcado "NÃO CONFERIDO", cite com cautela e acrescente ao final do raciocínio a recomendação de conferir o enunciado na fonte oficial antes de assinar o ato.\n`;
 }
 
@@ -5374,6 +5389,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
         const legAutos = await consultarLegislacao([(accumulatedPdfText || safeProcessText || "").slice(0, 200000)], { maxArtigos: 10, timeoutMs: 8000 });
         somarFontes(legAutos);
         if (legAutos.bloco) { stage1SystemInstruction += legAutos.bloco; console.log(`[Legislação] etapa 1: ${legAutos.consultados} artigo(s) citado(s) nos autos conferido(s) no Planalto.`); }
+        try { const la = await pegarLeiAplicavel(legAutos.conferidos); if (la.bloco) stage1SystemInstruction += la.bloco; } catch { /* sem a lei aplicável: segue só com a conferência */ }
     } catch (e) { console.warn("[Legislação] etapa 1 ignorada:", e); }
     stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const stage1StartTimer = Date.now();
@@ -6006,6 +6022,7 @@ try {
         somarFontes(leg);
         if (leg.bloco) { stage2SystemInstruction += leg.bloco; console.log(`[Legislação] ${leg.consultados} artigo(s) conferido(s) no Planalto${leg.naoAchados.length ? `; não localizado(s): ${leg.naoAchados.join("; ")}` : ""}.`); }
         else if (leg.falhas.length) console.log(`[Legislação] sem acesso ao Planalto para: ${leg.falhas.join("; ")}.`);
+        try { const la = await pegarLeiAplicavel(leg.conferidos); if (la.bloco) stage2SystemInstruction += la.bloco; } catch { /* sem a lei aplicável */ }
     } catch (e) { console.warn("[Legislação] consulta ignorada:", e); }
     stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage2Prompt, stage2SystemInstruction) / 10000) * 3000);
@@ -6555,7 +6572,8 @@ if (wasRotated && rotatedKey) {
         const isQuota = error?.message?.includes("429") ||
                         error?.message?.includes("RESOURCE_EXHAUSTED") ||
                         error?.message?.includes("Quota exceeded");
-        const emSegundoPlano = error?.codigo === "AUTOS_GRANDES_SEGUNDO_PLANO";
+        // autos que não cabem nem reduzidos no limite da chave gratuita seguem em lotes (dossiê) em vez de parar com o aviso de chave paga
+        const emSegundoPlano = ["AUTOS_GRANDES_SEGUNDO_PLANO", "AUTOS_ESSENCIAIS_ACIMA_DO_LIMITE", "ENTRADA_GRANDE_GRATUITA"].includes(error?.codigo);
         const statusCode = emSegundoPlano ? 409 : isQuota ? 429 : (isDemand ? 503 : 500);
 
         if (isDemand) {

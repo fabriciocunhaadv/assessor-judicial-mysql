@@ -370,3 +370,21 @@ export async function pesquisarLegislacao(consulta: string, contexto: string, op
   } catch (e) { console.warn("[Legislação] pesquisa ignorada:", (e as any)?.message || e); }
   return out;
 }
+
+/** LEI APLICÁVEL AO CASO: além de conferir o que os autos citam, traz do Planalto os artigos-chave do regime identificado pelo assunto (consumo, juros, Fazenda etc.)
+ *  para a minuta ser redigida COM a lei aplicável. Só entra o que os autos ainda não citam (esses já vêm da conferência). Falha silenciosa: devolve bloco vazio. */
+export async function legislacaoAplicavelAoCaso(contexto: string, opts: { maxArtigos?: number; timeoutMs?: number; regimesExtras?: LegalFramework[]; jaConferidos?: string[] } = {}): Promise<{ bloco: string; artigos: string[]; regimes: string[] }> {
+  const vazio = { bloco: "", artigos: [] as string[], regimes: [] as string[] };
+  try {
+    const r = await pesquisarLegislacao("", contexto, { maxArtigos: opts.maxArtigos ?? 12, timeoutMs: opts.timeoutMs ?? 6000, regimesExtras: opts.regimesExtras });
+    const norm = (x: string) => x.toLowerCase().replace(/\s*\(.*?\)\s*/g, " ").replace(/\s+/g, " ").trim();
+    const ja = new Set((opts.jaConferidos || []).map(norm));
+    const itens = r.itens.filter((i) => i.origem === "regime" && !i.revogado && !ja.has(norm(`${i.diploma}, art. ${i.artigo}`)));
+    if (!itens.length) return vazio;
+    const hoje = new Date().toLocaleDateString("pt-BR");
+    const bloco = `\n\n[LEGISLAÇÃO APLICÁVEL AO CASO — TEXTO OFICIAL DO PLANALTO (planalto.gov.br) em ${hoje}; regime identificado: ${r.regimes.map((x) => x.name || (x as any).nome || "").filter(Boolean).join("; ") || "pelo assunto dos autos"}]:\n` +
+      itens.map((i) => `• ${i.diploma}, art. ${i.artigo}:\n${i.texto}`).join("\n\n") +
+      `\n\nDIRETRIZ: estes são os dispositivos legais de maior aderência ao assunto dos autos. Ao fundamentar, aplique-os ao caso concreto quando pertinentes, citando número, caput e parágrafos conforme o texto oficial acima (respeite as marcações de alteração/revogação). Não os cite por obrigação: use só os que se aplicam aos fatos. Não cite dispositivo legal que não conste deste bloco, da conferência dos autos ou de que você tenha certeza absoluta.`;
+    return { bloco, artigos: itens.map((i) => `${i.diploma}, art. ${i.artigo}`), regimes: r.regimes.map((x) => String(x.name || (x as any).nome || "")).filter(Boolean) };
+  } catch (e) { console.warn("[Legislação] lei aplicável ao caso ignorada:", (e as any)?.message || e); return vazio; }
+}

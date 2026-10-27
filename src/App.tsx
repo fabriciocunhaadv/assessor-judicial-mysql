@@ -143,6 +143,9 @@ const EMPTY_PROMPT: CustomPrompt = {
   isDefault: false
 };
 
+// respostas do servidor que mandam a leitura para o dossiê em lotes (segundo plano): autos grandes e autos que não cabem nem reduzidos na chave gratuita
+const CODIGOS_AUTOS_EM_LOTES = ["AUTOS_GRANDES_SEGUNDO_PLANO", "AUTOS_ESSENCIAIS_ACIMA_DO_LIMITE", "ENTRADA_GRANDE_GRATUITA"];
+
 export default function App() {
   const { 
     user, 
@@ -891,7 +894,7 @@ export default function App() {
   const ehPassageiro = (m: string | null) => !!m && /alta demanda|503|Overloaded|cota|Quota|Rate Limit|interrompida momentaneamente|demorou mais que o esperado/i.test(m);
   const erroPassageiro = ehPassageiro(errorMessage);
   // silencioso = esteira da extensão: o trabalho entra na fila "Gigantes" e a extensão o acompanha por lá (mesmo protocolo dos processos gigantes)
-  const enviarSegundoPlano = async (silencioso = false): Promise<boolean> => {
+  const enviarSegundoPlano = async (silencioso = false, naoCabia = false): Promise<boolean> => {
     const pdfsOk = inputMode === "pdf" ? pdfFiles : [];
     const texto = inputMode !== "pdf" ? processText.trim() : "";
     if (pdfsOk.length === 0 && !texto) { if (!silencioso) toast("Não há PDF nem texto no painel para enviar ao segundo plano.", { icon: "⚠️" }); return false; }
@@ -903,7 +906,8 @@ export default function App() {
     setErrorMessage(null);
     if (pdfsOk.length > 0) handleClearPdfs(); else setProcessText("");
     window.dispatchEvent(new CustomEvent("gigantes:abrir"));
-    toast(silencioso ? "A IA do Google está instável: este processo foi para o segundo plano e será refeito sozinho. A esteira segue para o próximo." : "Enviado ao segundo plano: o sistema insiste sozinho até a IA responder e salva a minuta no Histórico. O painel está livre para outro processo.", { duration: 9000, icon: "🔁" });
+    if (naoCabia) toast("Os autos não cabem de uma vez no limite da chave gratuita, mesmo reduzidos. Seguiram em lotes (dossiê) em segundo plano: a minuta será salva no Histórico quando terminar.", { duration: 12000, icon: "📚" });
+    else toast(silencioso ? "A IA do Google está instável: este processo foi para o segundo plano e será refeito sozinho. A esteira segue para o próximo." : "Enviado ao segundo plano: o sistema insiste sozinho até a IA responder e salva a minuta no Histórico. O painel está livre para outro processo.", { duration: 9000, icon: "🔁" });
     return true;
   };
 
@@ -1207,7 +1211,7 @@ export default function App() {
         try {
           const errorData = JSON.parse(responseText.trim());
           // autos grandes demais para a chave gratuita: em vez de prender a tela por minutos, segue em segundo plano (leitura em lotes)
-          if (errorData?.codigo === "AUTOS_GRANDES_SEGUNDO_PLANO") { let auto = false; try { auto = document.documentElement.dataset.assessorAuto === "1"; } catch { /* sem dataset */ } if (await enviarSegundoPlano(auto)) return; }
+          if (CODIGOS_AUTOS_EM_LOTES.includes(errorData?.codigo)) { let auto = false; try { auto = document.documentElement.dataset.assessorAuto === "1"; } catch { /* sem dataset */ } if (await enviarSegundoPlano(auto, errorData.codigo !== "AUTOS_GRANDES_SEGUNDO_PLANO")) return; }
           if (errorData?.error) {
             errorMsg = errorData.error;
           }
@@ -1301,7 +1305,7 @@ export default function App() {
       }
 
       // Strict validation: if server returned an error payload or flagged error
-      if (rawData?.codigo === "AUTOS_GRANDES_SEGUNDO_PLANO") { let auto = false; try { auto = document.documentElement.dataset.assessorAuto === "1"; } catch { /* sem dataset */ } if (await enviarSegundoPlano(auto)) return; }
+      if (CODIGOS_AUTOS_EM_LOTES.includes(rawData?.codigo)) { let auto = false; try { auto = document.documentElement.dataset.assessorAuto === "1"; } catch { /* sem dataset */ } if (await enviarSegundoPlano(auto, rawData.codigo !== "AUTOS_GRANDES_SEGUNDO_PLANO")) return; }
       if (rawData?.error || rawData?.isError) {
         let cleanMsg = rawData.error;
         try {

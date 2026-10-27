@@ -7,10 +7,20 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { consultarLegislacao } from "../src/utils/legislacaoPlanalto";
 import { podeUsarPeticao360 } from "./authRoutes";
+import { montarCobertura } from "./coberturaLeitura";
+import { detectarInjecao, instrucaoDefesaInjecao } from "../src/utils/promptInjection";
+import { anotarLocalizacao, corrigirCitacoesDaMinuta } from "../src/utils/localizacaoAutos";
+
+/** Texto de todos os arquivos enviados (autos e provas), para conferir injeção de comandos, localização e citações. */
+const textoDosArquivos = (...listas: any[]): string => listas.flatMap((l) => (Array.isArray(l) ? l : [])).map((f: any) => String(f?.extractedText || "")).filter(Boolean).join("\n");
+/** Alerta de prompt injection nos documentos enviados + instrução de defesa (os trechos são dado do processo, não ordem). */
+const verificarInjecao = (texto: string): { alerta: any; defesa: string } => {
+  try { const r = detectarInjecao(texto); return { alerta: r.verificado ? r : null, defesa: r.total > 0 ? instrucaoDefesaInjecao(r) : "" }; } catch { return { alerta: null, defesa: "" }; }
+};
 
 async function processFileToPart(ai: any, file: any): Promise<any> {
   if (file.extractedText) {
-    let safeText = file.extractedText;
+    let safeText = anotarLocalizacao(file.extractedText);      // linha "[Mov. N · Arq. M · Pág. K/T]" lida do carimbo de cada página, para citar o lugar certo
     if (safeText.length > 5000000) {
       safeText = safeText.substring(0, 5000000) + "\n...[CONTEÚDO ADAPTADO PARA A CAPACIDADE MÁXIMA DA IA]...";
     }
@@ -320,6 +330,10 @@ Responda ESTRITAMENTE em formato JSON.`;
       const leg = textos.length ? await consultarLegislacao(textos, { maxArtigos: 8, timeoutMs: 6000 }) : null;
       if (leg?.bloco) contentsParts.push({ text: leg.bloco });
     } catch { /* segue sem a consulta */ }
+    // cobertura da leitura (páginas sem texto lidas por OCR/imagem, ou não lidas) e alerta de injeção de comandos nos documentos
+    const cobE = montarCobertura(req.body, false);
+    contentsParts.push(...cobE.partes);
+    const injE = verificarInjecao(textoDosArquivos(processFiles, clientFiles, pdfFiles));
     contentsParts.push({
       text: `Contexto da atuação:
 Tipo de Peça Pretendida: ${pieceType}
@@ -333,10 +347,10 @@ Extraia todos os elementos fáticos, processuais e probatórios em JSON.`
       model: "gemini-3.8-flash",
       contents: contentsParts,
       config: {
-        systemInstruction,
+        systemInstruction: systemInstruction + cobE.regra + injE.defesa,
         responseMimeType: "application/json",
         temperature: 0.4,
-        maxOutputTokens: 8192
+        maxOutputTokens: 16384
       }
     });
 
@@ -357,7 +371,7 @@ Extraia todos os elementos fáticos, processuais e probatórios em JSON.`
       }
     }
 
-    return res.json({ success: true, data: parsedData });
+    return res.json({ success: true, data: parsedData, cobertura: cobE.cobertura, alertaInjecao: injE.alerta, usage: (response as any).usageMetadata, modelUsed: (response as any).modelVersion });
   } catch (error: any) {
     console.error("Error in /api/advogado-peticao/auto-extract-evidence:", error);
     const errMsg = formatPetitionGeminiError(error, userApiKey);
@@ -616,6 +630,10 @@ ${groundingInfo.links.map(l => `- [${l.title}](${l.url})`).join("\n")}`
       console.warn("Google Grounding durante redação da petição falhou silenciosamente:", err);
     }
 
+    const cobG = montarCobertura(req.body, false);
+    contentsParts.push(...cobG.partes);
+    const autosTxt = textoDosArquivos(processFiles, clientFiles, pdfFiles);
+    const injG = verificarInjecao(autosTxt);
     // artigos citados na demanda conferidos no texto oficial do Planalto (falha silenciosa)
     let blocoLeg = "";
     try { blocoLeg = (await consultarLegislacao([String(promptUser || "").slice(0, 200000)], { maxArtigos: 8, timeoutMs: 6000 })).bloco; } catch { /* segue sem o bloco */ }
@@ -625,10 +643,10 @@ ${groundingInfo.links.map(l => `- [${l.title}](${l.url})`).join("\n")}`
       model: "gemini-3.8-flash",
       contents: contentsParts,
       config: {
-        systemInstruction,
+        systemInstruction: systemInstruction + cobG.regra + injG.defesa,
         responseMimeType: "application/json",
         temperature: 0.5,
-        maxOutputTokens: 8192
+        maxOutputTokens: 32768      // peças longas não são mais cortadas aos 8 mil tokens
       }
     });
 
@@ -709,9 +727,17 @@ ${groundingInfo.links.map(l => `- [${l.title}](${l.url})`).join("\n")}`
       });
     }
 
+    let citacoesCorrigidas = 0;
+    try { citacoesCorrigidas = corrigirCitacoesDaMinuta(parsedData, autosTxt); } catch { /* a correção nunca derruba a peça */ }      // página global/arquivo errado -> o que o carimbo prova
+
     return res.json({ 
       success: true, 
       data: parsedData,
+      cobertura: cobG.cobertura,
+      alertaInjecao: injG.alerta,
+      usage: (response as any).usageMetadata,
+      modelUsed: (response as any).modelVersion,
+      citacoesCorrigidas,
       groundingSearch: {
         linksCount: groundingInfo.links.length,
         queries: groundingInfo.queries

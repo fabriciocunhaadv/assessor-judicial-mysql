@@ -67,3 +67,20 @@ export function corrigirCitacoesDaMinuta(minuta: any, autos: string): number {
   }
   return total;
 }
+
+/** Citações "Mov. X, Arq. Y, Pág. Z" da minuta que NÃO existem nos autos, conferidas só pelos carimbos (sem IA): arquivo que a movimentação não tem, ou página além do total do arquivo.
+ *  Movimentação que nem aparece nos carimbos fica de fora (essa conferência é outra). Só confere onde os carimbos provam. */
+export function citacoesInexistentes(minuta: string, autos: string): Array<{ citacao: string; motivo: string }> {
+  const mapa = mapaDeLocalizacao(autos); if (!mapa.size || typeof minuta !== "string") return [];
+  const totais = new Map<string, number>(), arqsDaMov = new Map<number, Set<number>>();
+  for (const l of mapa.values()) { totais.set(`${l.mov}|${l.arq}`, l.tot); (arqsDaMov.get(l.mov) || arqsDaMov.set(l.mov, new Set()).get(l.mov)!).add(l.arq); }
+  const out: Array<{ citacao: string; motivo: string }> = [], vistas = new Set<string>();
+  for (const m of minuta.matchAll(CITACAO)) {
+    const mov = +m[1], arq = +m[2], p1 = +m[3], p2 = m[4] ? +m[4] : 0, cit = m[0].trim();
+    const arqs = arqsDaMov.get(mov); if (!arqs || vistas.has(cit)) continue;      // movimentação sem carimbo nos autos: não dá para provar
+    const tot = totais.get(`${mov}|${arq}`);
+    if (tot === undefined) { vistas.add(cit); out.push({ citacao: cit, motivo: `a Mov. ${mov} não tem o Arq. ${arq} nos autos (arquivos que ela tem: ${[...arqs].sort((a, b) => a - b).join(", ")})` }); }
+    else if (p1 > tot || (p2 && p2 > tot)) { vistas.add(cit); out.push({ citacao: cit, motivo: `o Arq. ${arq} da Mov. ${mov} tem só ${tot} página(s)` }); }
+  }
+  return out.slice(0, 8);
+}

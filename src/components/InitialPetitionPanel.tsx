@@ -1,4 +1,6 @@
 import { extractTextFromPdf } from "../utils/pdfExtractor";
+import { useCoberturaLeitura } from "./useCoberturaLeitura";
+import { AvisoCoberturaLeitura } from "./AvisoCoberturaLeitura";
 import { getKnowledgeDocs } from "../utils/knowledgeDb";
 import { getCabinetTeses } from "../utils/tesesDb";
 import React, { useState, useEffect, useRef } from "react";
@@ -76,6 +78,10 @@ const COMMON_PRELIMINARES = [
   "Litispendência ou Coisa Julgada (Art. 337, VI/VII CPC)"
 ];
 
+/** Arquivo anexado à peça. Os campos depois de extractedText são só do navegador (leitura/OCR) e não vão ao servidor. */
+type ArquivoPeticao = { name: string; base64: string; mimeType: string; size: number; extractedText?: string; id?: string; file?: File; pageCount?: number; paginasSemTexto?: number[]; paginasNaoLidas?: number[]; paginasOcr?: number[] };
+const paraEnvio = (l: ArquivoPeticao[]) => l.map(({ name, base64, mimeType, size, extractedText }) => ({ name, base64, mimeType, size, extractedText }));
+
 export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
   isOpen,
   onClose,
@@ -131,10 +137,12 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
   }, [clientName, defendantName, lawArea, targetCourt, caseDescription, customPrompt, causeValue, pieceType]);
 
   // Duplo Upload Especializado: Autos do Processo (PDF) e Documentos do Cliente
-  const [processFiles, setProcessFiles] = useState<{ name: string; base64: string; mimeType: string; size: number; extractedText?: string }[]>([]);
-  const [clientFiles, setClientFiles] = useState<{ name: string; base64: string; mimeType: string; size: number; extractedText?: string }[]>([]);
+  const [processFiles, setProcessFiles] = useState<ArquivoPeticao[]>([]);
+  const [clientFiles, setClientFiles] = useState<ArquivoPeticao[]>([]);
   // Arquivos Probatórios Anexados (geral/legado)
-  const [attachedFiles, setAttachedFiles] = useState<{ name: string; base64: string; mimeType: string; size: number; extractedText?: string }[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<ArquivoPeticao[]>([]);
+  const { resolver: resolverCoberturaLeitura, dialog: dialogCobertura } = useCoberturaLeitura();
+  const [coberturaPeticao, setCoberturaPeticao] = useState<any>(null);
 
   // Estados de Execução da IA
   const [isExtractingEvidence, setIsExtractingEvidence] = useState(false);
@@ -236,6 +244,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
       files.map(async (file) => {
         let extractedText = "";
         let base64Data = "";
+        let leitura: { pageCount?: number; paginasSemTexto?: number[]; paginasNaoLidas?: number[] } = {};
         
         const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type.includes("pdf");
         if (isPdf) {
@@ -243,6 +252,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
             const result = await extractTextFromPdf(file);
             if (result && result.hasText && result.text && result.text.trim().length > 0) {
               extractedText = result.text;
+              leitura = { pageCount: result.pageCount, paginasSemTexto: result.paginasSemTexto, paginasNaoLidas: result.paginasNaoLidas };
               console.log(`[Petição] Texto do PDF "${file.name}" extraído no navegador (${extractedText.length} caracteres).`);
             }
           } catch (e) {
@@ -266,7 +276,10 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
           base64: base64Data,
           mimeType: file.type || "application/pdf",
           size: file.size,
-          extractedText
+          extractedText,
+          id: `pet-${file.name}-${file.size}-${Math.random().toString(36).slice(2, 7)}`,
+          file,
+          ...leitura,
         };
       })
     );
@@ -372,6 +385,20 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
     setActiveTab("editor");
   };
 
+  // Cobertura da leitura: páginas sem texto (escaneadas/fotos) são lidas por OCR (ou imagem) antes de enviar, como na análise normal; o texto lido volta para o arquivo
+  const prepararCobertura = async () => {
+    const todos = Array.from(new Set([...processFiles, ...clientFiles, ...attachedFiles]));
+    const pdfs = todos.filter((f) => f.file && !f.base64).map((f) => ({ id: f.id || f.name, name: f.name, size: f.size, mimeType: f.mimeType, file: f.file, extractedText: f.extractedText || "", pageCount: f.pageCount, paginasSemTexto: f.paginasSemTexto, paginasNaoLidas: f.paginasNaoLidas, paginasOcr: f.paginasOcr }));
+    if (pdfs.length === 0) return { cancelado: false, cobertura: null as any, imagens: [] as any[] };
+    const cob = await resolverCoberturaLeitura(pdfs as any, (t) => toast.loading(t, { id: "cobertura-peticao" }));
+    toast.dismiss("cobertura-peticao");
+    for (const p of pdfs) {
+      const orig = todos.find((f) => (f.id || f.name) === p.id);
+      if (orig) { orig.extractedText = p.extractedText; orig.paginasSemTexto = p.paginasSemTexto; orig.paginasNaoLidas = p.paginasNaoLidas; orig.paginasOcr = p.paginasOcr; }
+    }
+    return cob;
+  };
+
   // 1. AUTO-INGESTÃO E EXTRAÇÃO DE PROVAS E AUTOS (Ultra-automático)
   const handleAutoExtractEvidence = async () => {
     if (processFiles.length === 0 && clientFiles.length === 0 && attachedFiles.length === 0 && !caseDescription.trim()) {
@@ -381,13 +408,17 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
 
     setIsExtractingEvidence(true);
     try {
+      const cob = await prepararCobertura();
+      if (cob.cancelado) return;
       const response = await fetch("/api/advogado-peticao/auto-extract-evidence", {
         method: "POST",
         headers: getApiHeaders(),
         body: JSON.stringify({
-          processFiles,
-          clientFiles,
-          pdfFiles: attachedFiles,
+          processFiles: paraEnvio(processFiles),
+          clientFiles: paraEnvio(clientFiles),
+          pdfFiles: paraEnvio(attachedFiles),
+          coberturaLeitura: cob.cobertura,
+          paginasImagens: cob.imagens,
           quickNotes: caseDescription,
           pieceType,
           clientRole
@@ -418,6 +449,8 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
         throw new Error("A conexão com o servidor foi interrompida ou a IA retornou um formato inválido. Por favor, tente novamente.");
       }
       const data = res.data;
+      if (res.cobertura) setCoberturaPeticao(res.cobertura);
+      if (res.alertaInjecao?.total > 0) toast.error(`Atenção: ${res.alertaInjecao.total} trecho(s) dos documentos parecem dar ordens à IA (prompt injection). Confira os documentos antes de confiar na leitura.`, { duration: 12000 });
 
       if (data) {
         if (data.clientName) setClientName(data.clientName);
@@ -468,6 +501,8 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
 
     setIsGenerating(true);
     try {
+      const cob = await prepararCobertura();
+      if (cob.cancelado) return;
       let activeKnowledgeDocs: any[] = [];
       try {
         activeKnowledgeDocs = (await getKnowledgeDocs()).filter(d => d.isActive);
@@ -498,9 +533,11 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
           causeValue,
           preliminaresSelecionadas,
           tempestividadeInfo,
-          processFiles,
-          clientFiles,
-          pdfFiles: attachedFiles,
+          processFiles: paraEnvio(processFiles),
+          clientFiles: paraEnvio(clientFiles),
+          pdfFiles: paraEnvio(attachedFiles),
+          coberturaLeitura: cob.cobertura,
+          paginasImagens: cob.imagens,
           repetitiveTemplateId: selectedTemplateId,
           knowledgePdfs: activeKnowledgeDocs,
           cabinetTesesText: activeTesesText
@@ -536,6 +573,8 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
         throw new Error("A conexão com o servidor foi interrompida durante a geração da peça. Por favor, tente novamente.");
       }
       const resultData = res.data;
+      setCoberturaPeticao(res.cobertura || null);
+      if (res.alertaInjecao?.total > 0) toast.error(`Atenção: ${res.alertaInjecao.total} trecho(s) dos documentos parecem dar ordens à IA (prompt injection). A peça foi redigida tratando-os só como dado, mas confira.`, { duration: 12000 });
 
       const pieceLabel = pieceType === "contestacao"
         ? "Contestação"
@@ -810,6 +849,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
 
   return (
     <div id="initial-petition-panel-root" className="fixed inset-0 z-[100] flex bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+      {dialogCobertura}
       <div className="bg-slate-900 text-slate-100 w-full h-full flex flex-col shadow-2xl overflow-hidden border border-slate-800">
         
         {/* Top Header com Isolamento Visual Total e Responsivo */}
@@ -1522,6 +1562,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                 </div>
 
                 {/* Botão de Redação 360 */}
+                {coberturaPeticao && <AvisoCoberturaLeitura info={coberturaPeticao} />}
                 <div className="mt-auto pt-2">
                   <button
                     id="generate-petition-btn"
