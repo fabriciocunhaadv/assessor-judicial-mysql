@@ -217,6 +217,8 @@ export interface GenerationResult {
   avisoPedidoSemPeca?: string[];
   avisoVazamento?: string[];
   avisoCitacao?: string[];
+  avisoFundamentoLegal?: string[];
+  espolioQualificado?: string[];
   /** Artigos citados na minuta que o Planalto marca como revogados, vetados ou inexistentes (conferência automática). */
   alertasLegislacao?: { lei: string; artigo: string; tipo: "revogado" | "vetado" | "inexistente" | "cpc1973"; nota?: string }[];
   legislacaoConferida?: string[];

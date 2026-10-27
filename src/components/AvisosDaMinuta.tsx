@@ -69,6 +69,11 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
   const cit = result?.avisoCitacao;
   if (cit?.length) itens.push({ id: "citacao", tom: "atencao", rotulo: `📍 Arquivo/página inexistente (${cit.length})`, conteudo: caixa("border-amber-300 bg-amber-50 text-amber-900", "aviso-citacao", <><strong>Conferir citação:</strong> {cit.join("; ")} — o arquivo ou a página não existe nos carimbos dos autos enviados.</>) });
 
+  const fl = result?.avisoFundamentoLegal;
+  if (fl?.length) itens.push({ id: "fundamento-legal", tom: "atencao", rotulo: `📚 Fundamento do indeferimento (${fl.length})`, conteudo: caixa("border-amber-300 bg-amber-50 text-amber-900", "aviso-fundamento-legal", <><strong>Conferir o fundamento legal:</strong><ul className="list-disc list-inside">{fl.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></>) });
+  const esp = result?.espolioQualificado;
+  if (esp?.length) itens.push({ id: "espolio", tom: "info", rotulo: "🪦 Parte falecida: Espólio", conteudo: caixa("border-sky-300 bg-sky-50 text-sky-900", "aviso-espolio", <><strong>Parte falecida:</strong> no cabeçalho, {esp.join("; ")} passou a constar como “Espólio de …”, porque os autos tratam o nome como espólio. Confira a qualificação.</>) });
+
   if (itens.length === 0) return null;
   return (
     <div className="max-w-4xl mx-auto space-y-2" data-testid="avisos-da-minuta">

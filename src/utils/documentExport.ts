@@ -1,3 +1,4 @@
+import { cabecalhoDaMinuta, rotulosDasPartes, blocosDaSecao, htmlDaSecao, negritoEItalicoEmHtml, textoSimples } from "./exportacaoMinuta";
 import { saveAs } from "file-saver";
 import { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel } from "docx";
 import { MinuteData } from "../types";
@@ -73,60 +74,37 @@ export function getCleanPartyNames(minute: MinuteData) {
 
 export async function copyMinuteToClipboard(minute: MinuteData): Promise<boolean> {
   const parties = getCleanPartyNames(minute);
-  const plainText = minute.fullFormattedText || `${minute.header}\n\n${minute.title}\n\nProcesso: ${minute.processNumber}\nAutor: ${parties.author}\nRéu: ${parties.defendant}\n\nRELATÓRIO\n${minute.relatorio}\n\nFUNDAMENTAÇÃO\n${minute.fundamentacao}\n\nDISPOSITIVO\n${minute.dispositivo}\n\n${minute.closing || ""}`;
+  const plainText = textoSimples(minute.fullFormattedText || "") || `${minute.header}\n\n${minute.title}\n\nProcesso: ${minute.processNumber}\nAutor: ${parties.author}\nRéu: ${parties.defendant}\n\nRELATÓRIO\n${textoSimples(minute.relatorio)}\n\nFUNDAMENTAÇÃO\n${textoSimples(minute.fundamentacao)}\n\nDISPOSITIVO\n${textoSimples(minute.dispositivo)}\n\n${minute.closing || ""}`;
 
-  const parseMarkdown = (text: string) => {
-    if (!text) return "";
-    let parsed = text;
-    // Bold
-    parsed = parsed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    // Italic
-    parsed = parsed.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    // Newlines to BR
-    parsed = parsed.replace(/\n\n/g, '<br/><br/>').replace(/\n/g, '<br/>');
-    return parsed;
-  };
-
+  const rotulos = rotulosDasPartes(minute);
+  const cab = cabecalhoDaMinuta(minute);
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.5; color: #111827; max-width: 800px; margin: 0 auto;">
       <p style="text-align: center; font-weight: bold; font-size: 13pt; margin-bottom: 20px;">
-        PODER JUDICIÁRIO DO ESTADO DE GOIÁS<br/>
-        COMARCA DE GOIÂNIA - JUIZADO ESPECIAL CÍVEL
+        ${cab.map((l) => negritoEItalicoEmHtml(l)).join("<br/>")}
       </p>
-      
+
       <p style="text-align: center; font-weight: bold; font-size: 14pt; margin: 24px 0; text-transform: uppercase; letter-spacing: 1px;">
-        ${minute.title}
+        ${negritoEItalicoEmHtml(minute.title || "")}
       </p>
 
       <p style="margin-bottom: 16px;">
-        <strong>Processo nº:</strong> ${minute.processNumber}<br/>
-        <strong>Promovente (Autor):</strong> ${minute.parties?.author}<br/>
-        <strong>Promovido (Réu):</strong> ${minute.parties?.defendant}
+        <strong>Processo nº:</strong> ${negritoEItalicoEmHtml(minute.processNumber || "")}<br/>
+        <strong>${rotulos.autor}:</strong> ${negritoEItalicoEmHtml(parties.author || "")}<br/>
+        <strong>${rotulos.reu}:</strong> ${negritoEItalicoEmHtml(parties.defendant || "")}
       </p>
 
-      <p style="font-weight: bold; font-size: 12pt; margin-top: 24px; margin-bottom: 8px;">
-        I - RELATÓRIO
-      </p>
-      <div style="text-align: justify; text-indent: 2.5cm; margin-bottom: 16px;">
-        ${parseMarkdown(minute.relatorio)}
-      </div>
+      <p style="font-weight: bold; font-size: 12pt; margin-top: 24px; margin-bottom: 8px;">I - RELATÓRIO</p>
+      <div style="text-align: justify;">${htmlDaSecao(minute.relatorio, "relatorio").replace(/<p>/g, '<p style="text-indent: 2.5cm; margin: 0 0 12px;">').replace(/<h3 class="sub">/g, '<h3 style="font-size: 12pt; font-weight: bold; margin: 16px 0 6px;">').replace(/<blockquote>/g, '<blockquote style="margin: 0 0 12px 4cm; font-style: italic;">')}</div>
 
-      <p style="font-weight: bold; font-size: 12pt; margin-top: 24px; margin-bottom: 8px;">
-        II - FUNDAMENTAÇÃO
-      </p>
-      <div style="text-align: justify; text-indent: 2.5cm; margin-bottom: 16px;">
-        ${parseMarkdown(minute.fundamentacao)}
-      </div>
+      <p style="font-weight: bold; font-size: 12pt; margin-top: 24px; margin-bottom: 8px;">II - FUNDAMENTAÇÃO</p>
+      <div style="text-align: justify;">${htmlDaSecao(minute.fundamentacao, "fundamentacao").replace(/<p>/g, '<p style="text-indent: 2.5cm; margin: 0 0 12px;">').replace(/<h3 class="sub">/g, '<h3 style="font-size: 12pt; font-weight: bold; margin: 16px 0 6px;">').replace(/<blockquote>/g, '<blockquote style="margin: 0 0 12px 4cm; font-style: italic;">')}</div>
 
-      <p style="font-weight: bold; font-size: 12pt; margin-top: 24px; margin-bottom: 8px;">
-        III - DISPOSITIVO
-      </p>
-      <div style="text-align: justify; text-indent: 2.5cm; margin-bottom: 24px;">
-        ${parseMarkdown(minute.dispositivo)}
-      </div>
+      <p style="font-weight: bold; font-size: 12pt; margin-top: 24px; margin-bottom: 8px;">III - DISPOSITIVO</p>
+      <div style="text-align: justify;">${htmlDaSecao(minute.dispositivo, "dispositivo").replace(/<p>/g, '<p style="text-indent: 2.5cm; margin: 0 0 12px;">').replace(/<h3 class="sub">/g, '<h3 style="font-size: 12pt; font-weight: bold; margin: 16px 0 6px;">').replace(/<blockquote>/g, '<blockquote style="margin: 0 0 12px 4cm; font-style: italic;">')}</div>
 
       <p style="text-align: center; margin-top: 36px; font-weight: bold;">
-        ${parseMarkdown(minute.closing || "Goiânia - GO, data da assinatura eletrônica.\n\nJuiz(a) de Direito")}
+        ${negritoEItalicoEmHtml(minute.closing || "Goiânia - GO, data da assinatura eletrônica.\n\nJuiz(a) de Direito").replace(/\n/g, "<br/>")}
       </p>
     </div>
   `;
@@ -171,6 +149,17 @@ function parseMarkdownToTextRuns(text: string): TextRun[] {
   });
 }
 
+/** Blocos da seção em parágrafos do Word: título em negrito sem recuo, citação recuada em itálico, texto justificado. */
+function paragrafosDocx(texto: string, secao: "relatorio" | "fundamentacao" | "dispositivo"): Paragraph[] {
+  return blocosDaSecao(texto, secao).map((b) =>
+    b.tipo === "titulo"
+      ? new Paragraph({ spacing: { before: 200, after: 100 }, children: [new TextRun({ text: b.texto, bold: true, font: "Arial", size: 22 })] })
+      : b.tipo === "citacao"
+        ? new Paragraph({ alignment: AlignmentType.JUSTIFIED, indent: { left: 2268 }, spacing: { line: 300, after: 100 }, children: [new TextRun({ text: b.texto.replace(/\*/g, ""), italics: true, font: "Arial", size: 21 })] })
+        : new Paragraph({ alignment: AlignmentType.JUSTIFIED, indent: { firstLine: 1440 }, spacing: { line: 360, after: 160 }, children: parseMarkdownToTextRuns(b.texto) })
+  );
+}
+
 export async function exportMinuteToDocx(minute: MinuteData): Promise<void> {
   const parties = getCleanPartyNames(minute);
   const doc = new Document({
@@ -202,7 +191,7 @@ export async function exportMinuteToDocx(minute: MinuteData): Promise<void> {
             alignment: AlignmentType.CENTER,
             children: [
               new TextRun({
-                text: "TRIBUNAL DE JUSTIÇA DO ESTADO DE GOIÁS - JUIZADO ESPECIAL CÍVEL",
+                text: cabecalhoDaMinuta(minute).slice(1).join(" - "),
                 size: 20, // 10pt
                 font: "Arial",
                 color: "555555",
@@ -230,13 +219,13 @@ export async function exportMinuteToDocx(minute: MinuteData): Promise<void> {
           }),
           new Paragraph({
             children: [
-              new TextRun({ text: "Promovente: ", bold: true, font: "Arial", size: 22 }),
+              new TextRun({ text: `${rotulosDasPartes(minute).autor}: `, bold: true, font: "Arial", size: 22 }),
               new TextRun({ text: parties.author || "", font: "Arial", size: 22 }),
             ],
           }),
           new Paragraph({
             children: [
-              new TextRun({ text: "Promovido: ", bold: true, font: "Arial", size: 22 }),
+              new TextRun({ text: `${rotulosDasPartes(minute).reu}: `, bold: true, font: "Arial", size: 22 }),
               new TextRun({ text: parties.defendant || "", font: "Arial", size: 22 }),
             ],
             spacing: { after: 300 },
@@ -254,15 +243,7 @@ export async function exportMinuteToDocx(minute: MinuteData): Promise<void> {
             ],
             spacing: { before: 200, after: 120 },
           }),
-          ...minute.relatorio.split("\n\n").map(
-            (p) =>
-              new Paragraph({
-                alignment: AlignmentType.JUSTIFIED,
-                indent: { firstLine: 1440 }, // ~2.5cm tab
-                spacing: { line: 360, after: 160 }, // 1.5 line spacing
-                children: parseMarkdownToTextRuns(p.replace(/\n/g, " ")),
-              })
-          ),
+          ...paragrafosDocx(minute.relatorio, "relatorio"),
 
           // Section 2: Fundamentação
           new Paragraph({
@@ -276,15 +257,7 @@ export async function exportMinuteToDocx(minute: MinuteData): Promise<void> {
             ],
             spacing: { before: 240, after: 120 },
           }),
-          ...minute.fundamentacao.split("\n\n").map(
-            (p) =>
-              new Paragraph({
-                alignment: AlignmentType.JUSTIFIED,
-                indent: { firstLine: 1440 },
-                spacing: { line: 360, after: 160 },
-                children: parseMarkdownToTextRuns(p.replace(/\n/g, " ")),
-              })
-          ),
+          ...paragrafosDocx(minute.fundamentacao, "fundamentacao"),
 
           // Section 3: Dispositivo
           new Paragraph({
@@ -298,15 +271,7 @@ export async function exportMinuteToDocx(minute: MinuteData): Promise<void> {
             ],
             spacing: { before: 240, after: 120 },
           }),
-          ...minute.dispositivo.split("\n\n").map(
-            (p) =>
-              new Paragraph({
-                alignment: AlignmentType.JUSTIFIED,
-                indent: { firstLine: 1440 },
-                spacing: { line: 360, after: 160 },
-                children: parseMarkdownToTextRuns(p.replace(/\n/g, " ")),
-              })
-          ),
+          ...paragrafosDocx(minute.dispositivo, "dispositivo"),
 
           // Closing
           new Paragraph({
@@ -388,6 +353,17 @@ export function printFormattedMinute(minute: MinuteData): void {
           margin-bottom: 12px;
           margin-top: 0;
         }
+        h3.sub {
+          font-size: 12pt;
+          font-weight: bold;
+          margin: 16px 0 6px;
+          text-indent: 0;
+        }
+        blockquote {
+          margin: 0 0 12px 4cm;
+          font-style: italic;
+          text-align: justify;
+        }
         .closing {
           text-align: center;
           margin-top: 40px;
@@ -397,27 +373,25 @@ export function printFormattedMinute(minute: MinuteData): void {
     </head>
     <body>
       <div class="header">
-        PODER JUDICIÁRIO DO ESTADO DE GOIÁS<br/>
-        TRIBUNAL DE JUSTIÇA DO ESTADO DE GOIÁS<br/>
-        JUIZADO ESPECIAL CÍVEL
+        ${cabecalhoDaMinuta(minute).map((l) => negritoEItalicoEmHtml(l)).join("<br/>")}
       </div>
 
-      <div class="title">${minute.title}</div>
+      <div class="title">${negritoEItalicoEmHtml(minute.title || "")}</div>
 
       <div class="meta-box">
         <div><strong>Processo nº:</strong> ${minute.processNumber}</div>
-        <div><strong>Promovente:</strong> ${parties.author}</div>
-        <div><strong>Promovido:</strong> ${parties.defendant}</div>
+        <div><strong>${rotulosDasPartes(minute).autor}:</strong> ${negritoEItalicoEmHtml(parties.author || "")}</div>
+        <div><strong>${rotulosDasPartes(minute).reu}:</strong> ${negritoEItalicoEmHtml(parties.defendant || "")}</div>
       </div>
 
       <div class="section-title">I - RELATÓRIO</div>
-      ${minute.relatorio.split('\n\n').map(p => `<p>${p}</p>`).join('')}
+      ${htmlDaSecao(minute.relatorio, "relatorio")}
 
       <div class="section-title">II - FUNDAMENTAÇÃO</div>
-      ${minute.fundamentacao.split('\n\n').map(p => `<p>${p}</p>`).join('')}
+      ${htmlDaSecao(minute.fundamentacao, "fundamentacao")}
 
       <div class="section-title">III - DISPOSITIVO</div>
-      ${minute.dispositivo.split('\n\n').map(p => `<p>${p}</p>`).join('')}
+      ${htmlDaSecao(minute.dispositivo, "dispositivo")}
 
       <div class="closing">
         ${(minute.closing || "Goiânia - GO, data da assinatura eletrônica.<br/><br/>Juiz(a) de Direito").replace(/\n/g, '<br/>')}

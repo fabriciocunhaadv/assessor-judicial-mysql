@@ -1,0 +1,14 @@
+import { blocosDaSecao, htmlDaSecao, cabecalhoDaMinuta, rotulosDasPartes, textoSimples } from "../../src/utils/exportacaoMinuta";
+let falhas = 0; const ok = (c: any, m: string) => { if (!c) { falhas++; console.log("FALHOU:", m); } else console.log("ok:", m); };
+const fund = `### 1. DA REGULARIDADE PROCESSUAL, COMPETÊNCIA E GRATUIDADE DA JUSTIÇA\n\nO exame dos pressupostos indica a competência. O artigo 98 do Código de Processo Civil:\n\n> "Art. 98. A pessoa natural ou jurídica tem direito à gratuidade da justiça, na forma da lei."\n\nAssim, defere-se a gratuidade.\n\n### 4. DO REGIME JURÍDICO\n\n> "Art. 321. O juiz, ao verificar que a petição inicial não preenche os requisitos, determinará que o autor a emende. > Parágrafo único. Se o autor não cumprir a diligência, o juiz indeferirá a petição inicial."\n\nComplementarmente, o artigo 485 prevê:\n\n> "Art. 485. O juiz não resolverá o mérito quando: > I - indeferir a petição inicial;"`;
+const b = blocosDaSecao(fund, "fundamentacao");
+ok(b.filter((x) => x.tipo === "titulo").length === 2 && !b.some((x) => /^#|^>/.test(x.texto)), "títulos ### viram títulos e saem sem marcas");
+ok(b.filter((x) => x.tipo === "citacao").length === 5 && b.some((x) => x.tipo === "citacao" && /^Parágrafo único\./.test(x.texto)) && b.some((x) => x.tipo === "citacao" && /^I - indeferir/.test(x.texto)), "citações '> ... > Parágrafo único' viram linhas separadas de citação: " + b.filter((x) => x.tipo === "citacao").map((x) => x.texto.slice(0, 22)).join(" | "));
+const html = htmlDaSecao(fund, "fundamentacao");
+ok(!html.includes("###") && !/(^|>)&gt;/.test(html.replace(/<[^>]+>/g, ">")) , "HTML sem '###' nem '>' soltos");
+ok(html.includes("<h3") && html.includes("<blockquote>"), "HTML tem h3 e blockquote");
+ok(cabecalhoDaMinuta({ header: "PODER JUDICIÁRIO DO ESTADO DE GOIÁS\nVara de Família e Sucessões da Comarca de Orizona" }).join("|") === "PODER JUDICIÁRIO DO ESTADO DE GOIÁS|VARA DE FAMÍLIA E SUCESSÕES DA COMARCA DE ORIZONA", "cabeçalho vem da própria minuta");
+ok(!cabecalhoDaMinuta({}).join(" ").includes("JUIZADO"), "sem cabeçalho, nunca inventa 'Juizado'");
+ok(rotulosDasPartes({ header: "Juizado Especial Cível" }).autor === "Promovente" && rotulosDasPartes({ header: "Vara de Família" }).autor === "Requerente", "rótulos das partes conforme o juízo");
+ok(!/###|^>|\*\*/m.test(textoSimples("### 1. TÍTULO\n> citação\n**negrito**")), "texto simples sem marcas");
+process.exit(falhas ? 1 : 0);

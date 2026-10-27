@@ -30,6 +30,7 @@ import { montarCobertura } from './server/coberturaLeitura';
 import { textoOcultoDeDocumento, blocoTextoOculto } from './src/utils/pdfTextoOculto';
 import fs from 'fs';
 import { blocoPerfilMateria } from './src/utils/perfisMateria';
+import { REGRA_ESTRUTURA_POR_ATO } from './src/utils/estruturaDoAto';
 import { REGRAS_MECANICA_JUDICIAL, REGRAS_FIDELIDADE_AUTOS, conferenciasMecanica } from './src/utils/mecanicaJudicial';
 import { corrigirCitacoesDaMinuta, citacoesInexistentes } from './src/utils/localizacaoAutos';
 // Abertura padrão do relatório de TODA minuta (pedido do magistrado). Vale para qualquer área e ato; entra nas etapas 1 e 2 e no Turbo.
@@ -112,7 +113,7 @@ DIRETRIZES DE RIGOR JURÍDICO, EXAUSTIVIDADE E EXTRAÇÃO PROBATÓRIA (ART. 489,
      ### 4. DA DESIGNAÇÃO DE AUDIÊNCIA DE MEDIAÇÃO/CONCILIAÇÃO E CITAÇÃO (arts. 334 ou 695 do CPC / Juizados / prazos de resposta).
      (É expressamente VEDADO incluir sucumbência e honorários do art. 85 do CPC em decisões interlocutórias).
    - SE O ATO FOR SENTENÇA (Julgamento de Mérito ou Extinção):
-     Estruturada nos 7 blocos obrigatórios de mérito:
+     Estruturada nos 7 blocos obrigatórios (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO) de mérito:
      ### 1. DA REGULARIDADE PROCESSUAL, COMPETÊNCIA E GRATUIDADE DA JUSTIÇA
      ### 2. DO EXAME INDIVIDUALIZADO DE TODAS AS PRELIMINARES E PREJUDICIAIS
      ### 3. DO CERNE DA LIDE E DELIMITAÇÃO DAS QUESTÕES CONTROVERTIDAS
@@ -133,7 +134,7 @@ DIRETRIZES DE RIGOR JURÍDICO, EXAUSTIVIDADE E EXTRAÇÃO PROBATÓRIA (ART. 489,
 
 6. DIRETRIZ DE GRANDEZA E PROFUNDIDADE COGNITIVA IRRENUNCIÁVEL (INDEPENDENTEMENTE DO MODELO EM EXECUÇÃO):
    - Ainda que a requisição seja processada por modelos secundários, contingenciais ou acionados ao final da esteira (como gemini-flash-latest, gemini-3.5-flash-lite, gemini-3.1-flash-lite ou gemini-flash-lite-latest), é TERMINANTEMENTE PROIBIDO simplificar, abreviar, resumir, omitir detalhes fáticos, aglutinar tópicos ou descartar dados dos autos.
-   - A minuta e o relatório DEVEM rigorosamente manter a mesma grandeza, amplitude, densidade analítica, piso de 14 a 20+ parágrafos na fundamentação distribuídos nos 7 blocos obrigatórios, citações exatas de movimentações/páginas e transcrições literais entre aspas, idêntica ao padrão de excelência dos modelos de raciocínio profundo da linha principal (gemini-3.8-flash).
+   - A minuta e o relatório DEVEM rigorosamente manter a mesma grandeza, amplitude, densidade analítica, piso de 14 a 20+ parágrafos na fundamentação distribuídos nos 7 blocos obrigatórios (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO), citações exatas de movimentações/páginas e transcrições literais entre aspas, idêntica ao padrão de excelência dos modelos de raciocínio profundo da linha principal (gemini-3.8-flash).
 
 7. PROTOCOLO DE ADSTRIÇÃO E CONGRUÊNCIA ESTRITA AOS PEDIDOS (ARTS. 141 E 492 DO CPC):
    - O magistrado e o assessor devem decidir estritamente nos limites dos pedidos formulados pelas partes, sendo vedada decisão extra petita, ultra petita ou citra petita.
@@ -1270,7 +1271,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
                 { role: "user", parts: [{ text: userPrompt }, ...cobT.partes] }
             ],
             config: {
-                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
+                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
                 temperature: 0.1,
                 maxOutputTokens: 8192,
                 responseMimeType: "application/json",
@@ -4613,7 +4614,7 @@ REGRA MANDATÓRIA DE OBSERVAÇÃO DA MARCHA PROCESSUAL E CASO A CASO (ANÁLISE I
        - ENFRENTAMENTO SUBSTANCIAL ATRAVÉS DA DINÂMICA DAS LEIS, PROMPTS, JURISPRUDÊNCIA E PROVAS:
          * Enfrente cada pedido que carece de decisão apreciando os requisitos legais (art. 300 CPC, 98, CDC, etc.), as provas e fatos concretos trazidos no PDF, os prompts temáticos e a jurisprudência/teses vinculantes do gabinete;
          * Se o ato for DECISÃO INTERLOCUTÓRIA: estruture a fundamentação nos subtópicos (### 1. Da Gratuidade da Justiça; ### 2. Da Tutela de Urgência [...]; ### 3. Demais Pedidos Conexos; ### 4. Da Audiência e Citação), sem incluir sucumbência do art. 85 do CPC;
-         * Se o ato for SENTENÇA: estruture nos 7 blocos obrigatórios de mérito.
+         * Se o ato for SENTENÇA: estruture nos 7 blocos obrigatórios (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO) de mérito.
      * PROTOCOLO UNIVERSAL DE PROVAS DOCUMENTAIS E DOCUMENTOS EXTERNOS/EMPRESTADOS (UNIVERSAL):
        - Em qualquer matéria (Cível, Família, Fazenda Pública, Juizados, Penal), as partes frequentemente acostam documentos de outros juízos ou órgãos (Decisões Criminais de outras varas, Medidas Protetivas da Lei Maria da Penha, Laudos do IML, Inquéritos Policiais, Boletins de Ocorrência, Pareceres do NATJus, decisões do TCE, processos administrativos).
        - É TERMINANTEMENTE PROIBIDO descartar, ignorar ou tratar como 'ruído de cabeçalho' qualquer documento pelo simples fato de ostentar timbre ou cabeçalho de outro juízo/comarca. Todo documento externo acostado DEVE ser catalogado na Fundamentação e na Matriz de Fato vs Prova como PROVA DOCUMENTAL QUALIFICADA.
@@ -4643,7 +4644,7 @@ REGRA MANDATÓRIA DE OBSERVAÇÃO DA MARCHA PROCESSUAL E CASO A CASO (ANÁLISE I
 9. PISO MÍNIMO DE EXTENSÃO E PROIBIÇÃO ABSOLUTA DE SÍNTESE/BREVIDADE (GRANDEZA INEGOCIÁVEL EM TODOS OS MODELOS):
    - É expressamente PROIBIDO sintetizar, resumir ou gerar decisões telegráficas ou simplificadas, inclusive em modelos acionados ao final da esteira (como gemini-flash-latest ou variantes lite). A brevidade ou concisão excessiva é considerada erro formal grave de técnica judicante. Não economize tokens ou espaço, mantendo integralmente a grandeza analítica dos modelos de raciocínio profundo da linha principal (gemini-3.8-flash).
    - PISO MÍNIMO DO RELATÓRIO: O 'relatorio' DEVE conter no mínimo 4 a 6 parágrafos densos e encadeados, narrando exaustivamente a exordial, pedidos, tutelas, certidões, contestação, réplica, laudos, parecer do MP e conclusão.
-   - PISO MÍNIMO DA FUNDAMENTAÇÃO: Cada um dos 7 blocos obrigatórios DEVE conter no mínimo 2 a 3 parágrafos aprofundados, totalizando no mínimo 14 a 20 parágrafos judiciais densos e fundamentados.
+   - PISO MÍNIMO DA FUNDAMENTAÇÃO: Cada um dos 7 blocos obrigatórios (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO) DEVE conter no mínimo 2 a 3 parágrafos aprofundados, totalizando no mínimo 14 a 20 parágrafos judiciais densos e fundamentados.
 10. PROTOCOLO DE ANCORAGEM PROBATÓRIA E TRANSCRIÇÕES LITERAIS OBRIGATÓRIAS:
    - Para impedir que o modelo gere textos genéricos ou abstratos, você DEVE obrigatoriamente abrir aspas e TRANSCREVER LITERALMENTE:
      * O trecho exato dos pedidos e da causa de pedir da petição inicial;
@@ -4666,7 +4667,7 @@ Você deve produzir a MINUTA PRELIMINAR FACTUAL estruturada em JSON contendo:
 - "pendingMatter": Descrição exata da questão que está pendente de julgamento nos autos;
 - "actType": Tipo do ato judicial adequado (EMBARGOS DE DECLARAÇÃO, DECISÃO INTERLOCUTÓRIA, DECISÃO DE SANEAMENTO E ORGANIZAÇÃO, SENTENÇA ou DESPACHO);
 - "relatorio": Relatório judicial completo, fidedigno e cronológico em 4 a 6 parágrafos densos (narrando detalhadamente todas as partes, pedidos, tutelas, certidões, contestações, réplicas, laudos e provas com a tríplice localização processual: Mov. X, Arq. Y, Pág. Z, acusando expressamente eventuais petições intercorrentes pendentes de homologação/apreciação);
-- "fundamentacao": Fundamentação jurídica fática e probatória exaustiva estruturada em subtópicos Markdown ('### 1. ...', '### 2. ...'), com proibição absoluta de fundamentação sucinta ou genérica. SE SENTENÇA: estruturada nos 7 blocos substantivos (regularidade/gratuidade, preliminares, cerne da lide, regime jurídico, confronto probatório, apreciação de pedidos e sucumbência). SE DECISÃO INTERLOCUTÓRIA / TUTELA PROVISÓRIA / INCIDENTES: estruturada no enfrentamento analítico e circunstanciado de 100% dos pedidos preliminares, liminares e tutelas de urgência pendentes de deliberação (### 1. Gratuidade/Competência; ### 2. Fumus Boni Iuris e Periculum in Mora - Art. 300 CPC e legislação especial; ### 3. Enfrentamento de Cada Pedido Urgente com fixação de valores, percentuais, contas, obrigações de fazer/não fazer, prazos e astreintes; ### 4. Caderno de Teses e Precedentes), com citação direta de eventos (Mov. X, Arq. Y, Pág. Z), transcrições literais entre aspas e aplicação dinâmica das leis, dos prompts e da jurisprudência;
+- "fundamentacao": Fundamentação jurídica fática e probatória exaustiva estruturada em subtópicos Markdown ('### 1. ...', '### 2. ...'), com proibição absoluta de fundamentação sucinta ou genérica. SE SENTENÇA: estruturada nos 7 blocos substantivos (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO) (regularidade/gratuidade, preliminares, cerne da lide, regime jurídico, confronto probatório, apreciação de pedidos e sucumbência). SE DECISÃO INTERLOCUTÓRIA / TUTELA PROVISÓRIA / INCIDENTES: estruturada no enfrentamento analítico e circunstanciado de 100% dos pedidos preliminares, liminares e tutelas de urgência pendentes de deliberação (### 1. Gratuidade/Competência; ### 2. Fumus Boni Iuris e Periculum in Mora - Art. 300 CPC e legislação especial; ### 3. Enfrentamento de Cada Pedido Urgente com fixação de valores, percentuais, contas, obrigações de fazer/não fazer, prazos e astreintes; ### 4. Caderno de Teses e Precedentes), com citação direta de eventos (Mov. X, Arq. Y, Pág. Z), transcrições literais entre aspas e aplicação dinâmica das leis, dos prompts e da jurisprudência;
 - "dispositivo": Dispositivo preliminar operacional com comandos claros e precisos adequados aos pedidos ou ao julgamento do recurso pendente, contendo a fixação operacional dos consectários legais (juros pela Selic deduzida e correção monetária pelo IPCA nos termos da Lei nº 14.905/2024).`;
 if (processActsSummary && typeof processActsSummary === "string" && processActsSummary.trim().length > 0) {
     stage1SystemInstruction += `\n\n[MEMÓRIA PROCESSUAL DO GABINETE • EVOLUÇÃO DOS ATOS PRÉVIOS DESTE MESMO PROCESSO]:\n${processActsSummary.trim()}\n`;
@@ -4730,7 +4731,7 @@ Sua missão é:
 4. ESTRUTURAÇÃO SUBSTANTIVA DA FUNDAMENTAÇÃO CONFORME O ATO (ART. 489 DO CPC):
    - É expressamente PROIBIDO sintetizar a fundamentação em parágrafos genéricos ou superficiais.
    - Mesmo operando sob modelos ágeis de contingência (Flash-Lite) ou chaves gratuitas, você DEVE preservar a divisão em subtópicos Markdown ('### 1. ...', '### 2. ...'), com formatação rica (negrito, itálico, citações em bloco '>' e indicação de Mov., Arq., Pág.).
-   - SE SENTENÇA: você DEVE estruturar nos 7 blocos obrigatórios e deliberar exaustivamente sobre CADA preliminar arguida na contestação e CADA pedido formulado na inicial.
+   - SE SENTENÇA: você DEVE estruturar nos 7 blocos obrigatórios (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO) e deliberar exaustivamente sobre CADA preliminar arguida na contestação e CADA pedido formulado na inicial.
    - SE DECISÃO INTERLOCUTÓRIA / TUTELA PROVISÓRIA / INCIDENTES: você DEVE deliberar e enfrentar fundamentadamente 100% de todos os pedidos preliminares, urgentes e pleitos ainda pendentes de apreciação formulados pelas partes, analisando probabilidade do direito, perigo de dano e medidas concretas com base estrita no acervo de provas do PDF/dossiê.
 5. GERAR a estrutura final ('minute') e a MATRIZ DE AUDITORIA FORENSE COMPLETA ('auditAnalysis': Fato vs Prova evento a evento, Competência, 6 Pilares de Integridade Documental, Normas Aplicadas, Legislação Mapeada, Consectários Detalhados e Pré-Auditoria).
 6. PROTOCOLO DE FIDELIDADE FACTUAL ESTRITA (ANTI-INFERÊNCIA NA PETIÇÃO INICIAL - ARTS. 2º, 141 E 492 DO CPC):
@@ -4755,7 +4756,7 @@ Sua missão é:
 11. PISO MÍNIMO DE EXTENSÃO E PROIBIÇÃO ABSOLUTA DE SÍNTESE/BREVIDADE (GRANDEZA INEGOCIÁVEL EM TODOS OS MODELOS):
    - É expressamente PROIBIDO enxugar, abreviar, condensar ou simplificar a minuta, inclusive quando processada por modelos ao final da esteira (como gemini-flash-latest ou variantes lite). A concisão telegráfica ou simplificação fática é considerada erro formal grave de técnica judicante. Não economize tokens ou espaço, preservando rigorosamente a grandeza, o piso e a profundidade dos modelos de raciocínio profundo da linha principal (gemini-3.8-flash).
    - PISO MÍNIMO DO RELATÓRIO: O 'relatorio' DEVE conter no mínimo 4 a 6 parágrafos substanciais e encadeados narrando toda a marcha processual.
-   - PISO MÍNIMO DA FUNDAMENTAÇÃO: A 'fundamentacao' DEVE conter de 2 a 3 parágrafos profundos por subtópico, enfrentando exaustivamente todos os pedidos da exordial, preliminares pendentes, requisitos do art. 300 CPC se decisão interlocutória ou os 7 blocos substantivos se sentença, com densidade analítica e jurídica.
+   - PISO MÍNIMO DA FUNDAMENTAÇÃO: A 'fundamentacao' DEVE conter de 2 a 3 parágrafos profundos por subtópico, enfrentando exaustivamente todos os pedidos da exordial, preliminares pendentes, requisitos do art. 300 CPC se decisão interlocutória ou os 7 blocos substantivos (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO) se sentença, com densidade analítica e jurídica.
 12. PROTOCOLO DE ANCORAGEM PROBATÓRIA E TRANSCRIÇÕES LITERAIS OBRIGATÓRIAS:
    - Para impedir respostas genéricas ou abstratas, mantenha e amplie as TRANSCRIÇÕES LITERAIS ENTRE ASPAS dos autos: exordial, contestação, laudos periciais, contratos e parecer ministerial, além da transcrição em bloco destacado (>) de artigos de lei e enunciados de súmulas aplicados.
 13. CHECKLIST EXAUSTIVO DE DOCUMENTOS (SEM DESCARTAR NENHUM DADO DO PROCESSO):
@@ -5391,7 +5392,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
         if (legAutos.bloco) { stage1SystemInstruction += legAutos.bloco; console.log(`[Legislação] etapa 1: ${legAutos.consultados} artigo(s) citado(s) nos autos conferido(s) no Planalto.`); }
         try { const la = await pegarLeiAplicavel(legAutos.conferidos); if (la.bloco) stage1SystemInstruction += la.bloco; } catch { /* sem a lei aplicável: segue só com a conferência */ }
     } catch (e) { console.warn("[Legislação] etapa 1 ignorada:", e); }
-    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const stage1StartTimer = Date.now();
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage1ContentsParts, stage1SystemInstruction) / 10000) * 3000);      // maior para autos grandes
     stage1Response = await gerarComAutosGrandes(generateWithFallbackAndRetry, {
@@ -5447,7 +5448,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
                     },
                     fundamentacao: {
                         type: Type.STRING,
-                        description: "Fundamentação jurídica magistral, densa, exaustiva e completa estruturada nos 7 blocos obrigatórios em subtópicos (### 1. a ### 7.), com 2 a 3 parágrafos aprofundados por bloco (totalizando no mínimo 14 a 20 parágrafos judiciais densos e separados por quebras de linha duplas), com citação de eventos (Mov. X, Arq. Y, Pág. Z), transcrição literal entre aspas e enfrentamento exaustivo de cada preliminar e pedido."
+                        description: "Fundamentação jurídica magistral, densa, exaustiva e completa estruturada nos 7 blocos obrigatórios (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO) em subtópicos (### 1. a ### 7.), com 2 a 3 parágrafos aprofundados por bloco (totalizando no mínimo 14 a 20 parágrafos judiciais densos e separados por quebras de linha duplas), com citação de eventos (Mov. X, Arq. Y, Pág. Z), transcrição literal entre aspas e enfrentamento exaustivo de cada preliminar e pedido."
                     },
                     dispositivo: {
                         type: Type.STRING,
@@ -5824,7 +5825,7 @@ COMANDOS PARA O JUIZ REVISOR (ETAPA 2):
    - COERÊNCIA COM A MARCHA PROCESSUAL: A decisão deve ser estritamente coerente com o andamento do processo (dar continuidade às últimas decisões, resolver incidentes pendentes ou sentenciar o mérito se maduro, sem nunca regredir a liminares do início da lide);
    - Adense, expanda e formate com riqueza:
      * 'relatorio': Mínimo de 4 a 6 parágrafos substanciais e encadeados narrando toda a marcha com tríplice citação (Mov. X, Arq. Y, Pág. Z), com aspas literais nos trechos centrais;
-     * 'fundamentacao': ${resolvedActType === "decisao" ? "Mínimo de 8 a 14 parágrafos judiciais densos e analíticos estruturados em subtópicos Markdown ('### 1. ...', '### 2. ...'), enfrentando circunstanciadamente 100% dos pedidos preliminares ou urgentes pendentes de apreciação formulados pelas partes (gratuidade da justiça, fumus boni iuris, periculum in mora, e análise probatória pormenorizada de cada medida postulada com fixação de valores, percentuais, contas, obrigações de fazer/não fazer, prazos cominatórios e astreintes, além de teses vinculantes e precedentes), com transcrição literal entre aspas e tríplice localização processual (Mov. X, Arq. Y, Pág. Z);" : resolvedActType === "embargos" ? "Mínimo de 6 a 10 parágrafos judiciais densos estruturados nos subtópicos do art. 1.022 do CPC (admissibilidade/tempestividade de 5 dias úteis, exame analítico de cada vício ou omissão alegada em confronto com a decisão embargada, e precedentes dos tribunais superiores);" : resolvedActType === "despacho" ? "Mínimo de 4 a 8 parágrafos motivados, estruturados em subtópicos Markdown, indicando os motivos fáticos e legais de cada determinação (sem síntese telegráfica), com tríplice localização processual (Mov. X, Arq. Y, Pág. Z);" : "Mínimo de 14 a 20+ parágrafos judiciais profundos distribuídos nos 7 blocos obrigatórios em subtópicos (### 1. a ### 7.), com transcrição literal entre aspas de trechos da exordial, contestação, laudos e parecer ministerial, além de artigos de lei e súmulas em bloco destacado (>);"}
+     * 'fundamentacao': ${resolvedActType === "decisao" ? "Mínimo de 8 a 14 parágrafos judiciais densos e analíticos estruturados em subtópicos Markdown ('### 1. ...', '### 2. ...'), enfrentando circunstanciadamente 100% dos pedidos preliminares ou urgentes pendentes de apreciação formulados pelas partes (gratuidade da justiça, fumus boni iuris, periculum in mora, e análise probatória pormenorizada de cada medida postulada com fixação de valores, percentuais, contas, obrigações de fazer/não fazer, prazos cominatórios e astreintes, além de teses vinculantes e precedentes), com transcrição literal entre aspas e tríplice localização processual (Mov. X, Arq. Y, Pág. Z);" : resolvedActType === "embargos" ? "Mínimo de 6 a 10 parágrafos judiciais densos estruturados nos subtópicos do art. 1.022 do CPC (admissibilidade/tempestividade de 5 dias úteis, exame analítico de cada vício ou omissão alegada em confronto com a decisão embargada, e precedentes dos tribunais superiores);" : resolvedActType === "despacho" ? "Mínimo de 4 a 8 parágrafos motivados, estruturados em subtópicos Markdown, indicando os motivos fáticos e legais de cada determinação (sem síntese telegráfica), com tríplice localização processual (Mov. X, Arq. Y, Pág. Z);" : "Mínimo de 14 a 20+ parágrafos judiciais profundos distribuídos nos 7 blocos obrigatórios (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO) em subtópicos (### 1. a ### 7.), com transcrição literal entre aspas de trechos da exordial, contestação, laudos e parecer ministerial, além de artigos de lei e súmulas em bloco destacado (>);"}
      * 'dispositivo': Comandos operacionais claros, discriminados pedido por pedido, com deliberação de eventuais requerimentos intercorrentes e fixação dos consectários legais da Lei 14.905/2024;
    - Preencha o cabeçalho, comarca/vara e fecho judicante oficial;
 
@@ -5865,7 +5866,7 @@ const stage2ResponseSchema = {
                 },
                 fundamentacao: {
                     type: Type.STRING,
-                    description: "Fundamentação jurídica magistral, densa, exaustiva e profunda estruturada nos 7 blocos obrigatórios em subtópicos (### 1. a ### 7.), com 2 a 3 parágrafos aprofundados por bloco (totalizando no mínimo 14 a 20 parágrafos judiciais densos e separados por quebras de linha duplas), com citação de eventos (Mov. X, Arq. Y, Pág. Z), transcrição literal entre aspas e enfrentamento exaustivo de cada preliminar e pedido: 1. Regularidade processual e gratuidade; 2. Exame individualizado de preliminares; 3. Cerne da controvérsia; 4. Regime legal e súmulas com transcrição de artigos; 5. Confronto fático-probatório concreto documento a documento; 6. Apreciação individualizada de cada pedido; 7. Sucumbência, custas e honorários advocatícios (remetendo os consectários da Lei 14.905/2024 ao Dispositivo), aplicando expressamente as teses do Caderno de Teses do Gabinete e súmulas."
+                    description: "Fundamentação jurídica magistral, densa, exaustiva e profunda estruturada nos 7 blocos obrigatórios (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO) em subtópicos (### 1. a ### 7.), com 2 a 3 parágrafos aprofundados por bloco (totalizando no mínimo 14 a 20 parágrafos judiciais densos e separados por quebras de linha duplas), com citação de eventos (Mov. X, Arq. Y, Pág. Z), transcrição literal entre aspas e enfrentamento exaustivo de cada preliminar e pedido: 1. Regularidade processual e gratuidade; 2. Exame individualizado de preliminares; 3. Cerne da controvérsia; 4. Regime legal e súmulas com transcrição de artigos; 5. Confronto fático-probatório concreto documento a documento; 6. Apreciação individualizada de cada pedido; 7. Sucumbência, custas e honorários advocatícios (remetendo os consectários da Lei 14.905/2024 ao Dispositivo), aplicando expressamente as teses do Caderno de Teses do Gabinete e súmulas."
                 },
                 dispositivo: {
                     type: Type.STRING,
@@ -6024,7 +6025,7 @@ try {
         else if (leg.falhas.length) console.log(`[Legislação] sem acesso ao Planalto para: ${leg.falhas.join("; ")}.`);
         try { const la = await pegarLeiAplicavel(leg.conferidos); if (la.bloco) stage2SystemInstruction += la.bloco; } catch { /* sem a lei aplicável */ }
     } catch (e) { console.warn("[Legislação] consulta ignorada:", e); }
-    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage2Prompt, stage2SystemInstruction) / 10000) * 3000);
     response = await generateWithFallbackAndRetry({
         apiKey: stage2KeyPool[0] || userApiKey,
@@ -6169,7 +6170,7 @@ if ((!parsed.minute.dispositivo || parsed.minute.dispositivo.length < 30) && sta
 if (parsed.minute.fundamentacao && stage1Json?.fundamentacao && parsed.minute.fundamentacao.length < 650 && stage1Json.fundamentacao.length > 500) {
     const sample = stage1Json.fundamentacao.substring(0, Math.min(60, stage1Json.fundamentacao.length)).trim();
     if (!sample || !parsed.minute.fundamentacao.includes(sample)) {
-        console.log("[Assessor Judicial] Fundamentação sucinta detectada na Etapa 2. Integrando acervo fático-probatório da Etapa 1 para assegurar os 7 blocos obrigatórios...");
+        console.log("[Assessor Judicial] Fundamentação sucinta detectada na Etapa 2. Integrando acervo fático-probatório da Etapa 1 para assegurar os 7 blocos obrigatórios (só os que se aplicam; sentença SEM resolução de mérito segue a REGRA DE ESTRUTURA POR TIPO DE ATO)...");
         parsed.minute.fundamentacao = `${stage1Json.fundamentacao}\n\n${parsed.minute.fundamentacao}`;
     }
 }

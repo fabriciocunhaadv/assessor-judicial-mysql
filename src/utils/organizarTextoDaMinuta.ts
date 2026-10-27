@@ -59,6 +59,8 @@ export function organizarTextoDaMinuta(texto: string, secao: SecaoDaMinuta): str
       const blocos = t.split(/\n[ \t]*\n/).map((b) => (b.length > 900 && !/^\s*(?:[-*•>#]|\d{1,2}\.)/.test(b) && !b.includes("\n") ? emParagrafos(b) : b));
       t = blocos.join("\n\n");
     }
+    // citação com vários trechos na mesma linha ("> Art. 321. ... > Parágrafo único. ...") -> cada trecho em uma linha da citação
+    t = t.split(/\n[ \t]*\n/).map((b) => (/^\s*>/.test(b) ? b.replace(/[ \t]+>[ \t]+(?=\S)/g, "  \n> ") : b)).join("\n\n");
     return t.replace(/\n{3,}/g, "\n\n");
   } catch { return texto; }
 }
