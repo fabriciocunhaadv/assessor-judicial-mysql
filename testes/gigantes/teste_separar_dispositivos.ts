@@ -1,0 +1,18 @@
+import { separarDispositivos } from "../../server/outrasLeis";
+let falhas = 0; const ok = (c: any, m: string) => { if (!c) { falhas++; console.log("FALHOU:", m); } else console.log("ok:", m); };
+const arts = Array.from({ length: 200 }, (_, i) => `Art. ${i + 1}º ${i % 2 ? "O Estado" : "É assegurado"} algo de relevância número ${i + 1}, nos termos do Art. 14 desta Lei e do art. 5º da Constituição Federal; § 1º Texto do parágrafo.`);
+const fundido = ["[Página 1 de 3]", "TÍTULO VII DAS DISPOSIÇÕES GERAIS " + arts.slice(0, 100).join(" ").replace(/\./g, ". ").replace(/\s+/g, " "), "[Página 2 de 3]", "**Art. 201.** (Revogado pela Emenda Constitucional nº 14, de 28-6-1996) Art. 202. Fica mantido. CAPÍTULO II DA ORDEM Art. 203. Texto final."];
+const r = separarDispositivos(fundido);
+const art = r.filter((l) => /^Art\.?\s*\d/i.test(l));
+ok(art.length === 100 + 3, "artigos separados: " + art.length);
+ok(!r.some((l) => /^\[P[áa]gina/.test(l)) && !r.some((l) => l.includes("**")), "marcas de página e negrito removidas");
+ok(r.some((l) => /^TÍTULO VII/.test(l)) && r.some((l) => /^CAPÍTULO II/.test(l)), "TÍTULO e CAPÍTULO abrem linha");
+ok(!r.some((l) => /^Art\. 14 desta Lei/.test(l)), "referência 'do Art. 14 desta Lei' não abre linha");
+const bem = ["Art. 1º Primeiro.", "Art. 2º Segundo.", "§ 1º algo"];
+ok(JSON.stringify(separarDispositivos(bem)) === JSON.stringify(bem), "texto já separado não muda");
+import { trechoDoArtigo } from "../../src/utils/legislacaoPlanalto";
+const t = trechoDoArtigo(r, "57");
+ok(!!t && /^Art\. 57º/.test(t.texto) && !/Art\. 58º/.test(t.texto), "trechoDoArtigo acha o art. 57 e para antes do 58");
+const rev = trechoDoArtigo(r, "201");
+ok(!!rev && rev.revogado, "art. 201 reconhecido como revogado");
+process.exit(falhas ? 1 : 0);

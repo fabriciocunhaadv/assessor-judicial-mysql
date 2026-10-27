@@ -16,6 +16,22 @@ const ESFERAS: Esfera[] = ["estadual", "municipal", "federal", "outra"];
 const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 export const rotuloDaLei = (l: Pick<OutraLei, "esfera" | "tipo" | "numero" | "ano" | "ente">) => `${l.tipo ? l.tipo.charAt(0).toUpperCase() + l.tipo.slice(1) : "Lei"}${l.esfera === "estadual" ? " Estadual" : l.esfera === "municipal" ? " Municipal" : ""} nº ${l.numero}/${l.ano}${l.ente ? ` (${l.ente})` : ""}`;
 
+/** PDF convertido no navegador vem em parágrafos corridos (vários artigos na mesma linha, com marcas de negrito e "[Página N de M]"). A consulta e a contagem só enxergam artigo
+ *  que COMEÇA a linha; aqui cada "Art. N" e cada TÍTULO/CAPÍTULO/SEÇÃO volta a abrir a sua linha. "Art." só abre linha depois de ponto final, ponto e vírgula, dois pontos, fecha-parênteses
+ *  ou palavra em maiúsculas (nunca em "...nos termos do Art. 14 desta Lei"). Texto que já está uma linha por artigo não muda. */
+export function separarDispositivos(linhas: string[]): string[] {
+  const out: string[] = [];
+  for (const bruta of linhas) {
+    if (/^\[P[áa]gina\s+\d+\s+de\s+\d+\]$/i.test(bruta.trim())) continue;
+    let l = bruta.replace(/<\/?u>/gi, "").replace(/\*+/g, "").replace(/\s+/g, " ").trim();
+    if (!l) continue;
+    l = l.replace(/((?:[.;:!?)\]"”]|\b[A-ZÀ-Ú]{4,})\s+)(?=Art\.?\s*\d{1,4}\s*[º°o]?(?:\s*-\s*[A-Z])?\s*(?:[.,\-–—]|\s)\s*(?:[A-ZÀ-Ú(§]|\d|Revogad))/g, "$1\n");
+    l = l.replace(/([.;:!?)\]"”]\s+|\b[A-ZÀ-Ú]{4,}\s+)(?=(?:T[ÍI]TULO|CAP[ÍI]TULO|SE[ÇC][ÃA]O|SUBSE[ÇC][ÃA]O|LIVRO)\s+(?:[IVXLCDM]+|\d+|[ÚU]NICO)\b)/g, "$1\n");
+    for (const parte of l.split("\n")) { const t = parte.trim(); if (t) out.push(t); }
+  }
+  return out;
+}
+
 /** Texto enviado → linhas. HTML (ou arquivo em UTF-16/windows-1252) passa pela leitura do Planalto; texto puro vira uma linha por parágrafo. */
 export function linhasDoEnvio(buf: Buffer, formato: string): string[] {
   const zeros = Array.from(buf.subarray(0, 600)).filter((x) => x === 0).length;
@@ -24,7 +40,7 @@ export function linhasDoEnvio(buf: Buffer, formato: string): string[] {
   if (formato === "texto") texto = buf.toString("utf-8");
   else if (utf16) texto = decodificarPagina(buf);
   else { try { texto = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch { texto = decodificarPagina(buf); } }      // UTF-8 válido primeiro; senão a leitura da página (windows-1252 etc.)
-  if (formato === "texto" || !/<(p|div|br|html|body|table)\b/i.test(texto)) return texto.split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (formato === "texto" || !/<(p|div|br|html|body|table)\b/i.test(texto)) return separarDispositivos(texto.split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean));
   return htmlParaLinhas(texto);
 }
 const contarArtigos = (linhas: string[]) => linhas.filter((l) => /^Art\.?\s*\d/i.test(l)).length;
