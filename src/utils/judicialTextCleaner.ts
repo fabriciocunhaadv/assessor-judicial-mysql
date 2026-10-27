@@ -6,6 +6,8 @@
  * e preserva a continuidade fluida do texto com ênfases (negrito, itálico, tópicos).
  */
 
+import { anotarLocalizacao } from "./localizacaoAutos";
+
 export function cleanJudicialPdfText(rawText: string): string {
   if (!rawText || typeof rawText !== "string") return "";
 
@@ -14,6 +16,7 @@ export function cleanJudicialPdfText(rawText: string): string {
   // 1. Normalizar marcadores de página para formato canônico pesquisável pela IA
   cleaned = cleaned.replace(/\[---\s*P[AÁ]GINA\s+(\d+)\s+DE\s+(\d+)[^\]]*---\]/gi, "\n[Página $1 de $2]\n");
   cleaned = cleaned.replace(/===+\s*(?:DOCUMENTO|TEXTO ADICIONAL)[^=\n]*===+/gi, "\n\n");
+  cleaned = anotarLocalizacao(cleaned);      // cada página ganha a linha [Mov. N · Arq. M · Pág. K/T] lida do próprio carimbo (antes da limpeza do rodapé)
 
   // 2. Remover assinaturas eletrônicas laterais, links de rodapés e marcas d'água
   const noisePatterns = [

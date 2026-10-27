@@ -29,6 +29,7 @@ import { textoOcultoDeDocumento, blocoTextoOculto } from './src/utils/pdfTextoOc
 import fs from 'fs';
 import { blocoPerfilMateria } from './src/utils/perfisMateria';
 import { REGRAS_MECANICA_JUDICIAL, REGRAS_FIDELIDADE_AUTOS, conferenciasMecanica } from './src/utils/mecanicaJudicial';
+import { corrigirCitacoesDaMinuta } from './src/utils/localizacaoAutos';
 // Abertura padrão do relatório de TODA minuta (pedido do magistrado). Vale para qualquer área e ato; entra nas etapas 1 e 2 e no Turbo.
 const REGRA_ABERTURA_RELATORIO = `
 
@@ -57,7 +58,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 // Localização das peças nos autos do Projudi: o carimbo vermelho de cada página ("Processo: ... Movimentacao N : ... Arquivo M: nome.pdf - Pag.K/T") é a fonte
 // de Mov./Arq./Pág.; os marcadores "[Página X de Y]" / "[Página X]" que o sistema insere são só a posição física no PDF consolidado.
-const REGRA_LOCALIZACAO_AUTOS = `LOCALIZAÇÃO Mov./Arq./Pág. (REGRA MANDATÓRIA): cada página dos autos do Projudi traz um carimbo vermelho no topo, no formato "Movimentacao N : <tipo> Arquivo M: <nome>.pdf - Pag.K/T". Use SEMPRE esse carimbo: Mov. = N (a movimentação), Arq. = M (o arquivo DENTRO daquela movimentação) e Pág. = K (a página DENTRO daquele arquivo, de 1 a T). Cada movimentação tem os seus arquivos e cada arquivo tem as suas páginas, que reiniciam em 1. NUNCA use como "Pág." o número do marcador "[Página X de Y]" nem "[Página X]" (é só a posição física da página no PDF consolidado, em que a contagem continua entre as movimentações); esses marcadores servem apenas para indicar páginas não lidas. Para um intervalo, repita o arquivo (ex.: "Mov. 134, Arq. 1, Págs. 1 a 3"). Se uma página não tiver o carimbo legível, escreva "Pág. não identificada" em vez de usar o número do marcador. Antes de citar, confirme que a página indicada contém o título ou o trecho do documento referido; se não conseguir confirmar, escreva "Pág. não identificada" em vez de estimar.`;
+const REGRA_LOCALIZACAO_AUTOS = `LOCALIZAÇÃO Mov./Arq./Pág. (REGRA MANDATÓRIA): cada página dos autos do Projudi traz um carimbo vermelho no topo, no formato "Movimentacao N : <tipo> Arquivo M: <nome>.pdf - Pag.K/T". Use SEMPRE esse carimbo: Mov. = N (a movimentação), Arq. = M (o arquivo DENTRO daquela movimentação) e Pág. = K (a página DENTRO daquele arquivo, de 1 a T). Cada movimentação tem os seus arquivos e cada arquivo tem as suas páginas, que reiniciam em 1. NUNCA use como "Pág." o número do marcador "[Página X de Y]" nem "[Página X]" (é só a posição física da página no PDF consolidado, em que a contagem continua entre as movimentações); esses marcadores servem apenas para indicar páginas não lidas. Para um intervalo, repita o arquivo (ex.: "Mov. 134, Arq. 1, Págs. 1 a 3"). Se uma página não tiver o carimbo legível, escreva "Pág. não identificada" em vez de usar o número do marcador. Para facilitar, cada página dos autos traz, logo depois do marcador "[Página G de N]", uma linha "[Mov. N · Arq. M · Pág. K/T]" com a localização REAL: copie exatamente esses três números (Mov., Arq. e Pág.), nunca o G do marcador. Antes de citar, confirme que a página indicada contém o título ou o trecho do documento referido; se não conseguir confirmar, escreva "Pág. não identificada" em vez de estimar.`;
 
 // Verificação determinística (sem IA) das localizações: toda "Mov. N" citada na minuta tem de existir como carimbo "Movimentacao N" nos autos fornecidos.
 // Devolve as movimentações citadas que não aparecem (possível localização inventada); null quando os autos não trazem carimbos para conferir.
@@ -1513,7 +1514,10 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
         };
 
         if (alertaInjecaoT) (payload as any).alertaInjecao = alertaInjecaoT;
-        try { Object.assign(payload as any, conferenciasMecanica(payload, accumulatedText)); } catch { /* a conferência nunca derruba a minuta */ }
+        try {
+            const trocas = corrigirCitacoesDaMinuta((payload as any).minute, accumulatedText); if (trocas) (payload as any).citacoesCorrigidas = trocas;      // página global/arquivo errado -> o que o carimbo prova
+            Object.assign(payload as any, conferenciasMecanica(payload, accumulatedText));
+        } catch { /* a conferência nunca derruba a minuta */ }
         { const f: any = { legislacao: legTurbo.conferidos, naoLocalizados: legTurbo.naoAchados, indisponiveis: legTurbo.falhas, locais: legTurbo.locais, precedentes: [] };
           (payload as any).fontesConsultadas = { ...f, consultado: true }; }
         if (cobT.cobertura) (payload as any).coberturaLeitura = cobT.cobertura;
@@ -5738,6 +5742,7 @@ if (executionStage === 1) {
     if ((stage1Response as any)?.autosReduzidos) parsedStage1.autosReduzidos = (stage1Response as any).autosReduzidos;
     if (alertaInjecao) parsedStage1.alertaInjecao = alertaInjecao;
     if (fontesParaTela()) parsedStage1.fontesConsultadas = fontesParaTela();
+    try { const trocas = corrigirCitacoesDaMinuta(parsedStage1.minute, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")); if (trocas) parsedStage1.citacoesCorrigidas = trocas; } catch { /* a correção nunca derruba a minuta */ }
     if (coberturaLeitura) parsedStage1.coberturaLeitura = coberturaLeitura;
     if (!res.headersSent) {
         return res.json(parsedStage1);
@@ -6519,7 +6524,9 @@ if (wasRotated && rotatedKey) {
     try {
         const vl = verificarLocalizacoes(parsed?.minute || parsed, (accumulatedPdfText || "") + "\n" + (safeProcessText || ""));
         if (vl && vl.movsInexistentes.length > 0) parsed.avisoLocalizacao = vl;
-        Object.assign(parsed, conferenciasMecanica(parsed?.minute || parsed, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")));
+        { const autosTxt = (accumulatedPdfText || "") + "\n" + (safeProcessText || ""), alvo = parsed?.minute || parsed;
+          const trocas = corrigirCitacoesDaMinuta(alvo, autosTxt); if (trocas) parsed.citacoesCorrigidas = trocas;      // página global/arquivo errado -> o que o carimbo prova
+          Object.assign(parsed, conferenciasMecanica(alvo, autosTxt)); }
     } catch { /* a conferência nunca derruba a minuta */ }
     if (keepAliveInterval) {
         clearInterval(keepAliveInterval);
