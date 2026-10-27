@@ -1162,7 +1162,7 @@ export default function App() {
         },
         specificInstructions: "",
         executionStage: isTwoStageExecution ? 1 : undefined,
-        aceitaSegundoPlano: true,
+        aceitaSegundoPlano: false,      // autos grandes na chave gratuita: o servidor reduz os autos (páginas essenciais, no texto original) e analisa de uma vez, como no assessor-judicial; o dossiê em lotes segue disponível pelo botão de processo gigante
       });
 
       const novoProg = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `p-${Date.now()}`);
