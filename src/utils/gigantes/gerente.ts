@@ -12,6 +12,7 @@ import { dividirEmPartes, ParteDosAutos } from "./partes";
 import { ocrPaginas, abrirPdf } from "../ocrPaginas";
 import { conferirAusencias } from "./verificacaoAusencia";
 import { pesquisarIndice } from "./indice";
+import { extractFromCoverPage } from "../judicialMetadataExtractor";
 import { classificarPagina } from "./triagem";
 import { instalarObservadorPistaNormal, pistaNormalOcupada, ultimaAtividadePistaNormal } from "./pistaNormal";
 
@@ -134,6 +135,7 @@ class Gerente {
         job.arquivos.push({ nome: fontes[a].nome, paginas: ex.pageCount || pags.length, semTexto: ex.semTexto, naoLidas: ex.naoLidas, totalOriginal: fontes[a].totalOriginal });
         const cls = classificarTodas(pags);
         pags.forEach((p, i) => { const n = baseN + (p.pagina - ini + 1); todas.push({ chave: chavePagina(id, n), jobId: id, n, arquivo: a, pagina: p.pagina, texto: p.texto, tipo: cls[i].tipo, rotuloTipo: cls[i].rotuloTipo }); });
+        if (!job.capa) { try { const c = extractFromCoverPage(ex.text.slice(0, 30000)); if (c.author || c.defendant || c.judicialUnit) job.capa = { author: c.author || undefined, defendant: c.defendant || undefined, judicialUnit: c.judicialUnit || undefined }; } catch { /* sem capa legível */ } }
         if (!job.numeroProcesso) { const m = ex.text.slice(0, 20000).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/); if (m) job.numeroProcesso = m[0]; }
       }
       if (todas.length === 0 && ocrTotal === 0) throw new Error("Não foi possível extrair texto dos PDFs (são imagens sem texto). Faça o OCR das páginas (leitura por imagem) e envie de novo.");
@@ -544,12 +546,13 @@ class Gerente {
     let tesesTxt = ""; try { const t: any = await getCabinetTeses(); if (t && t.isEnabled !== false && typeof t.text === "string") tesesTxt = t.text.trim(); } catch { /* sem teses */ }
     const parteTxt = cfg.parte ? ` ATENÇÃO: estes autos foram divididos automaticamente e este é o trecho ${cfg.parte.indice} de ${cfg.parte.total} (páginas ${cfg.parte.de.toLocaleString("pt-BR")} a ${cfg.parte.ate.toLocaleString("pt-BR")} de ${cfg.parte.totalPaginas.toLocaleString("pt-BR")}). As demais partes NÃO foram consideradas nesta minuta: não conclua o mérito do processo como um todo, não afirme ausência de prova que possa estar nas outras partes e registre no Relatório que a minuta cobre apenas as páginas ${cfg.parte.de} a ${cfg.parte.ate}.` : "";
     const regra = `[PROCESSO GIGANTE LIDO EM LOTES]:${parteTxt} o texto fornecido é um DOSSIÊ estruturado (fichas por trecho, com a página de cada item) mais as peças essenciais na íntegra. Redija a minuta com base nele e cite páginas quando útil. NÃO afirme "não há prova", "não foi juntado" ou "a parte não comprovou" só por não constar do dossiê: só registre ausência quando a ficha disser expressamente; no mais, use "não localizei no dossiê dos autos" e indique conferência humana.`;
+    const unidadeDosAutos = job.capa?.judicialUnit || "";      // o juízo da capa vale mais que a unidade escolhida no painel
     const corpo = {
       processText, pdfFiles: [], knowledgePdfs: [], customPromptText: cfg.promptText || "", activePromptTitle: cfg.promptTitle || "",
       cabinetTesesText: tesesTxt, isTesesEnabled: Boolean(tesesTxt),
       paradigmModelText: cfg.paradigmText || "", paradigmModelTitle: cfg.paradigmTitle || "", isParadigmEnabled: Boolean(cfg.paradigmText),
       proceduralPhase: "conhecimento", actType: cfg.actType || "auto", specificInstructions: [cfg.instrucao, regra].filter(Boolean).join("\n\n"),
-      processInfo: { processNumber: job.numeroProcesso || cfg.processNumber || "Extrair automaticamente dos autos", comarca: cfg.unitName ? `Comarca de ${cfg.unitName.split("/")[0].trim()} - TJGO` : "", vara: cfg.unitName ? (cfg.unitName.split("/")[1]?.trim() || cfg.unitName) : "", juiz: "Juiz(a) de Direito" },
+      processInfo: { processNumber: job.numeroProcesso || cfg.processNumber || "Extrair automaticamente dos autos", comarca: unidadeDosAutos ? `Comarca de ${unidadeDosAutos.split("-")[0].trim()} - TJGO` : cfg.unitName ? `Comarca de ${cfg.unitName.split("/")[0].trim()} - TJGO` : "", vara: unidadeDosAutos ? (unidadeDosAutos.split("-").slice(1).join("-").trim() || unidadeDosAutos) : cfg.unitName ? (cfg.unitName.split("/")[1]?.trim() || cfg.unitName) : "", juiz: "Juiz(a) de Direito", autor: job.capa?.author || "", reu: job.capa?.defendant || "" },
       coberturaLeitura: { escolha: "gigante", paginasOcr: 0, arquivos: job.arquivos.map((a) => arquivoParaServidor(a)) },
     };
     const data = await this.chamar(job.id, "/api/generate-minute", corpo);
@@ -570,7 +573,7 @@ class Gerente {
     const analise: SavedAnalysis = {
       id: analysisId, unitId: cfg.unitId || "montes_claros", promptTitle: cfg.promptTitle, promptId: cfg.promptId, promptCategory: cfg.promptCategory || "civel", promptScope: (cfg.promptScope as any) || "judicial",
       date: Date.now(), processNumber: numero,
-      result: { ...data, gigante: info, alertaInjecao, minute: data.minute ? { ...data.minute, judicialUnit: cfg.unitName || data.minute.judicialUnit } : data.minute },
+      result: { ...data, gigante: info, alertaInjecao, minute: data.minute ? { ...data.minute, judicialUnit: unidadeDosAutos || cfg.unitName || data.minute.judicialUnit, ...(job.capa?.author || job.capa?.defendant ? { parties: { ...(data.minute.parties || {}), ...(job.capa?.author ? { author: job.capa.author } : {}), ...(job.capa?.defendant ? { defendant: job.capa.defendant } : {}) } } : {}) } : data.minute },
       originalMinute: data.originalMinute || JSON.parse(JSON.stringify(data.minute)),
       processTextContext: `[Processo gigante: ${job.arquivos.map((a) => a.nome).join(", ")} — ${job.totalPaginas} páginas lidas em lotes]`,
       createdBy: cfg.userUid || "anonymous", creatorName: cfg.userName || "Assessor", creatorEmail: cfg.userEmail || "", chatMessages: [],

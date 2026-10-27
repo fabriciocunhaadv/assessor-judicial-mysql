@@ -25,6 +25,8 @@ export interface JobGig {
   id: string;
   nome: string;
   numeroProcesso?: string;
+  /** Dados da capa dos autos (lidos da 1ª página): usados no cabeçalho da minuta, que no gigante é redigida a partir de um dossiê sem a capa. */
+  capa?: { author?: string; defendant?: string; judicialUnit?: string };
   criadoEm: number;
   atualizadoEm: number;
   status: "preparando" | "na_fila" | "ocr" | "lendo" | "fundindo" | "redigindo" | "concluido" | "erro" | "pausado" | "cancelado";
