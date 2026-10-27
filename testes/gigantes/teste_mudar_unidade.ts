@@ -1,6 +1,6 @@
 import { aplicarUnidade, lerPedidoDeLote } from "../../src/utils/mudarUnidade";
 const erros: string[] = [];
-const ato = { id: "a1", unitId: "montes_claros", processNumber: "5033370-53.2025.8.09.0042", createdBy: "u1", result: { minute: { judicialUnit: "Montes Claros de Goiás - Vara Cível", comarca: "Montes Claros", relatorio: "texto" }, score: 90 }, lancadoProjudi: 123 };
+const ato: any = { id: "a1", unitId: "montes_claros", processNumber: "5033370-53.2025.8.09.0042", createdBy: "u1", result: { minute: { judicialUnit: "Montes Claros de Goiás - Vara Cível", comarca: "Montes Claros", relatorio: "texto" }, score: 90 }, lancadoProjudi: 123 };
 const novo = aplicarUnidade(ato, { unitId: "fazenda_nova", judicialUnit: "Fazenda Nova - Vara Cível" });
 if (novo.unitId !== "fazenda_nova" || novo.result.minute.judicialUnit !== "Fazenda Nova - Vara Cível") erros.push("não trocou a unidade");
 if (novo.result.minute.comarca !== "Montes Claros" || novo.result.minute.relatorio !== "texto" || novo.result.score !== 90 || novo.lancadoProjudi !== 123 || novo.createdBy !== "u1") erros.push("mexeu no que não devia");
