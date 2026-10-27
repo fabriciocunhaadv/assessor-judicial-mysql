@@ -143,6 +143,14 @@ const EMPTY_PROMPT: CustomPrompt = {
   isDefault: false
 };
 
+/** Aviso da retomada automática com botão para parar de aguardar (antes não havia como fechar o aviso de uma análise antiga que continuava no servidor). */
+const AvisoRetomada = ({ texto, aoParar }: { texto: string; aoParar: () => void }) => (
+  <span className="flex items-center gap-3">
+    <span>{texto}</span>
+    <button type="button" onClick={aoParar} data-testid="parar-retomada" className="shrink-0 px-2 py-0.5 rounded-md border border-slate-300 bg-white text-slate-700 text-xs font-bold cursor-pointer hover:bg-slate-100">Parar de aguardar</button>
+  </span>
+);
+
 // respostas do servidor que mandam a leitura para o dossiê em lotes (segundo plano): autos grandes e autos que não cabem nem reduzidos na chave gratuita
 const CODIGOS_AUTOS_EM_LOTES = ["AUTOS_GRANDES_SEGUNDO_PLANO", "AUTOS_ESSENCIAIS_ACIMA_DO_LIMITE", "ENTRADA_GRANDE_GRATUITA"];
 
@@ -1564,12 +1572,15 @@ export default function App() {
     if (pend.uid && user?.uid && pend.uid !== user.uid) return;
     recuperandoRef.current = true;
     const tid = "retomada-analise", esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const parar = { v: false };
+    const aoParar = () => { parar.v = true; limparPendente(pend.progId); toast.dismiss(tid); toast("Parei de aguardar essa análise. Ela pode continuar no servidor, mas não será mais buscada.", { icon: "⏹️", duration: 6000 }); };
     try {
-      toast.loading("Retomando a análise que estava rodando no servidor…", { id: tid });
+      toast.loading(<AvisoRetomada texto="Retomando a análise que estava rodando no servidor…" aoParar={aoParar} />, { id: tid });
       const limite = Date.now() + 25 * 60_000;
-      while (Date.now() < limite) {
+      while (Date.now() < limite && !parar.v) {
         let r: any = null; try { r = await consultarResultado(pend.progId); } catch { r = null; }
         if (!r) { await esperar(5000); continue; }      // sem conexão ainda: tenta de novo
+        if (parar.v) return;
         if (r.desconhecido) { toast("A análise anterior não foi encontrada no servidor (ele pode ter sido reiniciado). Inicie de novo.", { id: tid, icon: "ℹ️", duration: 9000 }); limparPendente(pend.progId); return; }
         if (r.pronto) {
           limparPendente(pend.progId);
@@ -1600,9 +1611,11 @@ export default function App() {
           toast.success(gravado.ok ? "Análise recuperada: a minuta ficou pronta enquanto você estava fora e já está no Histórico." : "Análise recuperada: a minuta está na tela, mas NÃO foi gravada no Histórico. Copie ou salve agora.", { id: tid, duration: 10000 });
           return;
         }
-        toast.loading(`Retomando a análise no servidor… ${r.andamento?.texto || ""}${r.andamento?.decorridoSeg ? ` (${r.andamento.decorridoSeg}s)` : ""}`, { id: tid });
+        if (parar.v) return;
+        toast.loading(<AvisoRetomada texto={`Retomando a análise no servidor… ${r.andamento?.texto || ""}${r.andamento?.decorridoSeg ? ` (${r.andamento.decorridoSeg}s)` : ""}`} aoParar={aoParar} />, { id: tid });
         await esperar(4000);
       }
+      if (parar.v) return;
       toast.error("A análise ainda não terminou no servidor. Abra o sistema de novo em alguns minutos.", { id: tid, duration: 9000 });
     } finally { recuperandoRef.current = false; }
   };
@@ -1615,12 +1628,15 @@ export default function App() {
     modulosRecuperandoRef.current.add(tipo);
     const nome = tipo === "turbo" ? "o Turbo" : "a Lupa do Magistrado", tid = `retomada-${tipo}`, esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
     try {
-      toast.loading(`Retomando ${nome}, que estava rodando no servidor…`, { id: tid });
+      const parar = { v: false };
+      const aoParar = () => { parar.v = true; limparPendenteModulo(tipo, pend.progId); toast.dismiss(tid); toast("Parei de aguardar. A execução pode continuar no servidor, mas não será mais buscada.", { icon: "⏹️", duration: 6000 }); };
+      toast.loading(<AvisoRetomada texto={`Retomando ${nome}, que estava rodando no servidor…`} aoParar={aoParar} />, { id: tid });
       const limite = Date.now() + 25 * 60_000;
-      while (Date.now() < limite) {
+      while (Date.now() < limite && !parar.v) {
         if (ativosNestaPagina.has(pend.progId)) { toast.dismiss(tid); return; }
         let r: any = null; try { r = await consultarResultado(pend.progId); } catch { r = null; }
         if (!r) { await esperar(5000); continue; }
+        if (parar.v) return;
         if (r.desconhecido) { toast(`A execução anterior d${tipo === "turbo" ? "o Turbo" : "a Lupa"} não foi encontrada no servidor (ele pode ter sido reiniciado). Rode de novo.`, { id: tid, icon: "ℹ️", duration: 9000 }); limparPendenteModulo(tipo, pend.progId); return; }
         if (r.pronto) {
           limparPendenteModulo(tipo, pend.progId);
@@ -1646,9 +1662,11 @@ export default function App() {
           toast.success("Lupa recuperada: a auditoria ficou pronta enquanto você estava fora. Abra a Lupa do Magistrado para ver (lista de auditorias).", { id: tid, duration: 12000 });
           return;
         }
-        toast.loading(`Retomando ${nome} no servidor…${r.andamento?.decorridoSeg ? ` (${r.andamento.decorridoSeg}s)` : ""}`, { id: tid });
+        if (parar.v) return;
+        toast.loading(<AvisoRetomada texto={`Retomando ${nome} no servidor…${r.andamento?.decorridoSeg ? ` (${r.andamento.decorridoSeg}s)` : ""}`} aoParar={aoParar} />, { id: tid });
         await esperar(4000);
       }
+      if (parar.v) return;
       toast.error(`${nome[0].toUpperCase() + nome.slice(1)} ainda não terminou no servidor. Abra o sistema de novo em alguns minutos.`, { id: tid, duration: 9000 });
     } finally { modulosRecuperandoRef.current.delete(tipo); }
   };
