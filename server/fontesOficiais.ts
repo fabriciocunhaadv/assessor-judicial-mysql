@@ -7,6 +7,7 @@ import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
 import { decodificarPagina } from "../src/utils/legislacaoPlanalto";
 import { gzipSync, gunzipSync } from "zlib";
+import { separarDispositivos } from "../src/utils/separarDispositivos";
 
 export const fontesRouter = express.Router();
 const COL_LEI = "legislacao", COL_RESUMO = "legislacao_resumo", COL_TEXTO = "legislacao_texto";
@@ -78,7 +79,17 @@ const CABECALHO = /^(PARTE|LIVRO|T[ÍI]TULO|CAP[ÍI]TULO|SE[ÇC][ÃA]O|SUBSE[ÇC
 const chaveArtigo = (n: string, letra?: string) => n.replace(/\./g, "") + (letra ? "-" + letra.toUpperCase() : "");
 
 /** Lê as linhas de uma lei e separa por artigo, marcando revogados e vetados. */
-export function extrairArtigos(linhas: string[]): { artigos: Record<string, ArtigoLei>; total: number; revogados: number; vetados: number } {
+/** Nota de revogação/veto SEM parênteses (leis estaduais em PDF: "- Revogado pela Emenda Constitucional nº 14..."). Só vale para o artigo inteiro quando vem antes de qualquer parágrafo ou inciso
+ *  (se um § ou inciso aparece antes da nota, a revogação é daquele dispositivo e o artigo continua vigente). */
+const NOTA_LIVRE = /(?:^|[\s.;)])[-–—]?\s*\(?\s*(Revogad[oa]s?|Vetad[oa]s?)\s+(?:pel[ao]s?|por)\b[^\n]{0,140}/i;
+const PARTE_DO_ARTIGO = /§|Par[áa]grafo [úu]nico|(?:^|\s)[IVX]{1,5}\s*[-–]\s/;
+export function notaLivreDoArtigo(texto: string): { tipo: "r" | "v"; nota: string } | null {
+  const corpo = texto.replace(/^Art\.?\s*\d{1,4}(?:\.\d{3})?\s*(?:[º°o](?![a-zà-ú])|\.)?\s*(?:-\s*[A-Z]{1,2}\b)?\.?/i, "");
+  const m = NOTA_LIVRE.exec(corpo); if (!m) return null;
+  if (PARTE_DO_ARTIGO.test(corpo.slice(0, m.index))) return null;
+  return { tipo: /^Vetad/i.test(m[1]) ? "v" : "r", nota: m[0].replace(/^[\s.;)\-–—(]+/, "").slice(0, 160) };
+}
+export function extrairArtigos(linhas: string[], opcoes: { notaLivre?: boolean } = {}): { artigos: Record<string, ArtigoLei>; total: number; revogados: number; vetados: number } {
   const artigos: Record<string, ArtigoLei> = {};
   let atual: string | null = null;
   for (const linha of linhas) {
@@ -99,6 +110,7 @@ export function extrairArtigos(linhas: string[]): { artigos: Record<string, Arti
     if (CABECALHO.test(linha)) { atual = null; continue; }
     if (atual && artigos[atual].t.length < 4000) artigos[atual].t += "\n" + linha.slice(0, 1500);
   }
+  if (opcoes.notaLivre) for (const k of Object.keys(artigos)) { const a = artigos[k]; if (a.r || a.v) continue; const n = notaLivreDoArtigo(a.t); if (n) { if (n.tipo === "r") a.r = 1; else a.v = 1; a.n = n.nota; } }
   const ks = Object.keys(artigos);
   return { artigos, total: ks.length, revogados: ks.filter((k) => artigos[k].r).length, vetados: ks.filter((k) => artigos[k].v).length };
 }
@@ -124,11 +136,14 @@ interface EstadoLei { r: Record<string, string>; v: Record<string, string>; maio
 const BLOQUEIO = /acesso negado|requisi[çc][ãa]o foi bloqueada|access denied|request blocked/i;
 
 /** Lê o HTML de uma lei e guarda o estado compacto + o resumo. Usado pelo download e pelo arquivo enviado pelo Super Admin. */
-export async function processarHtmlLei(cfg: LeiConfig, texto: string): Promise<ResumoLei> {
-  const linhas = htmlParaLinhas(texto);
+export async function processarHtmlLei(cfg: LeiConfig, texto: string, opcoes: { textoPuro?: boolean } = {}): Promise<ResumoLei> {
+  const linhas = opcoes.textoPuro ? separarDispositivos(texto.split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)) : htmlParaLinhas(texto);
   if (BLOQUEIO.test(linhas.slice(0, 30).join(" ")) && linhas.length < 40) throw new Error("o Planalto bloqueou o acesso do servidor (página de “Acesso Negado”); salve a página no seu navegador e envie o arquivo");
-  const ex = extrairArtigos(linhas);
-  if (ex.total < 5) throw new Error(`formato inesperado: só ${ex.total} artigo(s) reconhecido(s); nada foi gravado`);
+  const ex = extrairArtigos(linhas, { notaLivre: !!opcoes.textoPuro });
+  if (ex.total < 5) {
+    const inicio = linhas.filter((l) => l.length > 3).slice(0, 4).map((l) => l.slice(0, 70)).join(" | ");
+    throw new Error(`formato inesperado: só ${ex.total} artigo(s) reconhecido(s) em ${linhas.length} linha(s); nada foi gravado. O que li no começo: “${inicio.slice(0, 260)}”. Se não for o texto da lei, salve a página de novo ou envie o PDF ou .txt da lei.`);
+  }
   const chaves = Object.keys(ex.artigos);
   const maior = Math.max(...chaves.map((k) => parseInt(k, 10)).filter((n) => Number.isFinite(n)));
   const estado: EstadoLei = { r: {}, v: {}, maior };
@@ -171,16 +186,17 @@ export function descobrirLei(nomeArquivo: string, texto: string): LeiConfig | nu
   const inicio = htmlParaLinhas(texto).slice(0, 25).join(" ");
   return LEIS.find((l) => l.aliases.slice(0, 6).some((re) => /\d{4,}/.test(re.source) && re.test(inicio))) || null;
 }
-export async function importarArquivoLei(nomeArquivo: string, buf: Buffer, idForcado?: string): Promise<ResumoLei> {
+export async function importarArquivoLei(nomeArquivo: string, buf: Buffer, idForcado?: string, formato = ""): Promise<ResumoLei> {
   let texto: string;
   // páginas do Planalto salvas em UTF-16 (ex.: Lei Maria da Penha) davam "0 artigos reconhecidos": detecta pelo marcador (BOM) ou pelos bytes zero e lê como UTF-16
   const zeros = Array.from(buf.subarray(0, 600)).filter((x) => x === 0).length;
   const utf16 = (buf.length >= 2 && ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff))) || (buf.length >= 20 && zeros / Math.min(buf.length, 600) > 0.25);
-  if (utf16) texto = decodificarPagina(buf);
+  if (formato === "texto") texto = buf.toString("utf-8");      // PDF ou .txt já convertido em texto pelo navegador
+  else if (utf16) texto = decodificarPagina(buf);
   else try { texto = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch { texto = decodificar(buf); }      // arquivo salvo pelo navegador: UTF-8 válido ou windows-1252
   const cfg = idForcado ? LEIS.find((l) => l.id === idForcado) : descobrirLei(nomeArquivo, texto);
   if (!cfg) throw Object.assign(new Error(`não reconheci qual lei é o arquivo “${nomeArquivo}”. Use o nome original da página (ex.: l13105.htm) ou escolha a lei na lista.`), { status: 400 });
-  try { return await processarHtmlLei(cfg, texto); } catch (e: any) { return anotarErro(cfg, e); }
+  try { return await processarHtmlLei(cfg, texto, { textoPuro: formato === "texto" }); } catch (e: any) { return anotarErro(cfg, e); }
 }
 export async function listarResumoLeis(): Promise<ResumoLei[]> {
   await garantirDocs();
@@ -310,6 +326,17 @@ const soSuper = (req: any, res: express.Response): boolean => { if (!req.usuario
 fontesRouter.post("/reconhecer", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ resultados: await reconhecer() }); } catch (e: any) { res.status(500).json({ erro: "falha no teste" }); } });
 fontesRouter.get("/leis", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ leis: await listarResumoLeis() }); } catch { res.status(500).json({ erro: "não consegui ler o banco" }); } });
 fontesRouter.post("/leis/:id/atualizar", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ lei: await importarLei(req.params.id) }); } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.message || "falha" }); } });
+/** Exclui o que está guardado de uma lei do Planalto (texto, registro de revogados e resumo): ela volta a "pendente" e pode ser enviada de novo. */
+fontesRouter.delete("/leis/:id", async (req, res) => {
+  if (!soSuper(req, res)) return;
+  try {
+    const cfg = LEIS.find((l) => l.id === req.params.id); if (!cfg) return void res.status(404).json({ erro: "lei desconhecida" });
+    await garantirDocs();
+    for (const [col, id] of [[COL_LEI, cfg.id], [COL_RESUMO, cfg.id], [COL_TEXTO, chaveDaLei(cfg)]] as const) await banco().query("DELETE FROM docs WHERE col=? AND id=?", [col, id]);
+    cacheLeis.delete(cfg.id);
+    res.json({ lei: { id: cfg.id, nome: cfg.nome, url: cfg.url } });
+  } catch { res.status(500).json({ erro: "não consegui excluir" }); }
+});
 /** Texto guardado de uma lei do Planalto (para o Super Admin visualizar): uma linha por item, como foi salvo, mais o estado de revogados/vetados que o sistema reconheceu. Só leitura. */
 fontesRouter.get("/leis/:id/texto", async (req, res) => {
   if (!soSuper(req, res)) return;
@@ -318,7 +345,7 @@ fontesRouter.get("/leis/:id/texto", async (req, res) => {
     const copia = await lerCopiaLocal(chaveDaLei(cfg));
     if (!copia) return void res.status(404).json({ erro: "esta lei ainda não tem texto guardado (baixe pelo site ou envie o arquivo)" });
     const estado = await estadoDaLei(cfg.id);
-    res.json({ id: cfg.id, titulo: cfg.nome, salvoEm: copia.salvoEm, linhas: copia.linhas, reconhecidos: { revogados: Object.keys(estado?.r || {}).length, vetados: Object.keys(estado?.v || {}).length } });
+    res.json({ id: cfg.id, titulo: cfg.nome, salvoEm: copia.salvoEm, linhas: copia.linhas, reconhecidos: { revogados: Object.keys(estado?.r || {}).length, vetados: Object.keys(estado?.v || {}).length }, revogadosChaves: Object.keys(estado?.r || {}), vetadosChaves: Object.keys(estado?.v || {}) });
   } catch { res.status(500).json({ erro: "não consegui ler o texto guardado" }); }
 });
 /** Arquivo de lei salvo no navegador (Ctrl+S na página do Planalto): o servidor lê e guarda só o estado compacto. Corpo = bytes do arquivo. */
@@ -327,7 +354,7 @@ fontesRouter.post("/leis/importar-arquivo", express.raw({ type: () => true, limi
   try {
     const nome = decodeURIComponent(String(req.headers["x-nome-arquivo"] || "")), id = String(req.query.id || "") || undefined;
     if (!Buffer.isBuffer(req.body) || req.body.length < 200) return void res.status(400).json({ erro: "arquivo vazio ou pequeno demais" });
-    res.json({ lei: await importarArquivoLei(nome, req.body, id) });
+    res.json({ lei: await importarArquivoLei(nome, req.body, id, String(req.headers["x-formato"] || "")) });
   } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.message || "falha ao ler o arquivo" }); }
 });
 /** Qualquer usuário logado pode conferir um texto (ex.: a minuta) contra a base de leis. */

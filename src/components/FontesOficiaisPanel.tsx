@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getApiHeaders } from "../utils/apiKeyManager";
 import { OutrasLeisTab } from "./OutrasLeisTab";
 import { BotaoVerLei } from "./VisualizadorLei";
+import { extractTextFromPdf } from "../utils/pdfExtractor";
 
 interface Resultado { id: string; grupo: string; nome: string; url: string; status: number; urlFinal?: string; tipo?: string; bytes?: number; ms?: number; amostra?: string; linhas?: number; erro?: string; bloqueio?: string; leitura?: { artigos: number; revogados: number; vetados: number } }
 interface Lei { id: string; nome: string; url: string; baixadoEm?: number; total?: number; revogados?: number; vetados?: number; erro?: string }
@@ -46,7 +47,15 @@ export const FontesOficiaisPanel: React.FC = () => {
     const atualizar = (p: Partial<ItemEnvio>) => setEnvios((v) => v.map((x) => (x.chave === item.chave ? { ...x, ...p } : x)));
     atualizar({ estado: "enviando", msg: "Lendo..." });
     try {
-      const r = await fetch("/api/fontes/leis/importar-arquivo" + (idForcado ? `?id=${encodeURIComponent(idForcado)}` : ""), { method: "POST", headers: { "Content-Type": "application/octet-stream", "x-nome-arquivo": encodeURIComponent(item.arquivo.name) }, body: await item.arquivo.arrayBuffer() });
+      // HTML salvo do Planalto vai como está; PDF e .txt viram texto aqui no navegador (o servidor separa os artigos)
+      let corpo: ArrayBuffer | Uint8Array, formato = "";
+      if (/\.pdf$/i.test(item.arquivo.name)) {
+        const t = await extractTextFromPdf(item.arquivo, undefined, { fullSequential: true });
+        if (!t?.text || t.text.trim().length < 100) { atualizar({ estado: "erro", msg: "não consegui ler texto deste PDF (se for imagem digitalizada, não há texto para ler)" }); return; }
+        corpo = new TextEncoder().encode(t.text); formato = "texto";
+      } else if (/\.txt$/i.test(item.arquivo.name)) { corpo = await item.arquivo.arrayBuffer(); formato = "texto"; }
+      else corpo = await item.arquivo.arrayBuffer();
+      const r = await fetch("/api/fontes/leis/importar-arquivo" + (idForcado ? `?id=${encodeURIComponent(idForcado)}` : ""), { method: "POST", headers: { "Content-Type": "application/octet-stream", "x-nome-arquivo": encodeURIComponent(item.arquivo.name), "x-formato": formato }, body: corpo as any });
       const j = await r.json().catch(() => ({} as any));
       if (!r.ok) { atualizar({ estado: /não reconheci/i.test(j.erro || "") ? "nao_reconhecido" : "erro", msg: j.erro || `erro ${r.status}` }); return; }
       const l: Lei = j.lei;
@@ -55,9 +64,9 @@ export const FontesOficiaisPanel: React.FC = () => {
     } catch (err: any) { atualizar({ estado: "erro", msg: err?.message || "falha ao enviar" }); }
   };
   const enviarArquivos = async (arquivos: File[], idForcado?: string) => {
-    const validos = arquivos.filter((f) => /\.html?$/i.test(f.name));
+    const validos = arquivos.filter((f) => /\.(html?|pdf|txt)$/i.test(f.name));
     const ignorados = arquivos.length - validos.length;
-    if (ignorados) setErro(`${ignorados} arquivo(s) ignorado(s): só entram páginas salvas como HTML (.htm ou .html).`); else setErro("");
+    if (ignorados) setErro(`${ignorados} arquivo(s) ignorado(s): só entram HTML (.htm, .html), PDF ou texto (.txt).`); else setErro("");
     if (!validos.length) return;
     const itens: ItemEnvio[] = validos.map((f, i) => ({ chave: `${Date.now()}_${i}_${f.name}`, arquivo: f, nome: f.name, estado: "enviando", msg: "Na fila..." }));
     setEnvios((v) => [...itens, ...v].slice(0, 60));
@@ -68,6 +77,10 @@ export const FontesOficiaisPanel: React.FC = () => {
     const alvo = alvoLei.current; alvoLei.current = null;
     if (alvo && arquivos.length > 1) setErro("Para enviar para uma lei específica escolha um arquivo só; para vários, use a área de envio de cima.");
     void enviarArquivos(alvo && arquivos.length > 1 ? [] : arquivos, alvo || undefined);
+  };
+  const excluirLei = async (l: Lei) => {
+    if (!window.confirm(`Excluir o que está guardado de “${l.nome}”? A lei volta a ficar pendente e pode ser enviada de novo.`)) return;
+    try { const { lei } = await chamar(`/leis/${l.id}`, "DELETE"); setLeis((ls) => (ls || []).map((x) => (x.id === l.id ? lei : x))); setErro(""); } catch (e: any) { setErro(e.message); }
   };
   const escolherParaLei = (id: string) => { alvoLei.current = id; entradaArquivos.current?.click(); };
   const aoSoltar = (e: React.DragEvent) => { e.preventDefault(); setArrastando(false); void enviarArquivos(Array.from(e.dataTransfer.files || [])); };
@@ -136,9 +149,9 @@ export const FontesOficiaisPanel: React.FC = () => {
                 <div onDragOver={(e) => { e.preventDefault(); setArrastando(true); }} onDragLeave={() => setArrastando(false)} onDrop={aoSoltar} onClick={() => entradaArquivos.current?.click()}
                   className={`rounded-xl border-2 border-dashed p-5 text-center cursor-pointer transition ${arrastando ? "border-[#673de6] bg-[#ebe4ff]" : "border-slate-300 bg-slate-50 hover:bg-[#f5f1ff]"}`} data-testid="area-envio">
                   <p className="text-sm font-bold">Arraste aqui os arquivos das leis (vários de uma vez) ou clique para escolher</p>
-                  <p className="text-[11px] text-slate-500 mt-1">Páginas do Planalto salvas no navegador (Ctrl+S › “Página da Web, somente HTML”). O sistema reconhece cada lei pelo nome do arquivo ou pelo começo do texto.</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Páginas do Planalto salvas no navegador (Ctrl+S › “Página da Web, somente HTML”), ou o PDF ou .txt da lei (para PDF/.txt, use “Reenviar arquivo” na linha da lei certa). O sistema reconhece cada lei pelo nome do arquivo ou pelo começo do texto.</p>
                 </div>
-                <input ref={entradaArquivos} type="file" accept=".htm,.html" multiple className="hidden" onChange={aoEscolher} data-testid="entrada-arquivos" />
+                <input ref={entradaArquivos} type="file" accept=".htm,.html,.pdf,.txt" multiple className="hidden" onChange={aoEscolher} data-testid="entrada-arquivos" />
 
                 {envios.length > 0 && (
                   <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
@@ -188,6 +201,7 @@ export const FontesOficiaisPanel: React.FC = () => {
                         <div className="flex items-center gap-1.5">
                           {pronta(l) && <BotaoVerLei caminho={`/api/fontes/leis/${encodeURIComponent(l.id)}/texto`} titulo={`Ver o texto guardado: ${l.nome}`} />}
                           <button onClick={() => escolherParaLei(l.id)} className={`${btn} bg-[#673de6] text-white`} title="Enviar o arquivo salvo desta lei (não precisa ter o nome certo)">{pronta(l) ? "Reenviar arquivo" : "Enviar arquivo"}</button>
+                          {(pronta(l) || !!l.erro) && <button disabled={!!atualizando || !!lote} onClick={() => void excluirLei(l)} className={`${btn} bg-white border border-red-300 text-red-700`} title="Excluir o texto guardado desta lei">Excluir</button>}
                           <button disabled={!!atualizando || !!lote} onClick={() => atualizar(l.id)} className={`${btn} bg-white border border-slate-300 text-slate-600`}>{atualizando === l.id ? "..." : "Atualizar pelo site"}</button>
                         </div>
                       </div>

@@ -4,7 +4,9 @@ import express from "express";
 import { gzipSync, gunzipSync } from "zlib";
 import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
-import { artigosAntes, LEIS, importarArquivoLei, processarHtmlLei } from "./fontesOficiais";
+import { artigosAntes, LEIS, importarArquivoLei, processarHtmlLei, extrairArtigos } from "./fontesOficiais";
+import { separarDispositivos } from "../src/utils/separarDispositivos";
+export { separarDispositivos };
 import { htmlParaLinhas, decodificarPagina, trechoDoArtigo, ConsultaOutrasLeis } from "../src/utils/legislacaoPlanalto";
 
 const COL = "legislacao_outras";
@@ -15,22 +17,6 @@ const txt = (v: any, max: number) => String(v ?? "").trim().slice(0, max);
 const ESFERAS: Esfera[] = ["estadual", "municipal", "federal", "outra"];
 const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 export const rotuloDaLei = (l: Pick<OutraLei, "esfera" | "tipo" | "numero" | "ano" | "ente">) => `${l.tipo ? l.tipo.charAt(0).toUpperCase() + l.tipo.slice(1) : "Lei"}${l.esfera === "estadual" ? " Estadual" : l.esfera === "municipal" ? " Municipal" : ""} nº ${l.numero}/${l.ano}${l.ente ? ` (${l.ente})` : ""}`;
-
-/** PDF convertido no navegador vem em parágrafos corridos (vários artigos na mesma linha, com marcas de negrito e "[Página N de M]"). A consulta e a contagem só enxergam artigo
- *  que COMEÇA a linha; aqui cada "Art. N" e cada TÍTULO/CAPÍTULO/SEÇÃO volta a abrir a sua linha. "Art." só abre linha depois de ponto final, ponto e vírgula, dois pontos, fecha-parênteses
- *  ou palavra em maiúsculas (nunca em "...nos termos do Art. 14 desta Lei"). Texto que já está uma linha por artigo não muda. */
-export function separarDispositivos(linhas: string[]): string[] {
-  const out: string[] = [];
-  for (const bruta of linhas) {
-    if (/^\[P[áa]gina\s+\d+\s+de\s+\d+\]$/i.test(bruta.trim())) continue;
-    let l = bruta.replace(/<\/?u>/gi, "").replace(/\*+/g, "").replace(/\s+/g, " ").trim();
-    if (!l) continue;
-    l = l.replace(/((?:[.;:!?)\]"”]|\b[A-ZÀ-Ú]{4,})\s+)(?=Art\.?\s*\d{1,4}\s*[º°o]?(?:\s*-\s*[A-Z])?\s*(?:[.,\-–—]|\s)\s*(?:[A-ZÀ-Ú(§]|\d|Revogad))/g, "$1\n");
-    l = l.replace(/([.;:!?)\]"”]\s+|\b[A-ZÀ-Ú]{4,}\s+)(?=(?:T[ÍI]TULO|CAP[ÍI]TULO|SE[ÇC][ÃA]O|SUBSE[ÇC][ÃA]O|LIVRO)\s+(?:[IVXLCDM]+|\d+|[ÚU]NICO)\b)/g, "$1\n");
-    for (const parte of l.split("\n")) { const t = parte.trim(); if (t) out.push(t); }
-  }
-  return out;
-}
 
 /** Texto enviado → linhas. HTML (ou arquivo em UTF-16/windows-1252) passa pela leitura do Planalto; texto puro vira uma linha por parágrafo. */
 export function linhasDoEnvio(buf: Buffer, formato: string): string[] {
@@ -88,6 +74,14 @@ const esferaDoContexto = (t: string, ini: number, fim: number): Esfera | null =>
   return /estadual|do estado/.test(j) ? "estadual" : /municipal|do municipio/.test(j) ? "municipal" : null;
 };
 
+const estadoCache = new Map<string, { n: number; r: Set<string>; v: Set<string> }>();
+/** Artigos revogados/vetados reconhecidos no texto guardado (inclui a nota sem parênteses dos PDFs). Calculado na hora e guardado em memória. */
+function revogadosDaLei(id: string, linhas: string[]): { r: Set<string>; v: Set<string> } {
+  const c = estadoCache.get(id); if (c && c.n === linhas.length) return c;
+  const ex = extrairArtigos(linhas, { notaLivre: true }), r = new Set<string>(), v = new Set<string>();
+  for (const [k, a] of Object.entries(ex.artigos)) { if (a.r) r.add(k.toUpperCase()); else if (a.v) v.add(k.toUpperCase()); }
+  const novo = { n: linhas.length, r, v }; estadoCache.set(id, novo); return novo;
+}
 export async function consultarOutrasLeis(textos: string[], maxArtigos = 10): Promise<ConsultaOutrasLeis | null> {
   const leis = await carregar();
   if (!leis.length) return null;
@@ -109,6 +103,7 @@ export async function consultarOutrasLeis(textos: string[], maxArtigos = 10): Pr
   for (const { lei, artigo } of usados) {
     if (!cache.has(lei.id)) cache.set(lei.id, lei.gz ? gunzipSync(Buffer.from(lei.gz, "base64")).toString("utf-8").split("\n") : []);
     const tr = trechoDoArtigo(cache.get(lei.id)!, artigo);
+    if (tr && !tr.revogado && revogadosDaLei(lei.id, cache.get(lei.id)!).r.has(artigo.toUpperCase())) tr.revogado = true;      // nota "Revogado pela Emenda..." sem parênteses (PDF)
     if (!tr) { naoAchados.push(`${rotuloDaLei(lei)}, art. ${artigo}`); continue; }
     conferidos.push(`${rotuloDaLei(lei)}, art. ${artigo}${tr.revogado ? " (REVOGADO)" : ""} (base do gabinete)`);
     linhas.push(`• ${rotuloDaLei(lei)} — ${tr.revogado ? "ARTIGO REVOGADO (não fundamentar nele) — " : ""}\n${tr.texto}`);
@@ -169,7 +164,8 @@ outrasLeisRouter.get("/:id/texto", async (req: any, res) => {
   try {
     const lei = (await carregar()).find((l) => l.id === String(req.params.id));
     if (!lei || !lei.gz) return void res.status(404).json({ erro: "lei não encontrada" });
-    res.json({ id: lei.id, titulo: rotuloDaLei(lei), salvoEm: lei.salvoEm, linhas: gunzipSync(Buffer.from(lei.gz, "base64")).toString("utf-8").split("\n"), reconhecidos: null });
+    const linhas = gunzipSync(Buffer.from(lei.gz, "base64")).toString("utf-8").split("\n"), est = revogadosDaLei(lei.id, linhas);
+    res.json({ id: lei.id, titulo: rotuloDaLei(lei), salvoEm: lei.salvoEm, linhas, reconhecidos: { revogados: est.r.size, vetados: est.v.size }, revogadosChaves: [...est.r], vetadosChaves: [...est.v] });
   } catch { res.status(500).json({ erro: "não consegui ler o texto guardado" }); }
 });
 outrasLeisRouter.post("/:id/promover", async (req: any, res) => {

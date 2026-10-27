@@ -1,4 +1,5 @@
 import { detectApplicableLegalFrameworks, LegalFramework } from "../data/legalTaxonomy";
+import { normalizarLinhaLei } from "./separarDispositivos";
 // CONSULTA À LEGISLAÇÃO OFICIAL (planalto.gov.br): os artigos citados nos autos e na minuta são buscados no texto oficial e entram no prompt, para a IA conferir número e redação
 // em vez de citar de memória. Roda no servidor. Qualquer falha (site fora do ar, artigo não achado) é silenciosa: a minuta segue como antes, sem o bloco.
 export type TipoAto = "lei" | "lcp" | "del" | "dec" | "emc";
@@ -158,7 +159,7 @@ function limparHtml(html: string, manterQuebrasDoArquivo: boolean): string[] {
 export function htmlParaLinhas(html: string): string[] {
   const l = limparHtml(html, false);
   const base = l.length >= 20 ? l : limparHtml(html, true);      // página sem marcas de parágrafo: usa as quebras do próprio arquivo
-  return base.flatMap((x) => (x.length > 1500 ? x.split(/(?<=[.;:)\]])\s+(?=Art\.?\s*\d{1,4}(?:\.\d{3})?\s*(?:[º°o]|\.|-|\s))/) : [x]));      // vários artigos colados numa linha só
+  return base.flatMap((x) => (x.length > 1500 ? x.split(/(?<=[.;:)\]])\s+(?=Art\.?\s*\d{1,4}(?:\.\d{3})?\s*(?:[º°o]|\.|-|\s))/) : [x])).map(normalizarLinhaLei).filter(Boolean);      // vários artigos colados numa linha só; "Art . 1º"/"Artigo 1º" viram "Art. 1º"
 }
 
 export interface TextoArtigo { texto: string; revogado: boolean }
@@ -175,7 +176,7 @@ export function trechoDoArtigo(linhas: string[], artigo: string, limite = 2200):
     partes.push(linhas[j]);
   }
   const texto = partes.join("\n").slice(0, limite);
-  return { texto, revogado: /\(\s*Revogad[oa]/i.test(partes[0]) && partes.length <= 2 };
+  return { texto, revogado: /\(\s*Revogad[oa]s?\b/i.test(partes[0]) };      // mesma regra do registro de revogados (a linha do artigo traz "(Revogado...)")
 }
 
 // Cópia salva pelo Super Admin (arquivo da lei baixado no navegador): usada quando o Planalto não responde ou bloqueia o servidor. Quem liga o leitor é o server.ts (este arquivo não conhece o banco).
