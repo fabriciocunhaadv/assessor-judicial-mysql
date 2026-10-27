@@ -69,6 +69,8 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
   const cit = result?.avisoCitacao;
   if (cit?.length) itens.push({ id: "citacao", tom: "atencao", rotulo: `📍 Arquivo/página inexistente (${cit.length})`, conteudo: caixa("border-amber-300 bg-amber-50 text-amber-900", "aviso-citacao", <><strong>Conferir citação:</strong> {cit.join("; ")} — o arquivo ou a página não existe nos carimbos dos autos enviados.</>) });
 
+  const dd = result?.avisoDescumprimento;
+  if (dd) itens.push({ id: "descumprimento", tom: dd.decide && dd.minutaSentenciou === false ? "perigo" : "atencao", rotulo: dd.decide ? "⏱️ Parte não cumpriu determinação" : "⏱️ Conferir cumprimento da determinação", conteudo: caixa(dd.decide && dd.minutaSentenciou === false ? "border-red-400 bg-red-50 text-red-900" : "border-amber-300 bg-amber-50 text-amber-900", "aviso-descumprimento", <><strong>{dd.decide ? "Descumprimento de determinação detectado nos autos:" : "Possível cumprimento — confira:"}</strong> {dd.motivo}{dd.decide && <> Ato sugerido: <strong>{dd.atoSugerido}</strong>.{dd.minutaSentenciou === false ? " ATENÇÃO: a minuta gerada não indeferiu a inicial nem extinguiu o processo; confira se o ato certo foi minutado." : ""}</>}</>) });
   const fl = result?.avisoFundamentoLegal;
   if (fl?.length) itens.push({ id: "fundamento-legal", tom: "atencao", rotulo: `📚 Fundamento do indeferimento (${fl.length})`, conteudo: caixa("border-amber-300 bg-amber-50 text-amber-900", "aviso-fundamento-legal", <><strong>Conferir o fundamento legal:</strong><ul className="list-disc list-inside">{fl.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></>) });
   const esp = result?.espolioQualificado;

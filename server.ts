@@ -31,6 +31,7 @@ import { textoOcultoDeDocumento, blocoTextoOculto } from './src/utils/pdfTextoOc
 import fs from 'fs';
 import { blocoPerfilMateria } from './src/utils/perfisMateria';
 import { REGRA_ESTRUTURA_POR_ATO } from './src/utils/estruturaDoAto';
+import { detectarDescumprimento, REGRA_DESCUMPRIMENTO_DETERMINACAO, blocoDescumprimentoDetectado } from './src/utils/descumprimentoDeDeterminacao';
 import { REGRAS_MECANICA_JUDICIAL, REGRAS_FIDELIDADE_AUTOS, conferenciasMecanica } from './src/utils/mecanicaJudicial';
 import { corrigirCitacoesDaMinuta, citacoesInexistentes } from './src/utils/localizacaoAutos';
 // Abertura padrão do relatório de TODA minuta (pedido do magistrado). Vale para qualquer área e ato; entra nas etapas 1 e 2 e no Turbo.
@@ -4937,6 +4938,9 @@ const userExplicitActType = embargosSemPeticao ? "auto" : userExplicitActTypeBru
 const tituloDoPrompt = (activePromptTitle || "").toLowerCase();
 const isUserExplicitlyRequestingEmbargos = userExplicitActType.includes("embargo") || ((tituloDoPrompt.includes("embargo") || tituloDoPrompt.includes("aclarat")) && evidenciaEmbargosNosAutos);
 // Certidão de decurso do prazo para o autor dar andamento "sob pena de extinção" e autos conclusos: o ato é a SENTENÇA de extinção (art. 485, III, § 1º, CPC)
+// Descumprimento de determinação com advertência (emenda da inicial não cumprida, diligência não atendida): detecção por texto; só decide o ato quando o prazo venceu e não há peça da parte depois
+let descumprimentoAutos: ReturnType<typeof detectarDescumprimento> = null;
+try { descumprimentoAutos = detectarDescumprimento((accumulatedPdfText || "") + "\n" + (safeProcessText || "")); if (descumprimentoAutos) console.log(`[Assessor Judicial] Descumprimento de determinação detectado nos autos: ${descumprimentoAutos.motivo} (decide: ${descumprimentoAutos.decide})`); } catch { /* a detecção nunca derruba a análise */ }
 const hasAbandonoCertificado = (() => {
     const rx = /certifico\s+que\s+(?:transcorreu|decorreu)[^.]{0,220}(?:nada\s+fez|n[aã]o\s+se\s+manifest|in\s+albis|inerte|quedou-se)/g;
     let ultimo = -1, m: RegExpExecArray | null;
@@ -5067,6 +5071,9 @@ if (isSuspeicaoTeseMatched) {
     if (hasAbandonoCertificado) {
         resolvedActType = "sentenca";
         console.log(`[Assessor Judicial] Auto-detecção preliminar: certidão de decurso do prazo para o autor dar andamento sob pena de extinção. Ato: SENTENÇA (art. 485, III, § 1º, CPC)`);
+    } else if (descumprimentoAutos?.decide) {
+        resolvedActType = "sentenca";
+        console.log(`[Assessor Judicial] Auto-detecção preliminar: descumprimento de determinação com advertência. Ato: ${descumprimentoAutos.atoSugerido}`);
     } else if (hasPendingUrgentDecision) {
         resolvedActType = "decisao";
         console.log(`[Assessor Judicial] Auto-detecção preliminar: Tutela provisória de urgência / pedidos pendentes não apreciados. Ato: DECISÃO INTERLOCUTÓRIA`);
@@ -5399,7 +5406,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
         if (legAutos.bloco) { stage1SystemInstruction += legAutos.bloco; console.log(`[Legislação] etapa 1: ${legAutos.consultados} artigo(s) citado(s) nos autos conferido(s) no Planalto.`); }
         try { const la = await pegarLeiAplicavel(legAutos.conferidos); if (la.bloco) stage1SystemInstruction += la.bloco; } catch { /* sem a lei aplicável: segue só com a conferência */ }
     } catch (e) { console.warn("[Legislação] etapa 1 ignorada:", e); }
-    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const stage1StartTimer = Date.now();
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage1ContentsParts, stage1SystemInstruction) / 10000) * 3000);      // maior para autos grandes
     stage1Response = await gerarComAutosGrandes(generateWithFallbackAndRetry, {
@@ -5503,6 +5510,8 @@ const isStage1DispositivoSentenca = checkIsDispositivoSentenca(stage1Json.dispos
 const isStage1DispositivoSuspeicao = /(?:suspei[çc][ãa]o|impedido|impedimento)[\s\S]{1,80}?(?:foro\s+[íi]ntimo|motivo\s+de\s+foro\s+[íi]ntimo|art(?:igo)?\.?\s*145)/i.test(stage1Json.dispositivo || "") ||
     /(?:suspei[çc][ãa]o|impedido|impedimento)/i.test((stage1Json.actType || "") + " " + (stage1Json.pendingMatter || ""));
 
+// aviso na tela: o descumprimento foi detectado; diz se a minuta da Etapa 1 foi no mesmo sentido (sentença) ou se vale conferir
+const avisoDescumprimento = descumprimentoAutos ? { ...descumprimentoAutos, minutaSentenciou: isStage1DispositivoSentenca } : null;
 if (isSuspeicaoTeseMatched || isStage1DispositivoSuspeicao) {
     resolvedActType = "decisao";
     isSaneamentoDecision = false;
@@ -5768,6 +5777,7 @@ if (executionStage === 1) {
     }
     if ((stage1Response as any)?.autosReduzidos) parsedStage1.autosReduzidos = (stage1Response as any).autosReduzidos;
     if (alertaInjecao) parsedStage1.alertaInjecao = alertaInjecao;
+    if (avisoDescumprimento) parsedStage1.avisoDescumprimento = avisoDescumprimento;
     if (fontesParaTela()) parsedStage1.fontesConsultadas = fontesParaTela();
     try { const trocas = corrigirCitacoesDaMinuta(parsedStage1.minute, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")); if (trocas) parsedStage1.citacoesCorrigidas = trocas; } catch { /* a correção nunca derruba a minuta */ }
     if (coberturaLeitura) parsedStage1.coberturaLeitura = coberturaLeitura;
@@ -6032,7 +6042,7 @@ try {
         else if (leg.falhas.length) console.log(`[Legislação] sem acesso ao Planalto para: ${leg.falhas.join("; ")}.`);
         try { const la = await pegarLeiAplicavel(leg.conferidos); if (la.bloco) stage2SystemInstruction += la.bloco; } catch { /* sem a lei aplicável */ }
     } catch (e) { console.warn("[Legislação] consulta ignorada:", e); }
-    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage2Prompt, stage2SystemInstruction) / 10000) * 3000);
     response = await generateWithFallbackAndRetry({
         apiKey: stage2KeyPool[0] || userApiKey,
@@ -6541,6 +6551,7 @@ if (wasRotated && rotatedKey) {
     }
     if ((stage1Response as any)?.autosReduzidos) parsed.autosReduzidos = (stage1Response as any).autosReduzidos;
     if (alertaInjecao) parsed.alertaInjecao = alertaInjecao;
+    if (avisoDescumprimento) parsed.avisoDescumprimento = avisoDescumprimento;
     if (fontesParaTela()) parsed.fontesConsultadas = fontesParaTela();
     if (coberturaLeitura) parsed.coberturaLeitura = coberturaLeitura;
     try {      // artigos citados que o Planalto mostra como revogados, vetados ou inexistentes
