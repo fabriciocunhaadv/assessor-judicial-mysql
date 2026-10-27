@@ -17,4 +17,6 @@ ok(f1.length === 2, "indeferimento: avisa o § 3º e a falta do art. 330, IV (" 
 const f2 = avisoFundamentoIndeferimento({ dispositivo: "INDEFIRO a petição inicial, art. 321, parágrafo único, c/c art. 330, IV, e art. 485, I, do CPC." });
 ok(f2.length === 0, "fundamento completo: sem aviso");
 ok(avisoFundamentoIndeferimento({ dispositivo: "Julgo procedente o pedido (art. 487, I)." }).length === 0, "sentença de mérito: sem aviso");
+const jecAusente = avisoCompetencia({ header: "JUIZADO ESPECIAL CÍVEL", title: "SENTENÇA", relatorio: "ação de cobrança", dispositivo: "Extingo o processo (art. 51, I, da Lei 9.099/95) e condeno o autor ao pagamento das custas." }, "Classe: PROCEDIMENTO DO JUIZADO ESPECIAL CÍVEL");
+ok(jecAusente === null, "Juizado: custas por ausência do autor (art. 51) não gera aviso");
 process.exit(falhas ? 1 : 0);

@@ -66,7 +66,7 @@ export function avisoJuizadoMateria(minuta: any, autos: string): { juizo: string
   const motivos: string[] = [];
   for (const [re, nome] of MATERIA_FORA_DO_JUIZADO) { const x = re.exec(base); if (x) { motivos.push(`a matéria (“${x[0].toLowerCase()}”) está fora da competência dos Juizados: ${nome} (Lei 9.099/1995, art. 3º, § 2º)`); break; } }
   const disp = typeof m.dispositivo === "string" ? m.dispositivo : "";
-  if (/\b(?:condeno|condenar|arcar|pagamento)\b[^.\n]{0,80}\b(?:custas|honor[áa]rios)/i.test(disp) && !/recorrente|m[áa]-f[ée]|art(?:igo)?\.?\s*5[45]\b/i.test(disp)) motivos.push("o dispositivo condena em custas ou honorários, mas no Juizado não há essa condenação em primeiro grau (Lei 9.099/1995, arts. 54 e 55), salvo recorrente vencido ou litigância de má-fé");
+  if (/\b(?:condeno|condenar|arcar|pagamento)\b[^.\n]{0,80}\b(?:custas|honor[áa]rios)/i.test(disp) && !/recorrente|m[áa]-f[ée]|art(?:igo)?\.?\s*(?:5[145])\b|aus[êe]ncia|ausente|enunciado\s*28/i.test(disp)) motivos.push("o dispositivo condena em custas ou honorários, mas no Juizado não há essa condenação em primeiro grau (Lei 9.099/1995, arts. 54 e 55), salvo recorrente vencido ou litigância de má-fé");
   return motivos.length ? { juizo, motivo: motivos.join("; ") } : null;
 }
 
