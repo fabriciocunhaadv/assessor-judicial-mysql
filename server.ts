@@ -27,7 +27,7 @@ import { descreverCorte, textoDoCorte, CorteArquivo } from './src/utils/corteAut
 import { textoOcultoDeDocumento, blocoTextoOculto } from './src/utils/pdfTextoOculto';
 import fs from 'fs';
 import { blocoPerfilMateria } from './src/utils/perfisMateria';
-import { REGRA_ESTADO_ATUAL, blocoIndiceMovimentacoes, conferenciasEstado } from './src/utils/estadoDosAutos';
+import { REGRA_ESTADO_ATUAL, blocoIndiceMovimentacoes, conferenciasEstado, corrigirPaginasDaMinuta } from './src/utils/estadoDosAutos';
 // Abertura padrão do relatório de TODA minuta (pedido do magistrado). Vale para qualquer área e ato; entra nas etapas 1 e 2 e no Turbo.
 const REGRA_ABERTURA_RELATORIO = `
 
@@ -1509,7 +1509,10 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
         };
 
         if (alertaInjecaoT) (payload as any).alertaInjecao = alertaInjecaoT;
-        try { Object.assign(payload as any, conferenciasEstado(payload, accumulatedText, actType)); } catch { /* a conferência nunca derruba a minuta */ }
+        try {
+            const trocas = corrigirPaginasDaMinuta((payload as any).minute, accumulatedText); if (trocas) (payload as any).paginasCorrigidas = trocas;      // página global do PDF -> página do arquivo
+            Object.assign(payload as any, conferenciasEstado(payload, accumulatedText, actType));
+        } catch { /* a conferência nunca derruba a minuta */ }
         { const f: any = { legislacao: legTurbo.conferidos, naoLocalizados: legTurbo.naoAchados, indisponiveis: legTurbo.falhas, locais: legTurbo.locais, precedentes: [] };
           (payload as any).fontesConsultadas = { ...f, consultado: true }; }
         if (cobT.cobertura) (payload as any).coberturaLeitura = cobT.cobertura;
@@ -6515,7 +6518,9 @@ if (wasRotated && rotatedKey) {
     try {
         const vl = verificarLocalizacoes(parsed?.minute || parsed, (accumulatedPdfText || "") + "\n" + (safeProcessText || ""));
         if (vl && vl.movsInexistentes.length > 0) parsed.avisoLocalizacao = vl;
-        Object.assign(parsed, conferenciasEstado(parsed?.minute || parsed, (accumulatedPdfText || "") + "\n" + (safeProcessText || ""), userExplicitActType));
+        { const autosTxt = (accumulatedPdfText || "") + "\n" + (safeProcessText || ""), alvo = parsed?.minute || parsed;
+          const trocas = corrigirPaginasDaMinuta(alvo, autosTxt); if (trocas) parsed.paginasCorrigidas = trocas;      // página global do PDF -> página do arquivo
+          Object.assign(parsed, conferenciasEstado(alvo, autosTxt, userExplicitActType)); }
     } catch { /* a conferência nunca derruba a minuta */ }
     if (keepAliveInterval) {
         clearInterval(keepAliveInterval);
