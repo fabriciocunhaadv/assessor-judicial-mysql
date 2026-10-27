@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { petitionRouter } from './server/petitionAdvogadoRoutes';
 import { historyRouter } from './server/historyRoutes';
+import { utilizacaoRouter } from './server/utilizacao';
 import { authRouter, exigirSessao } from './server/authRoutes';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
@@ -224,6 +225,7 @@ app.use("/api/db/history", historyRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/db/docs", docsRouter);
 app.use("/api/db/retencao", retencaoRouter);
+app.use("/api/utilizacao", utilizacaoRouter);      // Super Admin: quanto cada pessoa usou o sistema no período
 app.use("/api/fontes/outras", outrasLeisRouter);      // leis estaduais, municipais e outras normas enviadas pelo Super Admin
 app.use("/api/fontes", fontesRouter);
 definirLeitorLocal(lerCopiaLocal);
