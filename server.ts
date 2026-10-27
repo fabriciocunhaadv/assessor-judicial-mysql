@@ -8,6 +8,7 @@ import { petitionRouter } from './server/petitionAdvogadoRoutes';
 import { historyRouter } from './server/historyRoutes';
 import { utilizacaoRouter } from './server/utilizacao';
 import { authRouter, exigirSessao } from './server/authRoutes';
+import { contarUsoNoServidor } from './server/usoNoServidor';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
@@ -505,6 +506,8 @@ const guardarResultado = (id: string, status: number, body: string, dono: string
     while (caixaResultados.size >= 30) caixaResultados.delete(caixaResultados.keys().next().value as string);
     caixaResultados.set(id, { ate: agora + 60 * 60_000, status, body, dono });
 };
+// consumo de IA contado aqui no servidor (tokens e execuções de cada pessoa), quando o app avisa pelo cabeçalho X-Uso-No-Servidor
+app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot"], contarUsoNoServidor((req: any) => isRequestNativeAllowed(req)));
 app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot"], (req: any, res: any, next: any) => {
     const id = String(req.headers["x-progresso-id"] || "").slice(0, 80);
     if (req.method !== "POST" || !id) return next();

@@ -275,7 +275,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
     if (!response.ok) throw new Error(json?.error || 'Falha ao alterar a ata com a IA.');
     if (json?.error) throw new Error(String(json.error));
     if (json?.usage?.totalTokenCount) {
-      recordApiExecution({ label: 'Mesa de Audiência (copiloto da ata)', processNumber: activeHearing.processNumber || 'Audiência', model: json.modelUsed || 'Gemini Flash', promptTokens: json.usage.promptTokenCount, outputTokens: json.usage.candidatesTokenCount, totalTokens: json.usage.totalTokenCount, module: 'audiencia' }).catch(() => {});
+      recordApiExecution({ label: 'Mesa de Audiência (copiloto da ata)', processNumber: activeHearing.processNumber || 'Audiência', model: json.modelUsed || 'Gemini Flash', promptTokens: json.usage.promptTokenCount, outputTokens: json.usage.candidatesTokenCount, totalTokens: json.usage.totalTokenCount, module: 'audiencia', registradoNoServidor: true }).catch(() => {});
     }
     const ops = Array.isArray(json?.data?.operacoes) ? json.data.operacoes : [];
     if (!ops.length) throw new Error(json?.data?.resumo || 'O copiloto não encontrou o que alterar. Reformule o pedido indicando a seção.');
@@ -390,6 +390,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
           outputTokens: resData.usage.candidatesTokenCount,
           totalTokens: resData.usage.totalTokenCount,
           module: 'audiencia',
+          registradoNoServidor: true,
         }).catch((e) => console.warn("Falha ao registrar telemetria de audiência:", e));
       }
 

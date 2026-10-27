@@ -12,23 +12,8 @@ const USAGE_LOGS_KEY = "assessor_api_usage_logs_v2";
 export const DEFAULT_INITIAL_DEPOSIT_BRL = 60.0; // R$ 60,00 Pre-pago Cloud
 export const DEFAULT_CURRENT_BALANCE_BRL = 42.55; // R$ 42,55 saldo inicial
 
-// BRL pricing constants (US$ -> BRL @ R$ 5.75)
-// Gemini 3.7 Flash: Input US$ 0.15/1M (~R$ 0.8625/1M), Output US$ 0.60/1M (~R$ 3.45/1M)
-export const PRICE_PER_MILLION_INPUT_37_BRL = 0.8625;
-export const PRICE_PER_MILLION_OUTPUT_37_BRL = 3.45;
-
-export const calculateCostBrl = (
-  promptTokens: number = 0,
-  outputTokens: number = 0,
-  model: string = "gemini-3.8-flash"
-): number => {
-  const isLite = model.toLowerCase().includes("lite");
-  const inputRate = isLite ? 0.43125 : PRICE_PER_MILLION_INPUT_37_BRL;
-  const outputRate = isLite ? 1.725 : PRICE_PER_MILLION_OUTPUT_37_BRL;
-
-  const cost = (promptTokens * inputRate / 1_000_000) + (outputTokens * outputRate / 1_000_000);
-  return Math.max(0.0001, Number(cost.toFixed(6)));
-};
+import { calculateCostBrl } from "./custoIA";
+export { PRICE_PER_MILLION_INPUT_37_BRL, PRICE_PER_MILLION_OUTPUT_37_BRL, calculateCostBrl } from "./custoIA";
 
 export const getLocalUsageStats = (): ApiUsageStats => {
   try {
@@ -73,6 +58,8 @@ export const recordApiExecution = async (params: {
   module?: ExecutionModuleType;
   /** chave realmente usada na resposta (quando o servidor trocou de chave por cota 429); sem ela vale a chave ativa */
   usedKey?: string;
+  /** o servidor já contou esta execução (rotas de IA com o cabeçalho X-Uso-No-Servidor): aqui só atualiza o que é local, sem gravar de novo no banco */
+  registradoNoServidor?: boolean;
 }): Promise<{ log: LoggedExecution; stats: ApiUsageStats }> => {
   const promptTokens = params.promptTokens || 0;
   const outputTokens = params.outputTokens || 0;
@@ -162,7 +149,7 @@ export const recordApiExecution = async (params: {
 
   // Background persist to Firestore
   if (auth.currentUser) {
-    saveUsageLogToDb(log).catch(() => {});
+    if (!params.registradoNoServidor) saveUsageLogToDb(log).catch(() => {});
     if (nativeAllowed) saveApiUsageStatsToDb(updatedStats).catch(() => {});
 
     // Telemetria Unificada: registra requisições, tokens e módulos tanto para Chave Nativa quanto para Chaves Gratuitas do Usuário
@@ -179,7 +166,8 @@ export const recordApiExecution = async (params: {
       activeKeyLabel: label,
       activeKeySnippet: nativeAllowed ? 'NATIVA' : snippet,
       poolSize: nativeAllowed ? 1 : Math.max(1, allKeys.length),
-      userId: uid
+      userId: uid,
+      pularContadores: params.registradoNoServidor,
     }).catch((err) => console.warn("[TokenTelemetry] Erro ao consolidar cota:", err));
   }
 

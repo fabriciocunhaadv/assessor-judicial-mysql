@@ -390,6 +390,7 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
         outputTokens: candToks,
         totalTokens: totalToks,
         module: 'turbo',
+        registradoNoServidor: true,
       }).catch((telemetryErr) => console.warn("[Turbo] Aviso telemetria:", telemetryErr));
 
       // 1. Salva no Histórico & Dossiês central do sistema (Firestore e cache local)

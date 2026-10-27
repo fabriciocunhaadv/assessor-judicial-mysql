@@ -943,6 +943,7 @@ ${specificInstructions}`
           outputTokens: data.usage.candidatesTokenCount,
           totalTokens: data.usage.totalTokenCount,
           module: 'lupa_magistrado',
+          registradoNoServidor: true,
         }).catch((e) => console.warn("Failed to record audit api execution:", e));
       }
 

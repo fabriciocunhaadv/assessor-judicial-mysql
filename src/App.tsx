@@ -1358,6 +1358,7 @@ export default function App() {
           outputTokens: data.usage.candidatesTokenCount,
           totalTokens: data.usage.totalTokenCount,
           module: 'minuta',
+          registradoNoServidor: true,
           usedKey: (data as any).rotatedKey,
         }).catch((e) => console.warn("Failed to record api execution:", e));
       }

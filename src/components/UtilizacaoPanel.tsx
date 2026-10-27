@@ -7,7 +7,7 @@ interface Linha {
   modulos: Record<string, Uso>; execucoes: number; tokens: number; custo: number; chaveNativa: number; minutasSalvas: number; peticoes360: number; ultimoUso: number;
 }
 interface Resposta {
-  periodo: { de: number; ate: number }; geradoEm: number;
+  periodo: { de: number; ate: number }; geradoEm: number; avisos?: string[];
   totais: { usuariosAtivos: number; usuariosCadastrados: number; execucoes: number; tokens: number; custo: number; minutasSalvas: number; peticoes360: number; porModulo: Record<string, Uso>; semDono: number };
   usuarios: Linha[];
   liberados: { id: string; nome: string; unidade: string; pessoas: { email: string; nome: string; usos: number; ultimoUso: number }[] }[];
@@ -83,6 +83,7 @@ export function UtilizacaoPanel() {
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">
             <div className="text-[10px] uppercase font-bold text-slate-400 mb-1.5">Execuções de IA por módulo</div>
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-200">{MODULOS.map(([m, r]) => <span key={m}>{r}: <strong className="text-white">{num(dados.totais.porModulo[m]?.n || 0)}</strong></span>)}</div>
+            {!!dados.avisos?.length && <p className="text-[11px] text-amber-300 bg-amber-950/40 border border-amber-500/40 rounded-lg p-2 mt-1.5">Parte dos dados não pôde ser lida (o restante está correto): {dados.avisos.join(" · ")}</p>}
             {dados.totais.semDono > 0 && <p className="text-[10px] text-slate-500 mt-1.5">{num(dados.totais.semDono)} registro(s) sem e-mail identificável ficaram fora da conta por pessoa.</p>}
           </div>
 

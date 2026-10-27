@@ -43,9 +43,14 @@ utilizacaoRouter.get("/", async (req: any, res) => {
       return l;
     };
 
-    // 1) execuções de IA registradas (todos os gabinetes)
-    const [logs] = await banco().query<any[]>("SELECT col, data FROM docs WHERE col LIKE 'gabinetes/%/usageLogs' AND updated_at BETWEEN ? AND ? LIMIT 300000", [de, ate]);
+    // cada fonte é lida à parte: se uma falhar, as outras aparecem e o aviso diz qual falhou e por quê (em vez de derrubar a tela inteira)
+    const avisos: string[] = [];
+    const tentar = async (nome: string, f: () => Promise<void>) => { try { await f(); } catch (e: any) { console.error(`[utilizacao] ${nome}:`, e?.message || e); avisos.push(`${nome}: ${String(e?.code || e?.message || e).slice(0, 160)}`); } };
     let semDono = 0;
+
+    // 1) execuções de IA registradas (todos os gabinetes)
+    await tentar("execuções de IA", async () => {
+    const [logs] = await banco().query<any[]>("SELECT col, data FROM docs WHERE col LIKE 'gabinetes/%/usageLogs' AND updated_at BETWEEN ? AND ? LIMIT 300000", [de, ate]);
     for (const r of logs) {
       const d = json(r.data), t = Number(d.timeMs) || 0;
       if (t && (t < de || t > ate)) continue;
@@ -59,22 +64,27 @@ utilizacaoRouter.get("/", async (req: any, res) => {
       if (d.keyType === "native") l.chaveNativa++;
       l.ultimoUso = Math.max(l.ultimoUso, t || Number(d.timeMs) || 0);
     }
+    });
 
     // 2) petições 360° criadas no período
+    await tentar("petições 360°", async () => {
     const [pets] = await banco().query<any[]>("SELECT data FROM docs WHERE col='initial_petitions_history' LIMIT 50000");
     for (const r of pets) {
       const d = json(r.data), t = Number(d.createdAt) || 0, email = String(d.createdByEmail || "").toLowerCase();
       if (!email || t < de || t > ate) continue;
       const l = pegar(email); l.peticoes360++; l.ultimoUso = Math.max(l.ultimoUso, t);
     }
+    });
 
     // 3) minutas salvas no Histórico no período
+    await tentar("minutas salvas", async () => {
     const [hist] = await banco().query<any[]>("SELECT created_by, LOWER(JSON_UNQUOTE(JSON_EXTRACT(data, '$.creatorEmail'))) AS email, COUNT(*) AS n, MAX(`date`) AS ultimo FROM history WHERE `date` BETWEEN ? AND ? GROUP BY created_by, email", [de, ate]);
     for (const r of hist) {
       const email = String(r.email && r.email !== "null" ? r.email : porUid.get(String(r.created_by)) || "").toLowerCase();
       if (!email) { semDono += Number(r.n) || 0; continue; }
       const l = pegar(email); l.minutasSalvas += Number(r.n) || 0; l.ultimoUso = Math.max(l.ultimoUso, Number(r.ultimo) || 0);
     }
+    });
 
     const usuarios = [...linhas.values()].sort((a, b) => (b.execucoes + b.peticoes360 + b.minutasSalvas) - (a.execucoes + a.peticoes360 + a.minutasSalvas) || a.email.localeCompare(b.email));
     const soma = (f: (l: Linha) => number) => usuarios.reduce((n, l) => n + f(l), 0);
@@ -89,9 +99,9 @@ utilizacaoRouter.get("/", async (req: any, res) => {
       { id: "peticao360", nome: "Petição & Defesa 360°", unidade: "petições", pessoas: usuarios.filter((l) => l.peticao360Liberada && l.status !== "fora do cadastro").map((l) => ({ email: l.email, nome: l.nome, usos: l.peticoes360, ultimoUso: l.ultimoUso })) },
       { id: "chave_nativa", nome: "Chave nativa do sistema (IA)", unidade: "execuções com a chave nativa", pessoas: usuarios.filter((l) => l.chaveNativaLiberada && l.status !== "fora do cadastro").map((l) => ({ email: l.email, nome: l.nome, usos: l.chaveNativa, ultimoUso: l.ultimoUso })) },
     ];
-    res.json({ periodo: { de, ate }, geradoEm: agora, totais, usuarios, liberados });
+    res.json({ periodo: { de, ate }, geradoEm: agora, totais, usuarios, liberados, avisos });
   } catch (e: any) {
     console.error("[utilizacao]", e?.message || e);
-    res.status(500).json({ erro: "não foi possível calcular a utilização" });
+    res.status(500).json({ erro: `não foi possível calcular a utilização (${String(e?.code || e?.message || e).slice(0, 160)})` });
   }
 });

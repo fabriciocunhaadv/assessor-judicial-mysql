@@ -58,6 +58,7 @@ if (typeof window !== 'undefined' && !(window as any).__assessorFetchSessao) {
       if (token && url.startsWith('/api/') && !url.startsWith('/api/auth/login') && !url.startsWith('/api/auth/register')) {
         const h = new Headers(opcoes?.headers || {});
         if (!h.has('X-Assessor-Sessao')) h.set('X-Assessor-Sessao', token);
+        h.set('X-Uso-No-Servidor', '1');      // o servidor conta o consumo de IA das rotas de análise (não depende de o navegador gravar)
         return fetchOriginal(entrada, { ...opcoes, headers: h });
       }
     } catch { /* segue sem o cabeçalho */ }

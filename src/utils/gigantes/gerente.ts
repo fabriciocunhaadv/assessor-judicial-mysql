@@ -279,7 +279,7 @@ class Gerente {
       const parte = rota === "/api/gigante-lote" ? "leitura de trecho" : rota === "/api/gigante-fusao" ? "fusão das fichas" : "minuta final";
       void recordApiExecution({
         label: `Processo gigante — ${parte}`, processNumber: j?.numeroProcesso, model: data.modelUsed || data.modelVersion || undefined,
-        promptTokens: u.promptTokenCount, outputTokens: u.candidatesTokenCount, totalTokens: u.totalTokenCount, module: "minuta", usedKey: data.rotatedKey,
+        promptTokens: u.promptTokenCount, outputTokens: u.candidatesTokenCount, totalTokens: u.totalTokenCount, module: "minuta", usedKey: data.rotatedKey, registradoNoServidor: rota === "/api/generate-minute",
       }).catch(() => {});
     } catch { /* o registro de uso nunca pode derrubar a leitura */ }
   }

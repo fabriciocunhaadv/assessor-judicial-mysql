@@ -4381,6 +4381,8 @@ export const recordTokenUsageToDb = async (usageData: {
   userId?: string;
   module?: ExecutionModuleType;
   costBrl?: number;
+  /** o servidor já somou esta execução nos contadores do mês: aqui só atualiza o resumo do próprio usuário (keyTelemetry) */
+  pularContadores?: boolean;
 }): Promise<void> => {
   try {
     const tId = usageData.tenantId || globalTenantId || 'gabinete_default';
@@ -4425,7 +4427,7 @@ export const recordTokenUsageToDb = async (usageData: {
       costBrl: increment(Number((itemCostBrl || 0).toFixed(6))),
     });
     const { costBrl: _c, ...somarSemCusto } = somar() as any;
-    await setDoc(docRef, {
+    if (!usageData.pularContadores) await setDoc(docRef, {
       monthKey,
       tenantId: tId,
       ...somarSemCusto,
