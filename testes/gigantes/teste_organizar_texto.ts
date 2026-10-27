@@ -1,0 +1,24 @@
+import { organizarTextoDaMinuta as o } from "../../src/utils/organizarTextoDaMinuta";
+const erros: string[] = [];
+const disp = "1. HOMOLOGO a regularização da representação processual da executada MARIA EUNICE SUARES BARBOZA, ante a juntada da procuração e substabelecimento (mov. 42, arq. 1 e 2). 2. INDEFIRO o pedido de arquivamento definitivo, nos termos da decisão de mov. 24. 3. INTIME-SE a executada para que, em caso de inadimplemento, proceda à regularização. 4. Cumpra-se, mantendo-se o feito em arquivo provisório até o trânsito em julgado.";
+const d = o(disp, "dispositivo"); const linhas = d.split(/\n\n/);
+if (linhas.length !== 4 || !linhas[0].startsWith("1. HOMOLOGO") || !linhas[1].startsWith("2. INDEFIRO") || !linhas[3].startsWith("4. Cumpra-se") || !linhas[0].includes("(mov. 42, arq. 1 e 2).")) erros.push("itens do dispositivo: " + JSON.stringify(linhas.map((l) => l.slice(0, 30))));
+const jaBom = "1. Expeça-se ofício.\n\n2. Intimem-se as partes.\n\nCumpra-se.";
+if (o(jaBom, "dispositivo") !== jaBom) erros.push("mexeu em texto já formatado");
+const nao = "Conforme o art. 5. Sobre a prova, a Lei 9.099/95. 2. Nada a prover.";
+if (o(nao, "dispositivo") !== nao) erros.push("numeração fora de sequência foi quebrada: " + o(nao, "dispositivo"));
+const esc = "Texto inicial. Determinações à escrivania: 1. Cadastre-se o procurador. 2. Expeçam-se ofícios. Determinações às partes: 1. Fica intimado o réu. 2. Intimem-se.";
+const e = o(esc, "dispositivo");
+if (!e.includes("**Determinações à escrivania:**") || !e.includes("**Determinações às partes:**") || !/\n\n1\. Cadastre-se/.test(e) || !/\n\n2\. Expeçam-se/.test(e)) erros.push("blocos de determinações: " + JSON.stringify(e));
+const rel = Array.from({ length: 9 }, (_, i) => `Trata-se da fase ${i + 1} do feito, conforme a petição (mov. ${i + 10}, arq. 1, p. 1-2), com juntada de documentos e manifestação da parte, nos termos do art. 373 do CPC e da Lei 9.099/95.`).join(" ") + " Após isso, vieram conclusos.";
+const r = o(rel, "relatorio"); const par = r.split("\n\n");
+if (par.length < 3 || par.some((p) => p.length > 900) || par.join(" ").replace(/\s+/g, " ") !== rel.replace(/\s+/g, " ")) erros.push("parágrafos do relatório: " + par.length);
+if (par.some((p) => /\b(?:mov|arq|art)\.$/.test(p))) erros.push("cortou depois de abreviação");
+const simples = "Primeiro parágrafo.\nSegundo parágrafo.\nTerceiro.";
+if (o(simples, "relatorio") !== "Primeiro parágrafo.\n\nSegundo parágrafo.\n\nTerceiro.") erros.push("quebra simples: " + JSON.stringify(o(simples, "relatorio")));
+const fund = "Texto da fundamentação introdutório. ### 1. DA PRELIMINAR O mérito é claro. > *\"Art. 300. A tutela...\"* Segue o texto.";
+const f = o(fund, "fundamentacao");
+if (!f.includes("\n\n### 1. DA PRELIMINAR") || !f.includes("\n\n> *")) erros.push("título/citação em linha própria: " + JSON.stringify(f));
+if (o("", "relatorio") !== "" || o("curto", "relatorio") !== "curto") erros.push("vazio/curto");
+if (erros.length) { console.error(erros.join("\n")); process.exit(1); }
+console.log("OK");

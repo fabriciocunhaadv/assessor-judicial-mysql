@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { AvisosDaMinuta } from "./AvisosDaMinuta";
 import ReactMarkdown from "react-markdown";
+import { organizarTextoDaMinuta } from "../utils/organizarTextoDaMinuta";
 import {
   Copy,
   Check,
@@ -1788,7 +1789,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
                   I - RELATÓRIO
                 </h3>
-                <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{(minute.relatorio || "Dispensado o relatório nos termos do art. 38 da Lei nº 9.099/95.").replace(/\\n/g, '\n')}</ReactMarkdown></div>
+                <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((minute.relatorio || "Dispensado o relatório nos termos do art. 38 da Lei nº 9.099/95.").replace(/\\n/g, '\n'), "relatorio")}</ReactMarkdown></div>
               </div>
 
               {/* Section 2: Fundamentação */}
@@ -1796,7 +1797,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
                   II - FUNDAMENTAÇÃO
                 </h3>
-                <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{(minute.fundamentacao || "Fundamentação jurídica nos autos.").replace(/\\n/g, '\n')}</ReactMarkdown></div>
+                <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((minute.fundamentacao || "Fundamentação jurídica nos autos.").replace(/\\n/g, '\n'), "fundamentacao")}</ReactMarkdown></div>
               </div>
 
               {/* Section 3: Dispositivo */}
@@ -1804,7 +1805,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
                   III - DISPOSITIVO
                 </h3>
-                <div className="text-justify text-slate-900 leading-relaxed font-medium markdown-body bg-transparent"><ReactMarkdown>{(minute.dispositivo || "Dispositivo do ato judicial.").replace(/\\n/g, '\n')}</ReactMarkdown></div>
+                <div className="text-justify text-slate-900 leading-relaxed font-medium markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((minute.dispositivo || "Dispositivo do ato judicial.").replace(/\\n/g, '\n'), "dispositivo")}</ReactMarkdown></div>
               </div>
 
               {/* Closing */}
@@ -1976,7 +1977,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
                   I - RELATÓRIO
                 </h3>
-                <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{(originalMinute.relatorio || "Dispensado o relatório nos termos do art. 38 da Lei nº 9.099/95.").replace(/\\n/g, '\n')}</ReactMarkdown></div>
+                <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((originalMinute.relatorio || "Dispensado o relatório nos termos do art. 38 da Lei nº 9.099/95.").replace(/\\n/g, '\n'), "relatorio")}</ReactMarkdown></div>
               </div>
 
               {/* Section 2: Fundamentação */}
@@ -1984,7 +1985,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
                   II - FUNDAMENTAÇÃO
                 </h3>
-                <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{(originalMinute.fundamentacao || "Fundamentação jurídica nos autos.").replace(/\\n/g, '\n')}</ReactMarkdown></div>
+                <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((originalMinute.fundamentacao || "Fundamentação jurídica nos autos.").replace(/\\n/g, '\n'), "fundamentacao")}</ReactMarkdown></div>
               </div>
 
               {/* Section 3: Dispositivo */}
@@ -1992,7 +1993,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
                   III - DISPOSITIVO
                 </h3>
-                <div className="text-justify text-slate-900 leading-relaxed font-medium markdown-body bg-transparent"><ReactMarkdown>{(originalMinute.dispositivo || "Dispositivo do ato judicial.").replace(/\\n/g, '\n')}</ReactMarkdown></div>
+                <div className="text-justify text-slate-900 leading-relaxed font-medium markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((originalMinute.dispositivo || "Dispositivo do ato judicial.").replace(/\\n/g, '\n'), "dispositivo")}</ReactMarkdown></div>
               </div>
 
               {/* Closing */}
@@ -2712,17 +2713,17 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
 
                           <div className="space-y-1">
                             <p className="font-sans font-bold text-[10px] text-slate-800 uppercase border-b border-slate-200 pb-0.5">I - RELATÓRIO</p>
-                            <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{(msg.updatedMinute.relatorio || minute.relatorio || "Dispensado o relatório nos termos do art. 38 da Lei nº 9.099/95.").replace(/\\n/g, '\n')}</ReactMarkdown></div>
+                            <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((msg.updatedMinute.relatorio || minute.relatorio || "Dispensado o relatório nos termos do art. 38 da Lei nº 9.099/95.").replace(/\\n/g, '\n'), "relatorio")}</ReactMarkdown></div>
                           </div>
 
                           <div className="space-y-1">
                             <p className="font-sans font-bold text-[10px] text-slate-800 uppercase border-b border-slate-200 pb-0.5">II - FUNDAMENTAÇÃO</p>
-                            <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{(msg.updatedMinute.fundamentacao || minute.fundamentacao || "Fundamentação jurídica nos autos.").replace(/\\n/g, '\n')}</ReactMarkdown></div>
+                            <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((msg.updatedMinute.fundamentacao || minute.fundamentacao || "Fundamentação jurídica nos autos.").replace(/\\n/g, '\n'), "fundamentacao")}</ReactMarkdown></div>
                           </div>
 
                           <div className="space-y-1">
                             <p className="font-sans font-bold text-[10px] text-slate-800 uppercase border-b border-slate-200 pb-0.5">III - DISPOSITIVO</p>
-                            <div className="text-justify text-slate-950 font-semibold leading-relaxed bg-emerald-50/50 p-1.5 rounded border-l-2 border-slate-800 markdown-body bg-transparent"><ReactMarkdown>{(msg.updatedMinute.dispositivo || minute.dispositivo || "Dispositivo do ato judicial.").replace(/\\n/g, '\n')}</ReactMarkdown></div>
+                            <div className="text-justify text-slate-950 font-semibold leading-relaxed bg-emerald-50/50 p-1.5 rounded border-l-2 border-slate-800 markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((msg.updatedMinute.dispositivo || minute.dispositivo || "Dispositivo do ato judicial.").replace(/\\n/g, '\n'), "dispositivo")}</ReactMarkdown></div>
                           </div>
 
                           <div className="text-center font-sans font-semibold text-[10px] text-slate-600 pt-2 border-t border-slate-200">
