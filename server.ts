@@ -218,6 +218,10 @@ function getActiveCabinetTeses(cabinetTesesText: any, isTesesEnabled: any, caseC
     return effectiveBase;
 }
 
+// Um erro solto (promessa sem tratamento, exceção fora de uma rota) derrubava o processo inteiro: a hospedagem devolvia "erro 500" sem mensagem a quem estava usando. Agora vai para o log e o servidor segue.
+process.on("unhandledRejection", (e: any) => console.error("[erro não tratado — promessa]", e?.stack || e));
+process.on("uncaughtException", (e: any) => console.error("[erro não tratado — exceção]", e?.stack || e));
+
 const app = express();
 const PORT = 3000;
 
@@ -1661,6 +1665,11 @@ app.post("/api/audit-assessor-draft", async (req, res) => {
             return res.status(400).json({ error: "O texto da minuta do assessor é obrigatório para auditoria." });
         }
 
+        // A auditoria leva vários minutos (3 etapas): a resposta é mantida viva por pulsos para o servidor de hospedagem não cortar a conexão (corte = "erro 500" sem mensagem).
+        // Daqui em diante o erro também vai no corpo JSON ({ error }), que a tela já sabe ler.
+        manterViva(res);
+        const tLupa0 = Date.now(), marcaLupa = (e: string) => console.log(`[Lupa do Magistrado] ${e} (${Math.round((Date.now() - tLupa0) / 1000)}s desde o início)`);
+
         // 1. Deduplicação Inteligente e Limpeza dos Autos na Lupa do Magistrado
         let accumulatedProcessText = (processText || "").trim();
         let totalDuplicatesFound = 0;
@@ -1897,12 +1906,14 @@ CRITÉRIOS DE PONTUAÇÃO (SCORE):
 
         // CONFORMIDADE NORMATIVA: as súmulas/teses de maior aderência e a lei aplicável ao caso (texto oficial) entram na auditoria; a IA diz se a minuta as seguiu e o código só aceita itens da lista
         const listaNormL: Array<{ tipo: "sumula" | "lei"; rotulo: string; chaves: string[]; texto: string }> = [];
-        let blocoNormL = "";
-        try {
+        let blocoNormL = "", normCancelada = false;
+        marcaLupa("etapa 1 pronta; montando conformidade normativa");
+        try { await Promise.race([(async () => {
             const ctxL = [String(safeProcessText || "").slice(0, 150000), String(draftText || "")].join("\n");
             const [anexL] = await Promise.all([listarPrecedentes().catch(() => [] as any[])]);
             const precsL = matchApplicableBindingPrecedents(ctxL, anexL).slice(0, 5);
             const leiL = await legislacaoAplicavelAoCaso(ctxL, { maxArtigos: 8, timeoutMs: 6000, regimesExtras: await listarRegimes().catch(() => []) });
+            if (normCancelada) return;      // estourou o tempo: a auditoria já seguiu sem este bloco
             for (const pr of precsL) listaNormL.push({ tipo: "sumula", rotulo: `${pr.tribunal} • ${pr.number}`, chaves: [normBusca(pr.number)], texto: String(pr.statement || "") });
             for (const art of leiL.artigos) { const i = art.lastIndexOf(", art. "); if (i > 0) listaNormL.push({ tipo: "lei", rotulo: art, chaves: [normBusca("art. " + art.slice(i + 7).split(/\s/)[0]), normBusca(art.slice(0, i).replace(/\s*\(.*?\)\s*/g, " "))], texto: art }); }
             if (precsL.length || leiL.bloco) {
@@ -1910,7 +1921,9 @@ CRITÉRIOS DE PONTUAÇÃO (SCORE):
                     (precsL.length ? precsL.map((pr, i) => `${i + 1}. [${pr.tribunal} • ${pr.number} - ${pr.title}]: "${pr.statement}"`).join("\n") + "\n" : "") + (leiL.bloco || "") +
                     `\n\nINSTRUÇÃO ADICIONAL: além dos campos do esquema, inclua no JSON o campo "conformidadeNormativa": array de {"tipo":"sumula"|"lei","referencia":"exatamente como listado acima (ex.: 'STJ • Súmula 297' ou 'Código de Defesa do Consumidor (Lei 8.078/1990), art. 14')","aplicavel":true|false,"seguida":true|false,"trechoDaMinuta":"trecho LITERAL da minuta que mostra como ela tratou o tema","observacao":"até 40 palavras"}. Inclua SOMENTE itens desta lista e só os que se aplicam aos fatos dos autos (aplicavel=true). "seguida":true quando a minuta adota o entendimento ou aplica o dispositivo; false quando decide em sentido contrário ou ignora o tema. Não invente súmula nem artigo fora da lista.`;
             }
-        } catch (eNorm) { console.warn("[Lupa do Magistrado] Conformidade normativa indisponível:", (eNorm as any)?.message || eNorm); }
+        })(), new Promise((_, rej) => setTimeout(() => rej(new Error("tempo esgotado (8 s)")), 8000))]);
+        } catch (eNorm) { normCancelada = true; listaNormL.length = 0; blocoNormL = ""; console.warn("[Lupa do Magistrado] Conformidade normativa indisponível (a auditoria segue sem ela):", (eNorm as any)?.message || eNorm); }
+        marcaLupa("conformidade normativa resolvida");
 
         const auditUserPrompt = `${fichaFeita ? `FICHA DOS AUTOS (mapa levantado na etapa 1; confirme nos autos):\n${fichaAutos}\n\n----------------------------------------\n` : ''}AUTOS DO PROCESSO:\n${safeProcessText || 'Texto dos autos não fornecido.'}
 
@@ -1947,7 +1960,9 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
             }
         };
 
+        marcaLupa("enviando a auditoria (etapa 2) à IA");
         const response = await generateWithFallbackAndRetry(options);
+        marcaLupa("auditoria devolvida pela IA");
         const responseText = response.text || "{}";
         const parsed = safeParseObj(responseText) || {};
         setProg(progIdL, "Etapa 3 de 3 — validando as provas e conferindo por código…", 88, 98);

@@ -878,6 +878,7 @@ ${specificInstructions}`
       } catch (e) {
         throw new Error("O servidor retornou um formato inválido.");
       }
+      if ((data as any)?.error && typeof (data as any).score !== "number") throw new Error(String((data as any).error));      // a resposta é mantida viva por pulsos: o erro vem no corpo
       if (dossie) data = { ...data, gigante: { ...dossie.info, omitidas: [], abreviadas: [] }, alertaInjecao: dossie.injecao?.verificado ? (dossie.injecao as any) : data.alertaInjecao } as any;
       setAuditResult(data);
       if (data.systemGeneratedMinute) {
@@ -1192,6 +1193,7 @@ ${specificInstructions}`
       } catch (e) {
         throw new Error("O servidor retornou um formato inválido ao re-auditar.");
       }
+      if ((data as any)?.error && typeof (data as any).score !== "number") throw new Error(String((data as any).error));      // erro no corpo (resposta mantida viva por pulsos)
 
       const rootParentId = reAuditSourceRecord.parentAuditId || reAuditSourceRecord.id;
 
