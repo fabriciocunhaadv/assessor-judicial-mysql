@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
+import { BotaoVerLei } from "./VisualizadorLei";
 
 interface Resumo { id: string; esfera: string; ente: string; tipo: string; numero: string; ano: number; titulo: string; salvoEm: number; artigos: number; noCatalogo?: { id: string; nome: string } | null }
 interface Linha { chave: string; arquivo: File; formato: "" | "texto"; bytes: ArrayBuffer; esfera: string; ente: string; tipo: string; numero: string; ano: string; titulo: string; artigos: number; amostra: string; estado: "lendo" | "pronto" | "salvando" | "salvo" | "erro"; msg: string }
@@ -96,6 +97,7 @@ export const OutrasLeisTab: React.FC = () => {
               <div className="flex-1 min-w-[220px]"><p className="font-semibold text-[12px]">{rotulo(l)}</p>{l.titulo && <p className="text-[11px] text-slate-500">{l.titulo}</p>}</div>
               <span className="text-[11px] text-slate-600">{l.artigos} artigos · enviada em {new Date(l.salvoEm).toLocaleDateString("pt-BR")}</span>
               {l.noCatalogo && <button onClick={() => void promover(l)} title={`Esta lei federal pertence à lista do Planalto (${l.noCatalogo.nome})`} className={`${btn} bg-[#673de6] text-white`}>Mover para a lista do Planalto</button>}
+              <BotaoVerLei caminho={`/api/fontes/outras/${encodeURIComponent(l.id)}/texto`} titulo={`Ver o texto guardado: ${rotulo(l)}`} />
               <button onClick={() => void excluir(l)} className={`${btn} bg-white border border-red-300 text-red-700`}>Excluir</button>
             </div>
           ))}

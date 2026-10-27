@@ -310,6 +310,17 @@ const soSuper = (req: any, res: express.Response): boolean => { if (!req.usuario
 fontesRouter.post("/reconhecer", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ resultados: await reconhecer() }); } catch (e: any) { res.status(500).json({ erro: "falha no teste" }); } });
 fontesRouter.get("/leis", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ leis: await listarResumoLeis() }); } catch { res.status(500).json({ erro: "não consegui ler o banco" }); } });
 fontesRouter.post("/leis/:id/atualizar", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ lei: await importarLei(req.params.id) }); } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.message || "falha" }); } });
+/** Texto guardado de uma lei do Planalto (para o Super Admin visualizar): uma linha por item, como foi salvo, mais o estado de revogados/vetados que o sistema reconheceu. Só leitura. */
+fontesRouter.get("/leis/:id/texto", async (req, res) => {
+  if (!soSuper(req, res)) return;
+  try {
+    const cfg = LEIS.find((l) => l.id === req.params.id); if (!cfg) return void res.status(404).json({ erro: "lei desconhecida" });
+    const copia = await lerCopiaLocal(chaveDaLei(cfg));
+    if (!copia) return void res.status(404).json({ erro: "esta lei ainda não tem texto guardado (baixe pelo site ou envie o arquivo)" });
+    const estado = await estadoDaLei(cfg.id);
+    res.json({ id: cfg.id, titulo: cfg.nome, salvoEm: copia.salvoEm, linhas: copia.linhas, reconhecidos: { revogados: Object.keys(estado?.r || {}).length, vetados: Object.keys(estado?.v || {}).length } });
+  } catch { res.status(500).json({ erro: "não consegui ler o texto guardado" }); }
+});
 /** Arquivo de lei salvo no navegador (Ctrl+S na página do Planalto): o servidor lê e guarda só o estado compacto. Corpo = bytes do arquivo. */
 fontesRouter.post("/leis/importar-arquivo", express.raw({ type: () => true, limit: "30mb" }), async (req, res) => {
   if (!soSuper(req, res)) return;

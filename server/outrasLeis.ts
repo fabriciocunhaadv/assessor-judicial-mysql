@@ -163,6 +163,15 @@ outrasLeisRouter.post("/", corpoBruto, async (req: any, res) => {
   } catch (e: any) { res.status(500).json({ erro: e?.message || "falha ao gravar" }); }
 });
 /** Move uma lei já enviada aqui para a lista do Planalto (quando ela é uma das leis federais da lista). */
+/** Texto guardado de uma lei estadual/municipal/outra (visualização do Super Admin). Só leitura. */
+outrasLeisRouter.get("/:id/texto", async (req: any, res) => {
+  if (!soSuper(req, res)) return;
+  try {
+    const lei = (await carregar()).find((l) => l.id === String(req.params.id));
+    if (!lei || !lei.gz) return void res.status(404).json({ erro: "lei não encontrada" });
+    res.json({ id: lei.id, titulo: rotuloDaLei(lei), salvoEm: lei.salvoEm, linhas: gunzipSync(Buffer.from(lei.gz, "base64")).toString("utf-8").split("\n"), reconhecidos: null });
+  } catch { res.status(500).json({ erro: "não consegui ler o texto guardado" }); }
+});
 outrasLeisRouter.post("/:id/promover", async (req: any, res) => {
   if (!soSuper(req, res)) return;
   try {

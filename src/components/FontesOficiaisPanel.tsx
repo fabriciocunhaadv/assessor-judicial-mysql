@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getApiHeaders } from "../utils/apiKeyManager";
 import { OutrasLeisTab } from "./OutrasLeisTab";
+import { BotaoVerLei } from "./VisualizadorLei";
 
 interface Resultado { id: string; grupo: string; nome: string; url: string; status: number; urlFinal?: string; tipo?: string; bytes?: number; ms?: number; amostra?: string; linhas?: number; erro?: string; bloqueio?: string; leitura?: { artigos: number; revogados: number; vetados: number } }
 interface Lei { id: string; nome: string; url: string; baixadoEm?: number; total?: number; revogados?: number; vetados?: number; erro?: string }
@@ -185,6 +186,7 @@ export const FontesOficiaisPanel: React.FC = () => {
                           {l.erro && <span className="text-red-700 block">Falha: {l.erro}</span>}
                         </div>
                         <div className="flex items-center gap-1.5">
+                          {pronta(l) && <BotaoVerLei caminho={`/api/fontes/leis/${encodeURIComponent(l.id)}/texto`} titulo={`Ver o texto guardado: ${l.nome}`} />}
                           <button onClick={() => escolherParaLei(l.id)} className={`${btn} bg-[#673de6] text-white`} title="Enviar o arquivo salvo desta lei (não precisa ter o nome certo)">{pronta(l) ? "Reenviar arquivo" : "Enviar arquivo"}</button>
                           <button disabled={!!atualizando || !!lote} onClick={() => atualizar(l.id)} className={`${btn} bg-white border border-slate-300 text-slate-600`}>{atualizando === l.id ? "..." : "Atualizar pelo site"}</button>
                         </div>
