@@ -27,6 +27,7 @@ import { descreverCorte, textoDoCorte, CorteArquivo } from './src/utils/corteAut
 import { textoOcultoDeDocumento, blocoTextoOculto } from './src/utils/pdfTextoOculto';
 import fs from 'fs';
 import { blocoPerfilMateria } from './src/utils/perfisMateria';
+import { REGRA_ESTADO_ATUAL, blocoIndiceMovimentacoes, conferenciasEstado } from './src/utils/estadoDosAutos';
 // Abertura padrão do relatório de TODA minuta (pedido do magistrado). Vale para qualquer área e ato; entra nas etapas 1 e 2 e no Turbo.
 const REGRA_ABERTURA_RELATORIO = `
 
@@ -80,7 +81,7 @@ DIRETRIZES DE RIGOR JURÍDICO, EXAUSTIVIDADE E EXTRAÇÃO PROBATÓRIA (ART. 489,
    - Se uma parte alegar um fato (ex.: dano material, despesas extraordinárias de farmácia, desemprego, recusa de atendimento, gastos médicos), mas NÃO houver documento comprobatório acostado no PDF, consigne expressamente a ausência probatória nos autos e fundamente a rejeição ou acolhimento com fulcro no ônus probatório (art. 373, inciso I ou II, do CPC).
 
 2. PROTOCOLO DE TRÍPLICE LOCALIZAÇÃO PROCESSUAL:
-   - Ao citar qualquer peça, petição, manifestação, certidão ou prova documental, indique obrigatoriamente a tríplice localização: '(Mov. X, Arq. Y, Pág. Z / Fls. Z)'.
+   - Ao citar qualquer peça, petição, manifestação, certidão ou prova documental, indique obrigatoriamente a tríplice localização: '(Mov. X, Arq. Y, Pág. Z)'. Nunca use "Fls." nem o número do marcador "[Página X de Y]".
    - Extraia com exatidão onde o documento está anexado nos autos eletrônicos (Projudi/PJe).
    - ${REGRA_LOCALIZACAO_AUTOS}
 
@@ -1302,7 +1303,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
                 { role: "user", parts: [{ text: userPrompt }, ...cobT.partes] }
             ],
             config: {
-                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
+                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRA_ESTADO_ATUAL + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + blocoIndiceMovimentacoes(accumulatedText) + defesaInjecaoT + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
                 temperature: 0.1,
                 maxOutputTokens: 8192,
                 responseMimeType: "application/json",
@@ -1508,6 +1509,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
         };
 
         if (alertaInjecaoT) (payload as any).alertaInjecao = alertaInjecaoT;
+        try { Object.assign(payload as any, conferenciasEstado(payload, accumulatedText, actType)); } catch { /* a conferência nunca derruba a minuta */ }
         { const f: any = { legislacao: legTurbo.conferidos, naoLocalizados: legTurbo.naoAchados, indisponiveis: legTurbo.falhas, locais: legTurbo.locais, precedentes: [] };
           (payload as any).fontesConsultadas = { ...f, consultado: true }; }
         if (cobT.cobertura) (payload as any).coberturaLeitura = cobT.cobertura;
@@ -3487,7 +3489,7 @@ function inferTpuCnjMovement(resolvedActType: string, title: string, dispositivo
     // É TERMINANTEMENTE PROIBIDO rotular a minuta como "DESPACHO" ou aplicar TPU de mero expediente (11010/60).
     const isSentencaByDispositivo = checkIsDispositivoSentenca(dispositivo);
     const isActSentenca = isSentencaByDispositivo || resolvedActType === "sentenca" || tLower.includes("senten");
-    const isActDecisao = !isActSentenca && (resolvedActType === "decisao" || tLower.includes("decis") || dLower.includes("tutela de urgência") || dLower.includes("tutela de urgencia") || dLower.includes("tutela provisória") || dLower.includes("liminar") || dLower.includes("alimentos provisórios") || dLower.includes("saneamento"));
+    const isActDecisao = !isActSentenca && (resolvedActType === "decisao" || tLower.includes("decis") || dLower.includes("tutela de urgência") || dLower.includes("tutela de urgencia") || dLower.includes("tutela provisória") || /\bliminar\b/.test(dLower) || dLower.includes("alimentos provisórios") || dLower.includes("saneamento"));
 
     // Validação estrita de TPU existente (rawTpu):
     if (rawTpu && typeof rawTpu === 'object' && rawTpu.codigoTpu && rawTpu.descricaoMovimento) {
@@ -3574,6 +3576,19 @@ function inferTpuCnjMovement(resolvedActType: string, title: string, dispositivo
 
     // 2. Decisões Interlocutórias
     if (isActDecisao) {
+        const tutelaExplicita = /\btutela\b|\bliminar(?:mente)?\b|urg[eê]ncia/.test(dLower);      // "preliminares" não conta como liminar      // saneamento só vem primeiro quando o dispositivo não trata de tutela
+        if (!tutelaExplicita && (dLower.includes("saneamento") || dLower.includes("saneador") || dLower.includes("fixo os pontos controvertidos") || dLower.includes("art. 357"))) {
+            return {
+                codigoTpu: "480",
+                descricaoMovimento: "Decisão - Decisão de Saneamento e Organização do Processo (art. 357 CPC)",
+                tipoAto: "Decisão Interlocutória",
+                subtipoResultado: "Saneamento do Processo",
+                prazoSecretaria: "5 dias úteis para pedidos de esclarecimento (art. 357, § 1º, CPC)",
+                filaProjudi: "Aguardando Estabilização do Saneamento / Instrução",
+                observacoesLancamento: "Lançar código TPU 480 no PROJUDI. Pautar instrução ou abrir vista ao perito."
+            };
+        }
+
         const isDeferida = (
             dLower.includes("defiro") ||
             dLower.includes("concedo") ||
@@ -3584,14 +3599,13 @@ function inferTpuCnjMovement(resolvedActType: string, title: string, dispositivo
             dLower.includes("concedida")
         ) && (
             dLower.includes("tutela") ||
-            dLower.includes("liminar") ||
+            /\bliminar\b/.test(dLower) ||
             dLower.includes("urgência") ||
             dLower.includes("urgencia") ||
-            dLower.includes("alimento") ||
-            dLower.includes("guarda") ||
-            dLower.includes("medida") ||
-            dLower.includes("provisória") ||
-            dLower.includes("provisoria")
+            dLower.includes("tutela provisória") ||
+            dLower.includes("tutela provisoria") ||
+            dLower.includes("alimentos provisórios") ||
+            dLower.includes("alimentos provisorios")
         );
 
         if (isDeferida) {
@@ -3614,12 +3628,11 @@ function inferTpuCnjMovement(resolvedActType: string, title: string, dispositivo
             dLower.includes("ausentes os requisitos")
         ) && (
             dLower.includes("tutela") ||
-            dLower.includes("liminar") ||
+            /\bliminar\b/.test(dLower) ||
             dLower.includes("urgência") ||
             dLower.includes("urgencia") ||
-            dLower.includes("alimento") ||
-            dLower.includes("guarda") ||
-            dLower.includes("medida")
+            dLower.includes("tutela provisória") ||
+            dLower.includes("alimentos provisórios")
         );
 
         if (isIndeferida) {
@@ -3631,18 +3644,6 @@ function inferTpuCnjMovement(resolvedActType: string, title: string, dispositivo
                 prazoSecretaria: "15 dias úteis",
                 filaProjudi: "Aguardando Citação / Intimação",
                 observacoesLancamento: "Lançar código TPU 26 no PROJUDI. Citar e intimar para contestação ou audiência."
-            };
-        }
-
-        if (dLower.includes("saneamento") || dLower.includes("saneador") || dLower.includes("fixo os pontos controvertidos") || dLower.includes("art. 357")) {
-            return {
-                codigoTpu: "480",
-                descricaoMovimento: "Decisão - Decisão de Saneamento e Organização do Processo (art. 357 CPC)",
-                tipoAto: "Decisão Interlocutória",
-                subtipoResultado: "Saneamento do Processo",
-                prazoSecretaria: "5 dias úteis para pedidos de esclarecimento (art. 357, § 1º, CPC)",
-                filaProjudi: "Aguardando Estabilização do Saneamento / Instrução",
-                observacoesLancamento: "Lançar código TPU 480 no PROJUDI. Pautar instrução ou abrir vista ao perito."
             };
         }
 
@@ -5113,7 +5114,7 @@ function buildActTypeGuidance(targetActType: string, isSaneamento: boolean): str
 - PROIBIÇÃO ABSOLUTA DE DECISÃO SUCINTA, DE 1 PARÁGRAFO OU GENÉRICA: A decisão deve estruturar e sanear exaustivamente o processo, enfrentando minuciosamente cada documento, preliminar, fato controvertido e pedido de prova.
 - No campo 'title', utilize "DECISÃO DE SANEAMENTO E ORGANIZAÇÃO".
 - PROTOCOLO DE TRÍPLICE CITAÇÃO E EXTRAÇÃO PROBATÓRIA REAL:
-  * Toda referência aos autos DEVE conter a tríplice localização: (Mov. X, Arq. Y, Pág. Z / Fls. Z).
+  * Toda referência aos autos DEVE conter a tríplice localização: (Mov. X, Arq. Y, Pág. Z).
   * TRANSCREVA LITERALMENTE ENTRE ASPAS os trechos dos pedidos da inicial, das teses da contestação e das manifestações de provas.
 - ESTRUTURAÇÃO OBRIGATÓRIA DA DECISÃO DE SANEAMENTO EM SUBTÓPICOS (###) BASEADA NOS INCISOS DO ART. 357 DO CPC:
   1. I - RELATÓRIO DA MARCHA PROCESSUAL:
@@ -5143,7 +5144,7 @@ function buildActTypeGuidance(targetActType: string, isSaneamento: boolean): str
 - O ato a ser proferido é uma DECISÃO INTERLOCUTÓRIA (NÃO É SENTENÇA E NÃO É DESPACHO).
 - PROIBIÇÃO ABSOLUTA DE DECISÃO SUCINTA, DE 1 PARÁGRAFO OU GENÉRICA: A decisão deve ser densa, robusta e articulada, enfrentando minuciosamente cada documento, fato e pedido.
 - PROTOCOLO DE TRÍPLICE CITAÇÃO E EXTRAÇÃO PROBATÓRIA REAL:
-  * Toda referência aos autos DEVE conter a tríplice localização: (Mov. X, Arq. Y, Pág. Z / Fls. Z).
+  * Toda referência aos autos DEVE conter a tríplice localização: (Mov. X, Arq. Y, Pág. Z).
   * TRANSCREVA LITERALMENTE ENTRE ASPAS os trechos comprobatórios da urgência, laudos, extratos ou cláusulas contratuais.
   * Se a parte alegar urgência ou dano mas NÃO houver prova documental no PDF, consigne expressamente a ausência do documento nos autos.
 - TRANSCRIÇÃO DE DISPOSITIVOS LEGAIS E PRECEDENTES:
@@ -5186,7 +5187,7 @@ function buildActTypeGuidance(targetActType: string, isSaneamento: boolean): str
 - PROIBIÇÃO ABSOLUTA DE MINUTA SIMPLES, CURTA OU RESUMIDA: Elabore uma peça completa, densa, robusta e pormenorizada, enfrentando todos os pedidos e teses sem economizar espaço ou abreviar fundamentações.
 - No campo 'title', utilize "SENTENÇA".
 - PROTOCOLO DE TRÍPLICE CITAÇÃO PROCESSUAL:
-  * Toda referência a petições, contestações, certidões ou provas documentais DEVE indicar: (Mov. X, Arq. Y, Pág. Z / Fls. Z).
+  * Toda referência a petições, contestações, certidões ou provas documentais DEVE indicar: (Mov. X, Arq. Y, Pág. Z).
 - EXTRAÇÃO PROBATÓRIA REAL E TRANSCRIÇÃO LITERAL:
   * TRANSCREVA LITERALMENTE ENTRE ASPAS os trechos probatórios essenciais: laudos periciais (nomes dos peritos, datas, conclusões literais), cláusulas de contratos bancários/comerciais, conversas, contracheques, certidões e pareceres ministeriais.
   * Se a parte alegar um fato mas NÃO houver documento nos autos, consigne expressamente a ausência da prova com base no ônus do art. 373 do CPC.
@@ -5275,7 +5276,7 @@ DIRETRIZES DE REDAÇÃO DA MINUTA:
 
 2. FUNDAMENTAÇÃO MAGISTRAL, CAPITULAR E EXAUSTIVA (ART. 489, § 1º, DO CPC - NUNCA REDUZA OU SINTETIZE PARA ECONOMIZAR ESPAÇO):
    - A análise DEVE ser completa, aprofundada e confiável, estruturada obrigatoriamente em SUBTÓPICOS NUMERADOS (### 1., ### 2., ### 3.).
-   - PROTOCOLO DE TRÍPLICE CITAÇÃO: Cada documento citado deve conter (Mov. X, Arq. Y, Pág. Z / Fls. Z).
+   - PROTOCOLO DE TRÍPLICE CITAÇÃO: Cada documento citado deve conter (Mov. X, Arq. Y, Pág. Z).
    - TRANSCRIÇÃO DE TRECHOS PROBATÓRIOS: Transcreva entre aspas as conclusões de laudos, cláusulas de contratos, mensagens e certidões fundamentais.
    - TRANSCRIÇÃO DE ARTIGOS DE LEIS E SÚMULAS: Transcreva em bloco destacado (> "Art. ...") o texto dos artigos de lei e das súmulas do STJ/TJGO aplicadas.
    - APLICAÇÃO DO CADERNO DE TESES DO GABINETE: Transcreva a tese vinculante do gabinete e aplique-a ao caso concreto.
@@ -5363,7 +5364,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
         somarFontes(legAutos);
         if (legAutos.bloco) { stage1SystemInstruction += legAutos.bloco; console.log(`[Legislação] etapa 1: ${legAutos.consultados} artigo(s) citado(s) nos autos conferido(s) no Planalto.`); }
     } catch (e) { console.warn("[Legislação] etapa 1 ignorada:", e); }
-    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRA_ESTADO_ATUAL + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura + blocoIndiceMovimentacoes((accumulatedPdfText || "") + "\n" + (safeProcessText || ""));
     const stage1StartTimer = Date.now();
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage1ContentsParts, stage1SystemInstruction) / 10000) * 3000);      // maior para autos grandes
     stage1Response = await gerarComAutosGrandes(generateWithFallbackAndRetry, {
@@ -5994,7 +5995,7 @@ try {
         if (leg.bloco) { stage2SystemInstruction += leg.bloco; console.log(`[Legislação] ${leg.consultados} artigo(s) conferido(s) no Planalto${leg.naoAchados.length ? `; não localizado(s): ${leg.naoAchados.join("; ")}` : ""}.`); }
         else if (leg.falhas.length) console.log(`[Legislação] sem acesso ao Planalto para: ${leg.falhas.join("; ")}.`);
     } catch (e) { console.warn("[Legislação] consulta ignorada:", e); }
-    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRA_ESTADO_ATUAL + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura + blocoIndiceMovimentacoes((accumulatedPdfText || "") + "\n" + (safeProcessText || ""));
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage2Prompt, stage2SystemInstruction) / 10000) * 3000);
     response = await generateWithFallbackAndRetry({
         apiKey: stage2KeyPool[0] || userApiKey,
@@ -6514,6 +6515,7 @@ if (wasRotated && rotatedKey) {
     try {
         const vl = verificarLocalizacoes(parsed?.minute || parsed, (accumulatedPdfText || "") + "\n" + (safeProcessText || ""));
         if (vl && vl.movsInexistentes.length > 0) parsed.avisoLocalizacao = vl;
+        Object.assign(parsed, conferenciasEstado(parsed?.minute || parsed, (accumulatedPdfText || "") + "\n" + (safeProcessText || ""), userExplicitActType));
     } catch { /* a conferência nunca derruba a minuta */ }
     if (keepAliveInterval) {
         clearInterval(keepAliveInterval);
