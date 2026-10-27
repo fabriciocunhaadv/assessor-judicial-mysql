@@ -9,7 +9,7 @@ export const REGRA_ESTADO_ATUAL = `
 3. Ofício ou diligência cumprida com resposta negativa ou que indica outro destinatário exige novo encaminhamento ou dispensa fundamentada; nunca indefira em bloco diligência já deferida.
 4. Decida o pedido de prova na espécie, no objeto e na condição em que foi feito, citando o requerimento.
 5. Pedido de reabertura de prazo: confronte-o com a certidão de decurso e com a decisão que fixou o prazo.
-6. Audiência: não designe data específica; determine à secretaria que a inclua em pauta, depois de cumpridos os prazos e as diligências deferidas ("[data a definir conforme pauta]"). Só use data certa se os autos já a trouxerem.`;
+6. Data de audiência ou de ato: posterior à conclusão, com antecedência para as intimações, ou "[data a definir conforme pauta]".`;
 
 const textoDe = (m: any): string => { try { return typeof m === "string" ? m : JSON.stringify(m || {}); } catch { return ""; } };
 const MOV_CITADA = /Mov(?:imenta[cç][aã]o|imentos)?s?\.?\s*(\d{1,4})((?:\s*(?:,|e|a)\s*\d{1,4})*)/gi;
@@ -48,44 +48,6 @@ export function citacoesInvalidas(minuta: any, autos: string): string[] | null {
     if (movs.has(Number(c[1])) && (total === undefined || Number(c[3]) > total)) ruins.add(c[0].replace(/\s+/g, " "));
   }
   return [...ruins].slice(0, 10);
-}
-
-/** Página global do PDF consolidado ("[Página N de M]") -> movimentação, arquivo e página do arquivo, lidos do carimbo do rodapé de cada página. */
-export function mapaPaginasGlobais(autos: string) {
-  const m = new Map<number, { mov: number; arq: number; pag: number }>();
-  for (const p of String(autos || "").split(/(?=\[Página\s+\d{1,4}\s+de\s+\d{1,4}\])/)) {
-    const g = p.match(/^\[Página\s+(\d{1,4})\s+de/); if (!g) continue;
-    const c = [...p.matchAll(/Movimenta[cç][aã]o\s+(\d{1,4})\s*:[^\n]*\n?\s*Arquivo\s+(\d{1,3})\s*:[^\n]*?Pag\.\s*(\d{1,4})\s*\//gi)].pop();      // o carimbo fica no rodapé
-    if (c) m.set(+g[1], { mov: +c[1], arq: +c[2], pag: +c[3] });
-  }
-  return m;
-}
-
-/** Troca a página global pela página do arquivo ("Mov. 120, Arq. 1, Págs. 673 a 680" -> "Págs. 1 a 8"), só quando o Mov. e o Arq. citados batem com o carimbo daquela página. */
-export function corrigirPaginasGlobais(texto: string, autos: string): { texto: string; trocas: number } {
-  if (typeof texto !== "string" || !texto) return { texto, trocas: 0 };
-  const mapa = mapaPaginasGlobais(autos); let trocas = 0;
-  if (!mapa.size) return { texto, trocas };
-  const out = texto.replace(/Mov\.?\s*(\d{1,4})\s*,\s*Arq\.?\s*(\d{1,3})\s*,\s*P[aá]gs?\.?\s*(\d{1,4})(?:\s*(?:a|-|–)\s*(\d{1,4}))?(?!\s*(?:e|,)\s*\d)/gi, (full, mov, arq, p1, p2) => {
-    const g1 = mapa.get(+p1); if (!g1 || g1.mov !== +mov || g1.arq !== +arq) return full;
-    const g2 = p2 ? mapa.get(+p2) : undefined; if (p2 && (!g2 || g2.mov !== +mov || g2.arq !== +arq)) return full;
-    if (g1.pag === +p1 && (!p2 || g2!.pag === +p2)) return full;      // já era a página do arquivo
-    trocas++;
-    return `Mov. ${mov}, Arq. ${arq}, ${p2 ? "Págs." : "Pág."} ${g1.pag}${p2 ? " a " + g2!.pag : ""}`;
-  });
-  return { texto: out, trocas };
-}
-
-/** Aplica a correção de páginas aos textos da minuta (campos string, no próprio objeto). Devolve quantas citações foram corrigidas. */
-export function corrigirPaginasDaMinuta(minuta: any, autos: string): number {
-  if (!minuta || typeof minuta !== "object") return 0;
-  let total = 0;
-  for (const k of Object.keys(minuta)) {
-    if (typeof minuta[k] !== "string") continue;
-    const r = corrigirPaginasGlobais(minuta[k], autos);
-    if (r.trocas) { minuta[k] = r.texto; total += r.trocas; }
-  }
-  return total;
 }
 
 /** Petições, respostas de ofício e certidões posteriores à última decisão que a minuta não cita. */
