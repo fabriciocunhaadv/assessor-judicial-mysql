@@ -14,7 +14,7 @@ export function resumirMovimentacoes(autos: string): ResumoMovimentacoes {
   const t = String(autos || "");
   const nums = new Set<number>();
   for (const l of mapaDeLocalizacao(t).values()) nums.add(l.mov);
-  if (nums.size === 0) for (const m of t.matchAll(/Movimenta[cç][aã]o\s+(\d{1,4})\s*:/gi)) nums.add(+m[1]);
+  for (const m of t.matchAll(/Movimenta[cç][aã]o\s+(\d{1,4})\s*:/gi)) nums.add(+m[1]);      // também as movimentações SEM arquivo (ex.: "Autos Conclusos", "Processo Redistribuído"), que não têm carimbo de página completo
   return { movs: nums.size, ultima: nums.size ? Math.max(...nums) : 0 };
 }
 
@@ -32,7 +32,7 @@ export function dividirParaMapa(autos: string, max = 110_000): ParteDosAutos[] {
     if (!atual.length) return;
     const txt = atual.join("");
     const r = resumirMovimentacoes(txt);
-    const nums = [...mapaDeLocalizacao(txt).values()].map((l) => l.mov);
+    const nums = [...mapaDeLocalizacao(txt).values()].map((l) => l.mov).concat([...txt.matchAll(/Movimenta[cç][aã]o\s+(\d{1,4})\s*:/gi)].map((m) => +m[1]));
     partes.push({ texto: txt, movDe: nums.length ? Math.min(...nums) : 0, movAte: r.ultima });
     atual = []; tam = 0;
   };

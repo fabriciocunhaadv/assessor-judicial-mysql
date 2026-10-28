@@ -28,4 +28,8 @@ ok(a1.some((x) => x.codigo === "questao_atual"), "avisa quando a minuta não men
 const minutaBoa = "Relatório (Mov. 71, Arq. 1, Pág. 1) e decisão (Mov. 148, Arq. 1, Pág. 1) determinaram a avaliação dos imóveis do espólio; delibero sobre a alienação dos imóveis e a avaliação judicial pendente.";
 ok(conferirComMapa(minutaBoa, mapa).length === 0, "não avisa quando a minuta cobre o fim e trata a questão atual");
 ok(conferirComMapa(minutaBoa, null).length === 0 && conferirComMapa("", mapa).length === 0, "sem mapa ou sem minuta: nenhum aviso");
+// caso real (processo 5066786-16.2024): as últimas movimentações ("Processo Redistribuído", "Autos Conclusos") não têm arquivo e a contagem ignorava
+const semArquivo = processo(10) + "[Página 11 de 12]\nAutos Conclusos\n1. A movimentação: ( Autos Conclusos ) não possui \"Arquivos\".\nProcesso: 5066786-16.2024.8.09.0149\nMovimentacao 11 : Processo Redistribuído\n[Página 12 de 12]\nAutos Conclusos\nProcesso: 5066786-16.2024.8.09.0149\nMovimentacao 12 : Autos Conclusos\n";
+const rs = resumirMovimentacoes(semArquivo);
+ok(rs.movs === 12 && rs.ultima === 12, `conta também as movimentações sem arquivo (${rs.movs}/${rs.ultima})`);
 process.exit(falhas ? 1 : 0);
