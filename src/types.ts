@@ -738,6 +738,8 @@ export interface AssessorDraftAuditResult {
   apontamentosDescartados?: number;
   /** Pontos da IA sem prova literal: aparecem para conferência, mas não entram na nota. */
   apontamentosNaoConfirmados?: { severity: string; title: string; description: string; location: string }[];
+  /** Se a conferência com súmulas/teses e leis aplicáveis rodou. Quando não rodou, `motivo` diz por quê (tempo, erro ou sem_base). */
+  normativa?: { conferida: boolean; motivo?: "tempo" | "erro" | "sem_base"; sumulas?: number; leis?: number; respondida?: boolean };
   etapas?: { fichaDosAutos: boolean };
   avisoModelo?: { fraco: boolean; modelo: string; mensagem: string };
   holisticSynopsis?: string;

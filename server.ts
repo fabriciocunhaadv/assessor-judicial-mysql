@@ -1907,6 +1907,7 @@ CRITÉRIOS DE PONTUAÇÃO (SCORE):
         // CONFORMIDADE NORMATIVA: as súmulas/teses de maior aderência e a lei aplicável ao caso (texto oficial) entram na auditoria; a IA diz se a minuta as seguiu e o código só aceita itens da lista
         const listaNormL: Array<{ tipo: "sumula" | "lei"; rotulo: string; chaves: string[]; texto: string }> = [];
         let blocoNormL = "", normCancelada = false;
+        let motivoNormL = "";      // por que a conferência normativa não rodou (só para avisar na tela; não muda a auditoria)
         marcaLupa("etapa 1 pronta; montando conformidade normativa");
         try { await Promise.race([(async () => {
             const ctxL = [String(safeProcessText || "").slice(0, 150000), String(draftText || "")].join("\n");
@@ -1922,8 +1923,10 @@ CRITÉRIOS DE PONTUAÇÃO (SCORE):
                     `\n\nINSTRUÇÃO ADICIONAL: além dos campos do esquema, inclua no JSON o campo "conformidadeNormativa": array de {"tipo":"sumula"|"lei","referencia":"exatamente como listado acima (ex.: 'STJ • Súmula 297' ou 'Código de Defesa do Consumidor (Lei 8.078/1990), art. 14')","aplicavel":true|false,"seguida":true|false,"trechoDaMinuta":"trecho LITERAL da minuta que mostra como ela tratou o tema","observacao":"até 40 palavras"}. Inclua SOMENTE itens desta lista e só os que se aplicam aos fatos dos autos (aplicavel=true). "seguida":true quando a minuta adota o entendimento ou aplica o dispositivo; false quando decide em sentido contrário ou ignora o tema. Não invente súmula nem artigo fora da lista.`;
             }
         })(), new Promise((_, rej) => setTimeout(() => rej(new Error("tempo esgotado (8 s)")), 8000))]);
-        } catch (eNorm) { normCancelada = true; listaNormL.length = 0; blocoNormL = ""; console.warn("[Lupa do Magistrado] Conformidade normativa indisponível (a auditoria segue sem ela):", (eNorm as any)?.message || eNorm); }
+        } catch (eNorm) { normCancelada = true; listaNormL.length = 0; blocoNormL = ""; motivoNormL = /tempo esgotado/.test(String((eNorm as any)?.message || "")) ? "tempo" : "erro"; console.warn("[Lupa do Magistrado] Conformidade normativa indisponível (a auditoria segue sem ela):", (eNorm as any)?.message || eNorm); }
         marcaLupa("conformidade normativa resolvida");
+        if (!motivoNormL && !blocoNormL) motivoNormL = "sem_base";      // nenhuma súmula nem lei cadastrada combinou com o caso
+        const nSumulasNorm = listaNormL.filter((x) => x.tipo === "sumula").length, nLeisNorm = listaNormL.filter((x) => x.tipo === "lei").length;
 
         const auditUserPrompt = `${fichaFeita ? `FICHA DOS AUTOS (mapa levantado na etapa 1; confirme nos autos):\n${fichaAutos}\n\n----------------------------------------\n` : ''}AUTOS DO PROCESSO:\n${safeProcessText || 'Texto dos autos não fornecido.'}
 
@@ -2013,6 +2016,7 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
             procedural: pilarCom(parsed.procedural, nota.rito, "Não avaliado nesta auditoria."),
             criticalAlerts: alertasFinais,
             conformidadeNormativa,
+            normativa: motivoNormL ? { conferida: false, motivo: motivoNormL } : { conferida: true, sumulas: nSumulasNorm, leis: nLeisNorm, respondida: Array.isArray(parsed.conformidadeNormativa) },
             apontamentosDescartados: descartados,
             confrontoMinutaAutos: Array.isArray(parsed.confrontoMinutaAutos) ? parsed.confrontoMinutaAutos : [],
             etapas: { fichaDosAutos: fichaFeita },
