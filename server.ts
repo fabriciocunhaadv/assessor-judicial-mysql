@@ -1615,15 +1615,15 @@ export function alegaCopiaDeOutroProcesso(t: string): boolean {
 }
 
 /** Valida os apontamentos da IA: cada um precisa de prova literal (trecho da minuta e/ou dos autos que realmente existam). Sem prova, é descartado. */
-function validarAlertasIa(brutos: any[], minuta: string, autos: string): { validos: AlertaAuditoria[]; descartados: number; naoConfirmados: { severity: string; title: string; description: string; location: string }[] } {
-    const validos: AlertaAuditoria[] = []; let descartados = 0; const naoConfirmados: { severity: string; title: string; description: string; location: string }[] = [];
+function validarAlertasIa(brutos: any[], minuta: string, autos: string): { validos: AlertaAuditoria[]; descartados: number; naoConfirmados: { severity: string; title: string; description: string; location: string; minutaTrecho?: string }[] } {
+    const validos: AlertaAuditoria[] = []; let descartados = 0; const naoConfirmados: { severity: string; title: string; description: string; location: string; minutaTrecho?: string }[] = [];
     for (const a of Array.isArray(brutos) ? brutos : []) {
         if (/\bTPU\b|tabelas?\s+processuais\s+unificadas|\(CNJ:\s*\d+\)/i.test(`${a?.title || ""} ${a?.description || ""} ${a?.minutaTrecho || ""} ${a?.autosTrecho || ""}`)) continue;      // TPU é auxílio de lançamento no Projudi: não entra na auditoria
         const sev = ["bloqueante", "atencao", "informativo"].includes(a?.severity) ? a.severity : "atencao";
         const tipo = ["contradicao", "omissao", "sem_lastro", "forma"].includes(a?.tipoProva) ? a.tipoProva : (a?.autosTrecho && a?.minutaTrecho ? "contradicao" : "");
         if (alegaCopiaDeOutroProcesso(`${a?.title || ""} ${a?.description || ""}`)) {      // "copiou de outro processo" a IA não consegue provar (precedente transcrito traz outros números e partes): fica à vista, mas não entra na nota
             descartados++;
-            if (String(a?.title || "").trim() && naoConfirmados.length < 8) naoConfirmados.push({ severity: "informativo", title: String(a.title).slice(0, 200), description: ("Observação da IA, sem comprovação pelo sistema: transcrição de precedente, súmula ou ementa é citação normal e não indica cópia de outro processo. " + String(a?.description || "")).slice(0, 600), location: String(a?.location || "").slice(0, 200) });
+            if (String(a?.title || "").trim() && naoConfirmados.length < 8) naoConfirmados.push({ severity: "informativo", title: String(a.title).slice(0, 200), description: ("Observação da IA, sem comprovação pelo sistema: transcrição de precedente, súmula ou ementa é citação normal e não indica cópia de outro processo. " + String(a?.description || "")).slice(0, 600), location: String(a?.location || "").slice(0, 200), minutaTrecho: String(a?.minutaTrecho || "").trim().slice(0, 400) });
             continue;
         }
         const mT = String(a?.minutaTrecho || "").trim(), aT = String(a?.autosTrecho || "").trim();
@@ -1631,7 +1631,7 @@ function validarAlertasIa(brutos: any[], minuta: string, autos: string): { valid
         const prova = tipo === "contradicao" ? okMin && okAut : tipo === "omissao" ? okAut : tipo === "sem_lastro" ? okMin : tipo === "forma" ? okMin : false;
         if (!prova || !String(a?.title || "").trim()) {
             descartados++;
-            if (String(a?.title || "").trim() && naoConfirmados.length < 8) naoConfirmados.push({ severity: sev, title: String(a.title).slice(0, 200), description: String(a?.description || "").slice(0, 600), location: String(a?.location || "").slice(0, 200) });      // fica à vista, mas não entra na nota
+            if (String(a?.title || "").trim() && naoConfirmados.length < 8) naoConfirmados.push({ severity: sev, title: String(a.title).slice(0, 200), description: String(a?.description || "").slice(0, 600), location: String(a?.location || "").slice(0, 200), minutaTrecho: String(a?.minutaTrecho || "").trim().slice(0, 400) });      // fica à vista, mas não entra na nota; o trecho serve para a tela destacar o ponto na minuta
             continue;
         }
         const fix = String(a?.suggestedFix || a?.recommendation || "");

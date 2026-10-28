@@ -394,6 +394,7 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
       }).catch((telemetryErr) => console.warn("[Turbo] Aviso telemetria:", telemetryErr));
 
       // 1. Salva no Histórico & Dossiês central do sistema (Firestore e cache local)
+      let gravouNoHistorico = false, erroDoHistorico = "";
       try {
         const fullAuditItem: SavedAnalysis = {
           id: `turbo-${Date.now()}`,
@@ -435,9 +436,11 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
           chatMessages: [],
           unitId: activeUnitId || getActiveUnitId(),
         };
-        await saveToHistory(fullAuditItem);
-        toast.success("Processo gravado no Histórico & Dossiês! 📁");
+        const gravado = await saveToHistory(fullAuditItem);
+        gravouNoHistorico = gravado.ok; erroDoHistorico = gravado.erro || "";
+        if (gravado.ok) toast.success("Processo gravado no Histórico & Dossiês! 📁");
       } catch (saveErr) {
+        erroDoHistorico = String((saveErr as any)?.message || saveErr || "erro ao gravar");
         console.warn("Aviso ao salvar no Histórico central:", saveErr);
       }
 
@@ -454,7 +457,7 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
         minute: generated,
       };
       setTurboHistory((prev) => [historyEntry, ...prev.slice(0, 99)]);
-      void registrarOperacao({ ...dadosOp(), processo: generated.processNumber, resultado: "ok" });
+      void registrarOperacao({ ...dadosOp(), processo: generated.processNumber, resultado: gravouNoHistorico ? "ok" : "nao_gravado", erro: gravouNoHistorico ? undefined : erroDoHistorico });      // a minuta foi gerada mas não foi gravada: o monitor de operação alerta
     } catch (error: any) {
       clearTimeout(abortTimeout);
       console.error("Erro no Módulo Turbo:", error);

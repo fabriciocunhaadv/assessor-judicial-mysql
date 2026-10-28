@@ -20,7 +20,7 @@ import {
   UserCheck,
   ShieldCheck,
   Key,
-  Puzzle,
+  Puzzle, MonitorSmartphone,
   Layers,
   Crown,
   Award,
@@ -439,6 +439,18 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>{extStatus === "instalada" ? "Extensão do Chrome (instalada)" : "Instalar extensão do Chrome"}</span>
                   </a>
                 )}
+
+                <a
+                  id="btn-header-acesso-remoto"
+                  href="https://github.com/fabriciocunhaadv/remoto/releases/latest/download/RemoteDesk-Windows.zip"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-slate-100 font-semibold text-xs transition cursor-pointer text-left w-full relative"
+                  title="Baixar o programa de acesso remoto para Windows (arquivo .zip)"
+                >
+                  <MonitorSmartphone className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span>Liberar acesso remoto</span>
+                </a>
 
                 {onOpenApiKeyConfig && (
                   <button

@@ -362,6 +362,7 @@ const salvarNoHistoricoInterno = async (analysis: SavedAnalysis): Promise<{ ok: 
       await tirarPendenteDoDisco(analysis.id);
     } catch (err) {
       resultado = { ok: false, erro: descreverErroHistorico(err) };
+      void import("./monitorErros").then((m) => m.registrarErro({ origem: "gravacao", modulo: "historico", mensagem: `Falha ao gravar o ato no Histórico: ${descreverErroHistorico(err)}`, contexto: { tipo: String((analysis as any).promptCategory || ""), etapa: String((analysis as any).currentStage || "") } })).catch(() => {});      // o monitor nunca atrapalha a gravação
       console.warn("Could not save history to Firestore DB:", err);
       pendentesHistorico.set(analysis.id, analysis);
       try { toast.error(`O ato do processo ${analysis.processNumber || ""} foi gerado, mas NÃO foi gravado no Histórico (${descreverErroHistorico(err)}). Vou tentar de novo sozinho enquanto esta aba estiver aberta; copie a minuta se precisar.`, { duration: 25000 }); } catch { /* sem toast */ }

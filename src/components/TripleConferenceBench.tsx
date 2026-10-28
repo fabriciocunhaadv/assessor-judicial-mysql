@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { avisoNotaAntiga } from "../utils/avisoNotaAntiga";
+import { localizarNaMinuta } from "../utils/localizarNaMinuta";
 import {
   Scale,
   Sparkles,
@@ -88,6 +89,30 @@ export const TripleConferenceBench: React.FC<TripleConferenceBenchProps> = ({
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  // Pontos "sem prova literal": destacados na minuta do assessor; o juiz clica na referência e a tela o leva até o trecho
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const marcaRefs = useRef<Record<number, HTMLElement | null>>({});
+  const [foco, setFoco] = useState<number | null>(null);
+  const [folgaBarra, setFolgaBarra] = useState(0), [rolagem, setRolagem] = useState(0);
+  const pontos = React.useMemo(() => (auditResult?.apontamentosNaoConfirmados || []).map((x, i) => ({ i, ponto: localizarNaMinuta(assessorDraftText, { trecho: x.minutaTrecho, local: x.location }) })), [auditResult, assessorDraftText]);
+  const segmentos = React.useMemo(() => {
+    const lista = pontos.filter((p) => p.ponto).map((p) => ({ i: p.i, a: p.ponto!.inicio, b: p.ponto!.fim })).sort((x, y) => x.a - y.a);
+    const out: { texto: string; i: number | null }[] = []; let pos = 0;
+    for (const m of lista) { if (m.a < pos) continue; if (m.a > pos) out.push({ texto: assessorDraftText.slice(pos, m.a), i: null }); out.push({ texto: assessorDraftText.slice(m.a, m.b), i: m.i }); pos = m.b; }
+    if (pos < assessorDraftText.length) out.push({ texto: assessorDraftText.slice(pos), i: null });
+    return out;
+  }, [pontos, assessorDraftText]);
+  const temMarcas = segmentos.some((x) => x.i !== null);
+  useEffect(() => { const t = editorRef.current; if (t) setFolgaBarra(t.offsetWidth - t.clientWidth); }, [assessorDraftText, larg, layoutMode, colAtiva]);
+  const irParaPonto = (i: number) => {
+    if (layoutMode === "pdfFull") setLayoutMode("triple");
+    setColAtiva("minuta"); setFoco(i);
+    setTimeout(() => {
+      const el = marcaRefs.current[i], t = editorRef.current; if (!el || !t) return;
+      t.scrollTop = Math.max(0, el.offsetTop - t.clientHeight / 3); setRolagem(t.scrollTop);
+      try { t.focus({ preventScroll: true }); } catch { /* sem foco */ }
+    }, 60);
+  };
   const [judgeNotes, setJudgeNotes] = useState<string>(currentRecord?.judgeNotes || "");
   const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
   const [feedbackText, setFeedbackText] = useState<string>(
@@ -322,7 +347,10 @@ export const TripleConferenceBench: React.FC<TripleConferenceBenchProps> = ({
                   {Boolean(auditResult.apontamentosNaoConfirmados?.length) && (
                     <div data-testid="nao-confirmados-bancada" className="p-2 rounded-lg border border-amber-500/50 bg-amber-950/40 text-amber-100 text-[11px] space-y-1">
                       <strong>A IA levantou {auditResult.apontamentosNaoConfirmados!.length} ponto(s) sem prova literal.</strong> Não entram na nota; confira nos autos:
-                      <ul className="list-disc pl-4 space-y-0.5">{auditResult.apontamentosNaoConfirmados!.map((x, i) => <li key={i}>{x.title}{x.location ? ` (${x.location})` : ""}</li>)}</ul>
+                      <ul className="list-disc pl-4 space-y-0.5">{auditResult.apontamentosNaoConfirmados!.map((x, i) => {
+                        const achou = !!pontos.find((p) => p.i === i)?.ponto;
+                        return <li key={i}>{x.title}{(x.location || achou) ? <>{" ("}{achou ? <button type="button" data-testid="ir-para-ponto" onClick={() => irParaPonto(i)} title="Destacar este ponto na minuta do assessor e ir até ele" className="underline decoration-dotted underline-offset-2 text-amber-300 hover:text-amber-100 font-semibold cursor-pointer">{x.location || "ver na minuta"} ↗</button> : x.location}{")"}</> : ""}</li>;
+                      })}</ul>
                     </div>
                   )}
                   {auditResult.summary && <p className="text-[12px] text-slate-100 leading-relaxed">{auditResult.summary}</p>}
@@ -459,12 +487,24 @@ export const TripleConferenceBench: React.FC<TripleConferenceBenchProps> = ({
 
           {/* Editor/Visualizador Interativo da Minuta do Assessor */}
           <div className="flex-1 flex flex-col min-h-0 relative bg-slate-950">
-            <textarea
-              value={assessorDraftText}
-              onChange={(e) => onUpdateDraftText(e.target.value)}
-              placeholder="Cole ou edite a minuta do assessor aqui..."
-              className="w-full h-full p-4 bg-transparent border-0 font-mono text-xs text-slate-100 placeholder:text-slate-600 focus:outline-hidden resize-none leading-relaxed select-text scrollbar-thin"
-            />
+            {temMarcas && <div className="px-4 py-1 text-[10px] text-amber-200/90 bg-amber-950/30 border-b border-amber-500/20 shrink-0">Trechos em amarelo: pontos que a IA levantou sem prova literal. Confira antes de aprovar.</div>}
+            <div className="relative flex-1 min-h-0">
+              {temMarcas && (
+                <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
+                  <div style={{ transform: `translateY(${-rolagem}px)`, paddingRight: 16 + folgaBarra }} className="p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words text-transparent">
+                    {segmentos.map((g, k) => g.i === null ? <span key={k}>{g.texto}</span> : <mark key={k} ref={(el) => { marcaRefs.current[g.i as number] = el; }} className={`rounded-sm text-transparent ${foco === g.i ? "bg-amber-400/60 ring-2 ring-amber-300" : "bg-amber-400/30"}`}>{g.texto}</mark>)}
+                  </div>
+                </div>
+              )}
+              <textarea
+                ref={editorRef}
+                value={assessorDraftText}
+                onChange={(e) => onUpdateDraftText(e.target.value)}
+                onScroll={(e) => setRolagem(e.currentTarget.scrollTop)}
+                placeholder="Cole ou edite a minuta do assessor aqui..."
+                className="relative w-full h-full p-4 bg-transparent border-0 font-mono text-xs text-slate-100 placeholder:text-slate-600 focus:outline-hidden resize-none leading-relaxed select-text scrollbar-thin"
+              />
+            </div>
           </div>
 
           {/* Painel de Deliberação e Decisão Judicial do Magistrado */}
