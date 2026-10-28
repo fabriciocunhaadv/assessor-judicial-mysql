@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { chamarAuth } from "../lib/sessao";
 import { useAuth } from "../lib/AuthContext";
-import { alternarTema, temaAtual } from "../utils/tema";
 import { ehDonoDoSistema } from "../utils/donoDoSistema";
 
 interface InfoBanco { motor: string; hospedagem: string; banco?: string; servidor?: string; cadastros?: { tabela: string; porSituacao: Record<string, number> }; tabelas?: { nome: string; descricao: string; linhas: number }[] }
@@ -10,13 +9,11 @@ interface InfoBanco { motor: string; hospedagem: string; banco?: string; servido
 export const BancoBadge: React.FC = () => {
   const { isSuperAdmin, userProfile } = useAuth(), dono = ehDonoDoSistema(userProfile);
   const [aberto, setAberto] = useState(false), [info, setInfo] = useState<InfoBanco | null>(null), [erro, setErro] = useState("");
-  const [tema, setTema] = useState(temaAtual());
   const abrir = async () => { setAberto(true); setErro(""); try { setInfo(await chamarAuth<InfoBanco>("GET", "/banco")); } catch (e: any) { setErro(e.message || "Não foi possível ler as informações do banco."); } };
   const situ: Record<string, string> = { aprovado: "ativos", pendente: "pendentes", recusado: "recusados", desativado: "desativados" };
-  if (!isSuperAdmin) return null;      // selo do banco e botão de tema: só o super administrador
+  if (!isSuperAdmin) return null;      // selo do banco: só o super administrador
   return (
     <>
-      <button id="btn-tema" onClick={() => setTema(alternarTema())} title="Alternar entre o visual Hostinger e o clássico" className="fixed bottom-4 right-44 z-40 px-2.5 py-1.5 rounded-lg bg-white text-[#673de6] border border-[#c9cbd8] text-[11px] font-semibold shadow cursor-pointer hover:bg-[#f5f1ff]">Tema: {tema === "hostinger" ? "Hostinger" : "Clássico"}</button>
       {dono && <button id="btn-banco-info" onClick={abrir} title="Onde estão os dados" className="fixed bottom-4 right-4 z-40 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#673de6] text-white text-[11px] font-semibold shadow-lg cursor-pointer hover:bg-[#5025d1]">
         <span className="w-2 h-2 rounded-full bg-emerald-300" />MySQL · Hostinger
       </button>}

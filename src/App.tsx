@@ -2773,6 +2773,9 @@ export default function App() {
       <footer className="bg-[#0f1724] text-slate-400 text-xs py-3 border-t border-slate-800 mt-auto">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-3">
+            <span data-testid="versao-sistema" title="Versão do sistema no ar" className="text-[11px] text-slate-400 font-mono">
+              versão {__APP_VERSAO__.commit || __APP_VERSAO__.data}
+            </span>
             <button
               onClick={() => setIsPromptManagerOpen(true)}
               className="px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
@@ -2800,14 +2803,6 @@ export default function App() {
             <span className="text-[11px] text-slate-500">
               Assessor Judicial • Sistema de Análise e Minutas Judiciais
             </span>
-            <span data-testid="versao-sistema" title="Versão do sistema no ar (código da atualização e data/hora do deploy)" className="text-[10px] text-slate-600 font-mono">
-              {__APP_VERSAO__.commit ? `v ${__APP_VERSAO__.commit} · ` : "versão de "}{__APP_VERSAO__.data}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 text-[11px] text-slate-400">
-            <span className="inline-block w-2 h-2 rounded-full bg-slate-800"></span>
-            <span>Ambiente Privado de Trabalho</span>
           </div>
         </div>
       </footer>
