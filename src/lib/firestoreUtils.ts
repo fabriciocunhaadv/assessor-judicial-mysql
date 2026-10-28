@@ -4301,7 +4301,8 @@ export const getAllCabinetMonthlyUsage = async (monthKey?: string): Promise<Cabi
           candidatesTokens: uData.candidatesTokens || 0,
           requestCount: uData.requestCount || 0,
           lastUsedAt: uData.lastUsedAt || 0,
-          users: uData.users || {}
+          users: uData.users || {},
+          modules: uData.modules || {}      // sem isto a tela de Tokens não separa Turbo, Lupa, Mesa etc. e joga tudo em "Minutas"
         });
       } else {
         // Gabinete sem consumo registrado no mês
