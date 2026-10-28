@@ -43,6 +43,23 @@ try {
   console.log("descumprimento:", r.status, JSON.stringify(r.j?.avisoDescumprimento || null).slice(0, 200));
   ok(r.status === 200 && r.j?.avisoDescumprimento?.decide === true, "Etapa 1 detecta descumprimento e devolve o aviso");
   // Turbo
+  // mapa do processo (processos com 130 movimentações ou mais)
+  const processoLongo = (n) => Array.from({ length: n }, (_, i) => `[Página ${i + 1} de ${n}]\n[Mov. ${i + 1} · Arq. 1 · Pág. 1/1]\nTexto do ato ${i + 1}. ` + "conteúdo ".repeat(40) + `\nMovimentacao ${i + 1} : ${i + 1 === 148 ? "Decisão" : "Intimação"}\nArquivo 1: a${i + 1}.pdf - Pag.1/1\n`).join("");
+  const longo = processoLongo(157);
+  r = await chamar("/api/mapa-processo", { processText: longo });
+  console.log("mapa:", r.status, r.t.slice(0, 160));
+  ok(r.status === 200 && r.j?.mapa?.estadoAtual?.questaoAtual?.includes("avaliação dos imóveis"), "Mapa do processo: devolve o estado atual");
+  ok(Array.isArray(r.j?.mapa?.eventos) && r.j.mapa.eventos.some((e) => e.mov === 148) && r.j.mapa.eventos.find((e) => e.mov === 37)?.situacao === "cumprido", "Mapa: eventos por movimentação e situação ajustada pela consolidação");
+  ok(typeof r.j?.bloco === "string" && r.j.bloco.startsWith("[MAPA DO PROCESSO") && r.j.mapa.movimentacoes.ultima === 157, "Mapa: bloco de texto para a IA e última movimentação 157");
+  const blocoMapa = r.j?.bloco || "";
+  r = await chamar("/api/generate-minute-turbo", { processText: longo, actType: "auto", promptTitle: "teste", mapaProcesso: blocoMapa });
+  ok(r.status === 200 && /COM-MAPA/.test(r.t), "Turbo: o mapa do processo chega às instruções da IA");
+  r = await chamar("/api/generate-minute-turbo", { processText: longo, actType: "auto", promptTitle: "teste", mapaProcesso: "texto qualquer que não veio do sistema" });
+  ok(r.status === 200 && !/COM-MAPA/.test(r.t), "Turbo: texto de mapa que não veio do sistema é ignorado");
+  r = await chamar("/api/generate-minute", { processText: longo, executionStage: 1, mapaProcesso: blocoMapa, customPromptText: "p", activePromptTitle: "t", promptCategory: "civel" });
+  ok(r.status === 200 && /COM-MAPA/.test(r.t), "Etapa 1: o mapa do processo chega às instruções da IA");
+  r = await chamar("/api/mapa-processo", { processText: "curto" });
+  ok(r.status === 400, "Mapa: autos curtos demais viram erro 400");
   r = await chamar("/api/generate-minute-turbo", { processText: autos(25), actType: "auto", promptTitle: "teste" });
   console.log("turbo:", r.status, r.t.slice(0, 160));
   ok(r.status === 200 && r.j && r.j.minute, "Turbo: responde 200 com minuta");

@@ -223,6 +223,8 @@ export interface GenerationResult {
   /** Artigos citados na minuta que o Planalto marca como revogados, vetados ou inexistentes (conferência automática). */
   alertasLegislacao?: { lei: string; artigo: string; tipo: "revogado" | "vetado" | "inexistente" | "cpc1973"; nota?: string }[];
   legislacaoConferida?: string[];
+  /** Mapa do processo (processos com 130 movimentações ou mais): estado atual, decisões em vigor e linha do tempo; `bloco` é o texto enviado à IA. */
+  mapaProcesso?: import("./utils/mapaDoProcesso").MapaProcesso & { bloco: string };
   autosReduzidos?: {
     tokensOriginais: number;
     paginasTotal: number;

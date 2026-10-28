@@ -5,6 +5,7 @@ import { AvisoCoberturaLeitura } from "./AvisoCoberturaLeitura";
 import { AvisoGigante } from "./AvisoGigante";
 import { AvisoPromptInjection } from "./AvisoPromptInjection";
 import { AvisoFontesConsultadas } from "./AvisoFontesConsultadas";
+import { conferirComMapa } from "../utils/mapaDoProcesso";
 
 type Tom = "ok" | "atencao" | "perigo" | "info";
 const COR: Record<Tom, string> = {
@@ -29,6 +30,23 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
     const atencao = (f.naoLocalizados?.length || 0) + (f.indisponiveis?.length || 0) + (f.locais?.length || 0);
     const partes = [`${f.legislacao?.length || 0} artigo(s) conferido(s)`, ...(atencao ? [`${atencao} com atenção`] : [])];
     itens.push({ id: "fontes", tom: atencao ? "atencao" : (f.legislacao?.length || f.precedentes?.length ? "ok" : "info"), rotulo: (f.legislacao?.length || 0) + atencao + (f.precedentes?.length || 0) === 0 ? "📚 Fontes consultadas · nenhum artigo de lei citado nos autos" : `📚 Fontes consultadas · ${partes.join(" · ")}`, conteudo: <AvisoFontesConsultadas info={f} /> });
+  }
+
+  const mp = result?.mapaProcesso;
+  if (mp?.estadoAtual) {
+    const m: any = result?.minute || {};
+    const textoMinuta = [m.relatorio, m.fundamentacao, m.dispositivo, m.fullFormattedText].filter(Boolean).join("\n");
+    const avisos = conferirComMapa(textoMinuta, mp);
+    itens.push({ id: "mapa", tom: avisos.length ? "info" : "ok", rotulo: avisos.length ? `🗺️ Mapa do processo · ${avisos.length} ponto(s) para conferir` : "🗺️ Mapa do processo", conteudo: (
+      <div data-testid="aviso-mapa" className="max-w-4xl mx-auto rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 space-y-1.5">
+        <div><strong>Mapa do processo</strong> ({mp.movimentacoes?.movs} movimentações, até a Mov. {mp.movimentacoes?.ultima}): o sistema leu todos os autos para decidir de forma coerente com o estado atual.</div>
+        <div><strong>O que está para ser decidido agora:</strong> {mp.estadoAtual.questaoAtual || "—"}</div>
+        {mp.estadoAtual.pendencias?.length > 0 && <div><strong>Pendências:</strong> {mp.estadoAtual.pendencias.join("; ")}</div>}
+        {mp.estadoAtual.vigentes?.length > 0 && <div><strong>Em vigor:</strong> {mp.estadoAtual.vigentes.join("; ")}</div>}
+        {avisos.length > 0 && <ul className="list-disc pl-4 space-y-0.5 text-sky-800">{avisos.map((x) => <li key={x.codigo}>{x.texto}</li>)}</ul>}
+        <div className="text-[11px] text-sky-700">É um apoio de leitura, não uma regra: confira com os autos.</div>
+      </div>
+    ) });
   }
 
   if (result?.gigante) itens.push({ id: "gigante", tom: "info", rotulo: "📚 Processo gigante", conteudo: <AvisoGigante info={result.gigante} /> });

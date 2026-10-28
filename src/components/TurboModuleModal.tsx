@@ -1,3 +1,4 @@
+import { prepararMapaDoProcesso, type MapaDaExecucao } from "../utils/mapaDoProcessoCliente";
 import React, { useState, useRef, useEffect } from "react";
 import { useModoJanela } from "../utils/areaPrincipal";
 import {
@@ -314,12 +315,15 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
       setPdfFile({ ...pdfFile, text: up.extractedText, paginasSemTexto: up.paginasSemTexto, paginasNaoLidas: up.paginasNaoLidas, paginasOcr: up.paginasOcr });
     }
 
+    // processos longos (130 movimentações ou mais): mapa do processo antes do Turbo, para a minuta ficar coerente com o estado atual; se falhar, segue sem ele
+    const mapaExec: MapaDaExecucao | null = await prepararMapaDoProcesso(textoDosAutos, `mapa-${Date.now().toString(36)}`);
     const progTurbo = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `t-${Date.now()}`);      // mesmo código em todas as tentativas: o resultado que ficou no servidor é encontrado
     let controller = new AbortController();
     let abortTimeout: any = null;
     const limiteMs = () => (globalThis as any).__turboTimeoutMs ?? 180000; // 3 minutos: passou disso, o processo vai para o segundo plano (leitura em lotes) em vez de deixar a tela presa
     const corpoDaRequisicao = JSON.stringify({
           // Não duplica o texto no body: envia apenas em processText ou no array de pdfFiles
+          mapaProcesso: mapaExec?.bloco,
           processText: inputMode === "text" ? effectiveText : "",
           pdfFiles: inputMode === "pdf" && pdfFile ? [{ name: pdfFile.name, extractedText: textoDosAutos, pageCount: pdfFile.pageCount }] : [],
           coberturaLeitura: coberturaEnvio,
@@ -428,6 +432,7 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
               alertasProcessuais: [],
             },
             modelUsed: stats?.modelUsed || "Gemini Flash Turbo",
+            ...(mapaExec ? { mapaProcesso: { ...mapaExec.mapa, bloco: mapaExec.bloco } } : {}),
           },
           processTextContext: effectiveText.substring(0, 3000),
           createdBy: user?.uid || auth.currentUser?.uid || "assessor",

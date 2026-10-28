@@ -13,11 +13,13 @@ http.createServer((req, res) => {
     const sis = JSON.stringify(j.systemInstruction || j.config?.systemInstruction || "") + JSON.stringify(j.generationConfig || {});
     const tudo = corpo;
     let t;
-    if (/CLASSIFICADOR DE RELEV/.test(tudo)) { const pags = [...tudo.matchAll(/\[Página (\d+) de/g)].map((m) => +m[1]); t = JSON.stringify({ segmentos: pags.map((n) => ({ de: n, ate: n, classe: n % 4 === 0 ? "dispensavel" : "essencial", motivo: "teste" })) }); }
+    if (/MAPA-PARTE/.test(sis + tudo.slice(0, 4000)) && !/MAPA-CONSOLIDAR/.test(sis)) { const movs = [...new Set([...tudo.matchAll(/\[Mov\. (\d+) /g)].map((m) => +m[1]))]; t = JSON.stringify({ numeroProcesso: "5129546-88.2025.8.09.0100", partes: "Autor x Réu", eventos: movs.filter((n) => n % 37 === 0 || n === 148).map((n) => ({ mov: n, data: "01/01/2026", tipo: n === 148 ? "Decisão" : "Despacho", resumo: "Ato da movimentação " + n, determinou: "comando " + n, situacao: "em_vigor" })) }); }
+    else if (/MAPA-CONSOLIDAR/.test(sis)) t = JSON.stringify({ numeroProcesso: "5129546-88.2025.8.09.0100", partes: "Autor x Réu", estadoAtual: { ultimoAtoRelevante: "Decisão da Mov. 148", questaoAtual: "Deliberar sobre a avaliação dos imóveis e a alienação pendente", pendencias: ["avaliação dos imóveis"], vigentes: ["Mov. 148: nova avaliação determinada"], ligacoes: ["Mov. 148 depende da Mov. 37"] }, situacoes: [{ mov: 37, situacao: "cumprido" }] });
+    else if (/CLASSIFICADOR DE RELEV/.test(tudo)) { const pags = [...tudo.matchAll(/\[Página (\d+) de/g)].map((m) => +m[1]); t = JSON.stringify({ segmentos: pags.map((n) => ({ de: n, ate: n, classe: n % 4 === 0 ? "dispensavel" : "essencial", motivo: "teste" })) }); }
     else if (/FICHA DOS AUTOS/.test(tudo) && /analista de autos judiciais/.test(tudo)) t = JSON.stringify(ficha);
     else if (/Corregedor e Auditor/.test(tudo)) t = JSON.stringify(auditoria);
     else if (/SINOPSE|Sinopse/.test(tudo) && !/MINUTA SUBMETIDA/.test(tudo)) t = "Sinopse. ".repeat(60);
-    else t = JSON.stringify({ minute: minuta1, ...minuta1 });
+    else { const comMapa = /COERÊNCIA COM O ESTADO ATUAL/.test(tudo) ? " COM-MAPA" : ""; const mm = { ...minuta1, relatorio: minuta1.relatorio + comMapa }; t = JSON.stringify({ minute: mm, ...mm }); }
     res.writeHead(200, { "Content-Type": "application/json" }); res.end(resposta(t, Math.min(200000, Math.ceil(corpo.length / 3))));
   });
 }).listen(porta, () => console.log("gemini falso na porta", porta));

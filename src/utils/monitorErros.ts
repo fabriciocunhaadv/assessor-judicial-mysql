@@ -46,7 +46,7 @@ const MODULOS: Record<string, string> = {
   "/api/mutirao-extract-ata": "mutirao", "/api/mutirao-video": "mutirao", "/api/chat-agaia": "chat", "/api/lateral-agent-chat": "copiloto",
   "/api/advogado-peticao": "peticao_inicial", "/api/gigante-lote": "gigantes", "/api/gigante-fusao": "gigantes", "/api/ocr-paginas": "ocr",
   "/api/extract-pdf-text": "leitura_pdf", "/api/generate-synopsis": "sinopse", "/api/parse-precedents-pdf": "precedentes", "/api/sync-precedents-weekly": "precedentes",
-  "/api/scan-cabinet-theses": "teses", "/api/monitor/diagnosticar": "monitor",
+  "/api/scan-cabinet-theses": "teses", "/api/monitor/diagnosticar": "monitor", "/api/mapa-processo": "mapa_processo",
 };
 const IGNORAR = ["/api/progresso", "/api/native-key-info", "/api/custom-precedents", "/api/test-api-key", "/api/telemetry", "/api/monitor/diagnosticar"];
 const VERSAO = "web";

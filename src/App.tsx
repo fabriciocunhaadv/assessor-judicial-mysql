@@ -33,6 +33,7 @@ import { AprovacaoUsuarios } from "./components/AprovacaoUsuarios";
 import { TrocarSenha } from "./components/TrocarSenha";
 import { BancoBadge } from "./components/BancoBadge";
 import { aplicarTema, temaAtual } from "./utils/tema";
+import { prepararMapaDoProcesso, type MapaDaExecucao } from "./utils/mapaDoProcessoCliente";
 import { TrocaSenhaObrigatoria } from "./components/TrocaSenhaObrigatoria";
 import { PresentationModal } from "./components/PresentationModal";
 import { UserManagerModal } from "./components/UserManagerModal";
@@ -1138,8 +1139,11 @@ export default function App() {
         return p;
       });
 
+      // processos longos (130 movimentações ou mais): mapa do processo (leitura completa) para a decisão ficar coerente com o estado atual; se falhar, segue sem ele
+      const mapaExec: MapaDaExecucao | null = await prepararMapaDoProcesso([effectiveText, ...effectivePdfFiles.map((p) => p.extractedText || "")].filter(Boolean).join("\n"), `mapa-${Date.now().toString(36)}`);
       let response: Response | null = null;
       const requestPayload = JSON.stringify({
+        mapaProcesso: mapaExec?.bloco,
         processText: effectiveText,
         pdfFiles: sanitizedPdfFiles,
         coberturaLeitura: coberturaEnvioRef.current,
@@ -1294,6 +1298,7 @@ export default function App() {
       checkResponseForRotatedKey(rawData);
       checkResponseForRotatedKey(response);
 
+      if (mapaExec && rawData && typeof rawData === "object") rawData.mapaProcesso = { ...mapaExec.mapa, bloco: mapaExec.bloco };
       // Autos grandes: mostra o que o sistema omitiu/abreviou para caber no limite da chave gratuita
       if (rawData?.autosReduzidos?.resumo) {
         console.log("[Assessor Judicial] Autos grandes reduzidos:", rawData.autosReduzidos);
@@ -2039,6 +2044,7 @@ export default function App() {
         : (tesesData && tesesData.isEnabled !== false && typeof tesesData.text === "string" ? tesesData.text.trim() : "");
 
       const payload = {
+        mapaProcesso: (generationResult as any)?.mapaProcesso?.bloco,
         executionStage: 2,
         stage1Snapshot,
         coberturaLeitura: coberturaEnvioRef.current,
@@ -2085,7 +2091,7 @@ export default function App() {
       }
 
       const completedResult: GenerationResult = await res.json();
-      setGenerationResult((prev) => ({ ...completedResult, autosReduzidos: completedResult.autosReduzidos || prev?.autosReduzidos, alertaInjecao: completedResult.alertaInjecao || prev?.alertaInjecao, fontesConsultadas: unirFontes(prev?.fontesConsultadas, completedResult.fontesConsultadas), coberturaLeitura: completedResult.coberturaLeitura || prev?.coberturaLeitura }));
+      setGenerationResult((prev) => ({ ...completedResult, autosReduzidos: completedResult.autosReduzidos || prev?.autosReduzidos, mapaProcesso: (completedResult as any).mapaProcesso || (prev as any)?.mapaProcesso, alertaInjecao: completedResult.alertaInjecao || prev?.alertaInjecao, fontesConsultadas: unirFontes(prev?.fontesConsultadas, completedResult.fontesConsultadas), coberturaLeitura: completedResult.coberturaLeitura || prev?.coberturaLeitura }));
       toast.success("2ª Etapa concluída com sucesso! Minuta definitiva consolidada.", { id: toastId });
     } catch (err: any) {
       console.error("Erro na 2ª etapa:", err);
