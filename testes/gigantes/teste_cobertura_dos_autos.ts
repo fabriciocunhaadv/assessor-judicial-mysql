@@ -1,0 +1,14 @@
+import { readFileSync } from "node:fs";
+import { REGRA_COBERTURA_DOS_AUTOS as R } from "../../src/utils/coberturaDosAutos";
+let falhas = 0; const ok = (c: boolean, m: string) => { if (!c) { falhas++; console.log("FALHOU:", m); } else console.log("ok:", m); };
+ok(/ÚLTIMA movimentação/.test(R) && /não podem ser omitidos/.test(R) && /RESUMIDAS/.test(R), "a regra manda ir até a última movimentação, não omitir decisões/despachos recentes e permite resumir intimações de rotina");
+const srv = readFileSync(new URL("../../server.ts", import.meta.url), "utf8");
+const linhas = srv.split("\n"), acha = (re: RegExp) => linhas.findIndex((l) => re.test(l));
+const iTurbo = acha(/app\.post\("\/api\/generate-minute-turbo"/);
+const iFimTurbo = linhas.findIndex((l, i) => i > iTurbo && /^app\.(post|get)\(/.test(l));
+const usos = linhas.map((l, i) => (/REGRA_COBERTURA_DOS_AUTOS/.test(l) && !/^import/.test(l) ? i : -1)).filter((i) => i >= 0);
+ok(usos.length === 3, `regra injetada em 3 lugares (Turbo, Etapa 1 e Etapa 2): ${usos.length}`);
+ok(usos.some((i) => i > iTurbo && i < (iFimTurbo > 0 ? iFimTurbo : Infinity)), "injetada na rota do Turbo");
+ok(usos.some((i) => /stage1SystemInstruction/.test(linhas[i])), "injetada na Etapa 1");
+ok(usos.some((i) => /stage2SystemInstruction/.test(linhas[i])), "injetada na Etapa 2");
+process.exit(falhas ? 1 : 0);

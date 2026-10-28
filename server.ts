@@ -31,6 +31,7 @@ import { textoOcultoDeDocumento, blocoTextoOculto } from './src/utils/pdfTextoOc
 import fs from 'fs';
 import { blocoPerfilMateria } from './src/utils/perfisMateria';
 import { REGRA_ESTRUTURA_POR_ATO } from './src/utils/estruturaDoAto';
+import { REGRA_COBERTURA_DOS_AUTOS } from './src/utils/coberturaDosAutos';
 import { detectarDescumprimento, REGRA_DESCUMPRIMENTO_DETERMINACAO, blocoDescumprimentoDetectado } from './src/utils/descumprimentoDeDeterminacao';
 import { REGRAS_MECANICA_JUDICIAL, REGRAS_FIDELIDADE_AUTOS, conferenciasMecanica } from './src/utils/mecanicaJudicial';
 import { corrigirCitacoesDaMinuta, citacoesInexistentes } from './src/utils/localizacaoAutos';
@@ -1284,7 +1285,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
                 { role: "user", parts: [{ text: userPrompt }, ...cobT.partes] }
             ],
             config: {
-                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
+                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + REGRA_ESTRUTURA_POR_ATO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
                 temperature: 0.1,
                 maxOutputTokens: 16384,      // era 8192, e parte dele era gasta repetindo o texto inteiro em fullFormattedText
                 responseMimeType: "application/json",
@@ -5438,7 +5439,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
         if (legAutos.bloco) { stage1SystemInstruction += legAutos.bloco; console.log(`[Legislação] etapa 1: ${legAutos.consultados} artigo(s) citado(s) nos autos conferido(s) no Planalto.`); }
         try { const la = await pegarLeiAplicavel(legAutos.conferidos); if (la.bloco) stage1SystemInstruction += la.bloco; } catch { /* sem a lei aplicável: segue só com a conferência */ }
     } catch (e) { console.warn("[Legislação] etapa 1 ignorada:", e); }
-    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + REGRA_ESTRUTURA_POR_ATO + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const stage1StartTimer = Date.now();
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage1ContentsParts, stage1SystemInstruction) / 10000) * 3000);      // maior para autos grandes
     stage1Response = await gerarComAutosGrandes(generateWithFallbackAndRetry, {
@@ -6074,7 +6075,7 @@ try {
         else if (leg.falhas.length) console.log(`[Legislação] sem acesso ao Planalto para: ${leg.falhas.join("; ")}.`);
         try { const la = await pegarLeiAplicavel(leg.conferidos); if (la.bloco) stage2SystemInstruction += la.bloco; } catch { /* sem a lei aplicável */ }
     } catch (e) { console.warn("[Legislação] consulta ignorada:", e); }
-    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_ESTRUTURA_POR_ATO + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + REGRA_ESTRUTURA_POR_ATO + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage2Prompt, stage2SystemInstruction) / 10000) * 3000);
     response = await generateWithFallbackAndRetry({
         apiKey: stage2KeyPool[0] || userApiKey,
