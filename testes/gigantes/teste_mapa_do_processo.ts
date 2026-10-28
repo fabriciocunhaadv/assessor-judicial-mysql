@@ -1,4 +1,4 @@
-import { resumirMovimentacoes, precisaDeMapa, dividirParaMapa, normalizarMapa, blocoDoMapa, conferirComMapa } from "../../src/utils/mapaDoProcesso";
+import { estimarTokens, resumirMovimentacoes, precisaDeMapa, dividirParaMapa, normalizarMapa, blocoDoMapa, conferirComMapa } from "../../src/utils/mapaDoProcesso";
 let falhas = 0; const ok = (c: boolean, m: string) => { if (!c) { falhas++; console.log("FALHOU:", m); } else console.log("ok:", m); };
 const processo = (movs: number, tam = 1500) => {
   let g = 0; const total = movs; const paginas: string[] = [];
@@ -8,7 +8,7 @@ const processo = (movs: number, tam = 1500) => {
 const p157 = processo(157), p100 = processo(100);
 const r = resumirMovimentacoes(p157);
 ok(r.movs === 157 && r.ultima === 157, `conta 157 movimentações e a última é a 157 (${r.movs}/${r.ultima})`);
-ok(precisaDeMapa(p157) && !precisaDeMapa(p100) && precisaDeMapa(processo(130)) && !precisaDeMapa(processo(129)), "usa o mapa a partir de 130 movimentações (129 não, 130 sim)");
+ok(precisaDeMapa(processo(60, 8000)) && !precisaDeMapa(processo(300, 500)), "o mapa depende do volume em tokens, não do número de movimentações: 60 movimentações grandes usam o mapa, 300 pequenas não");
 const partes = dividirParaMapa(p157, 40_000);
 ok(partes.length > 3 && partes.every((x) => x.texto.length <= 40_000 + 2000), `divide em ${partes.length} partes pequenas`);
 ok(partes.map((x) => x.texto).join("") === p157, "as partes juntas reproduzem os autos, sem perda e na ordem");
@@ -19,6 +19,12 @@ const bruto = { numeroProcesso: "5000001-00.2026.8.09.0042", estadoAtual: { ques
 const mapa = normalizarMapa(bruto, p157)!;
 ok(!!mapa && mapa.eventos.every((e) => e.mov !== 999) && mapa.eventos.length === 3, "descarta evento de movimentação que não existe nos autos");
 ok(mapa.eventos[0].mov === 5 && mapa.eventos[2].mov === 148, "eventos ordenados por movimentação");
+const mapaFase = normalizarMapa({ ...bruto, faseAtual: { fase: "SENTENCIADO", sentencaMov: 148, atoEsperado: "decidir a petição posterior à sentença", naoRepetir: ["Mov. 148: sentença proferida"] } }, p157)!;
+ok(mapaFase.faseAtual?.sentencaMov === 148 && /FASE ATUAL/.test(blocoDoMapa(mapaFase)) && /NÃO refazer/.test(blocoDoMapa(mapaFase)), "a fase atual (sentenciado, ato esperado, o que não repetir) entra no bloco do mapa");
+ok(normalizarMapa({ ...bruto, faseAtual: { fase: "x", sentencaMov: 9999, atoEsperado: "y" } }, p157)!.faseAtual?.sentencaMov === undefined, "sentença em movimentação que não existe é descartada");
+const novaSentenca = "SENTENÇA\n\nI - RELATÓRIO\nTrata-se de ação de guarda.\nIII - DISPOSITIVO\nJULGO PROCEDENTE o pedido de guarda.";
+ok(conferirComMapa(novaSentenca, mapaFase).some((x) => x.codigo === "fase"), "avisa quando o mapa diz que já há sentença e a minuta é uma nova sentença sem citar a anterior");
+ok(!conferirComMapa("DECISÃO\n\nTrata-se de petição posterior à sentença (Mov. 148). Indefiro o pedido de nova entrevista.", mapaFase).some((x) => x.codigo === "fase"), "decisão sobre petição posterior que cita a sentença não dispara o aviso de fase");
 const bloco = blocoDoMapa(mapa);
 ok(/ESTADO ATUAL/.test(bloco) && /alienação dos imóveis/.test(bloco) && /Mov\. 148/.test(bloco) && !/rotina/.test(bloco), "o bloco traz o estado atual e a linha do tempo dos atos relevantes (sem a rotina)");
 const minutaCurta = "I - RELATÓRIO\nHouve decisão (Mov. 71, Arq. 1, Pág. 1) e despacho (Mov. 119, Arq. 1, Pág. 1).\nII - FUNDAMENTAÇÃO\nTrata da gratuidade.\nIII - DISPOSITIVO\nDefiro.";

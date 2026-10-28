@@ -50,7 +50,7 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
   }
 
   if (result?.gigante) itens.push({ id: "gigante", tom: "info", rotulo: "📚 Processo gigante", conteudo: <AvisoGigante info={result.gigante} /> });
-  if (result?.autosReduzidos) itens.push({ id: "reduzidos", tom: "atencao", rotulo: "✂️ Autos reduzidos", conteudo: <AvisoAutosReduzidos info={result.autosReduzidos} /> });
+  if (result?.autosReduzidos) { const perdeu = (result.autosReduzidos.omitidas?.length || 0) + (result.autosReduzidos.abreviadas?.length || 0) > 0; itens.push({ id: "reduzidos", tom: perdeu ? "atencao" : "ok", rotulo: perdeu ? "✂️ Autos reduzidos" : "✔ Autos compactados (nenhuma página omitida)", conteudo: <AvisoAutosReduzidos info={result.autosReduzidos} /> }); }
 
   const c = result?.coberturaLeitura;
   if (c) {

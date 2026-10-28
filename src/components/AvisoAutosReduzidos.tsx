@@ -6,6 +6,12 @@ const faixa = (x: Faixa) => (x.de === x.ate ? `${x.de}` : `${x.de}–${x.ate}`);
 
 // Aviso fixo no topo da minuta quando os autos grandes foram reduzidos para caber no limite da chave gratuita.
 export function AvisoAutosReduzidos({ info }: { info: NonNullable<GenerationResult["autosReduzidos"]> }) {
+  if (info.omitidas.length === 0 && info.abreviadas.length === 0) return (      // só compactação sem perda: nenhuma página foi omitida nem abreviada
+    <div className="max-w-4xl mx-auto px-4 py-2 bg-emerald-50 text-emerald-950 rounded-lg text-xs font-sans border border-emerald-300" data-testid="aviso-autos-compactados">
+      <div className="font-bold text-emerald-900">✔ Autos extensos lidos por inteiro</div>
+      <p className="leading-relaxed">Os autos têm cerca de {Math.round(info.tokensOriginais / 1000)} mil tokens ({info.paginasTotal} páginas). Para caber no limite da chave gratuita, o texto foi só compactado (cabeçalhos, rodapés e avisos idênticos que se repetem em muitas páginas ficaram na primeira ocorrência). <strong>Nenhuma página foi omitida ou abreviada.</strong></p>
+    </div>
+  );
   return (
     <div className="max-w-4xl mx-auto px-4 py-3 bg-amber-50 text-amber-950 rounded-lg text-xs font-sans shadow-xs border-2 border-amber-400" data-testid="aviso-autos-reduzidos">
       <div className="font-bold text-sm text-amber-900 mb-1">⚠️ Autos muito grandes: a IA analisou uma versão reduzida do processo</div>

@@ -3,8 +3,11 @@
 // Ele não substitui os autos: acompanha a minuta como contexto de coerência ("amarração") e serve de conferência depois de redigida.
 // Aqui ficam só as funções puras (contagem, divisão, texto do mapa e conferência por código); a chamada à IA fica no servidor.
 import { mapaDeLocalizacao } from "./localizacaoAutos";
+import { limparRuidoDeOcr } from "./ruidoOcr";
 
-export const MOVIMENTACOES_PARA_MAPA = 130;
+// O mapa entra quando os autos (já sem o ruído de OCR) passam deste tamanho em tokens: o que pesa é o volume que a IA precisa enxergar de uma vez, não o número de movimentações.
+export const TOKENS_PARA_MAPA = 120_000;
+const CARACTERES_POR_TOKEN = 3.2;
 const SEPARA_PAGINAS = /(?=\[Página\s+\d{1,4}\s+de\s+\d{1,4}\])/;
 
 export interface ResumoMovimentacoes { movs: number; ultima: number }
@@ -18,7 +21,8 @@ export function resumirMovimentacoes(autos: string): ResumoMovimentacoes {
   return { movs: nums.size, ultima: nums.size ? Math.max(...nums) : 0 };
 }
 
-export const precisaDeMapa = (autos: string): boolean => resumirMovimentacoes(autos).movs >= MOVIMENTACOES_PARA_MAPA;
+export const estimarTokens = (autos: string): number => Math.ceil(limparRuidoDeOcr(String(autos || "")).texto.length / CARACTERES_POR_TOKEN);
+export const precisaDeMapa = (autos: string): boolean => estimarTokens(autos) >= TOKENS_PARA_MAPA;
 
 export interface ParteDosAutos { texto: string; movDe: number; movAte: number }
 
@@ -55,6 +59,8 @@ export interface MapaProcesso {
   movimentacoes: ResumoMovimentacoes;
   eventos: EventoMapa[];
   estadoAtual: { ultimoAtoRelevante?: string; questaoAtual: string; pendencias: string[]; vigentes: string[]; ligacoes?: string[] };
+  /** Em que ponto o processo está e que tipo de ato cabe agora (ex.: já sentenciado, com petição posterior): impede a minuta de refazer o que já foi julgado. */
+  faseAtual?: { fase: string; sentencaMov?: number; atoEsperado: string; naoRepetir: string[] };
 }
 
 const txt = (v: any, n = 600) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, n);
@@ -72,7 +78,10 @@ export function normalizarMapa(bruto: any, autos: string): MapaProcesso | null {
   const ea = bruto.estadoAtual || {};
   const questaoAtual = txt(ea.questaoAtual, 800);
   if (!eventos.length && !questaoAtual) return null;
-  return { numeroProcesso: txt(bruto.numeroProcesso, 40), partes: txt(bruto.partes, 400), movimentacoes: resumo, eventos,
+  const fa = bruto.faseAtual || {}, fase = txt(fa.fase, 300);
+  const sentencaMov = Number(fa.sentencaMov) > 0 && (validos.size === 0 || validos.has(Number(fa.sentencaMov))) ? Number(fa.sentencaMov) : undefined;
+  const faseAtual = fase || txt(fa.atoEsperado, 500) ? { fase, sentencaMov, atoEsperado: txt(fa.atoEsperado, 500), naoRepetir: lista(fa.naoRepetir, 10) } : undefined;
+  return { numeroProcesso: txt(bruto.numeroProcesso, 40), partes: txt(bruto.partes, 400), movimentacoes: resumo, eventos, faseAtual,
     estadoAtual: { ultimoAtoRelevante: txt(ea.ultimoAtoRelevante, 300), questaoAtual, pendencias: lista(ea.pendencias), vigentes: lista(ea.vigentes, 15), ligacoes: lista(ea.ligacoes, 8) } };
 }
 
@@ -80,6 +89,7 @@ export function normalizarMapa(bruto: any, autos: string): MapaProcesso | null {
 export function blocoDoMapa(m: MapaProcesso): string {
   const L: string[] = [`[MAPA DO PROCESSO — levantado da leitura COMPLETA dos autos (${m.movimentacoes.movs} movimentações, até a Mov. ${m.movimentacoes.ultima}); os autos continuam sendo a fonte, o mapa só orienta a coerência]`];
   if (m.numeroProcesso) L.push(`Processo: ${m.numeroProcesso}${m.partes ? ` — ${m.partes}` : ""}`);
+  if (m.faseAtual) L.push("", "FASE ATUAL DO PROCESSO:", `- Fase: ${m.faseAtual.fase || "(não identificada)"}${m.faseAtual.sentencaMov ? ` — sentença proferida na Mov. ${m.faseAtual.sentencaMov}` : ""}`, `- Ato que cabe agora: ${m.faseAtual.atoEsperado || "(não identificado)"}`, ...(m.faseAtual.naoRepetir.length ? ["- Já decidido, NÃO refazer:", ...m.faseAtual.naoRepetir.map((x) => `  • ${x}`)] : []));
   L.push("", "ESTADO ATUAL DO PROCESSO:", `- O que está para ser decidido agora: ${m.estadoAtual.questaoAtual || "(não identificado)"}`);
   if (m.estadoAtual.ultimoAtoRelevante) L.push(`- Último ato relevante: ${m.estadoAtual.ultimoAtoRelevante}`);
   if (m.estadoAtual.pendencias.length) L.push("- Pendências:", ...m.estadoAtual.pendencias.map((x) => `  • ${x}`));
@@ -93,6 +103,7 @@ export function blocoDoMapa(m: MapaProcesso): string {
 export const REGRA_MAPA_DO_PROCESSO = `
 
 [COERÊNCIA COM O ESTADO ATUAL DO PROCESSO — USE O MAPA ACIMA]
+0. Observe a FASE ATUAL: o ato que você redige tem de ser o que cabe nessa fase. Se o mapa indica que já há SENTENÇA, não faça nova sentença, não reabra nem julgue de novo o mérito e não repita o que já foi decidido; decida só o que veio depois (a petição, o recurso ou o pedido posterior) e diga expressamente que a questão principal já foi sentenciada (Mov. indicada).
 1. Decida o que o processo pede AGORA (o estado atual do mapa), não o que pedia no começo. A minuta só vale se tratar a questão atual e as pendências do mapa.
 2. Respeite as decisões EM VIGOR: não contradiga, repita sem necessidade nem desfaça o que já foi decidido e continua valendo. Se for reformar, complementar ou manter uma decisão anterior, diga isso expressamente, com a localização (Mov./Arq./Pág.).
 3. Faça a ligação com os atos anteriores que afetam a decisão atual (o que o mapa lista em "ligações"), e deixe de lado fases já encerradas que não influenciam o ponto.
@@ -111,6 +122,9 @@ export function conferirComMapa(minuta: string, m: MapaProcesso | null | undefin
   const recentesNaoCitados = decisorios.filter((e) => e.mov > maiorCitada).map((e) => e.mov);
   if (ultima > 0 && maiorCitada > 0 && ultima - maiorCitada >= 10 && recentesNaoCitados.length)      // só quando há ato decisório do mapa depois do último que a minuta cita
     out.push({ codigo: "cobertura", texto: `Os autos vão até a Mov. ${ultima}, mas a minuta cita só até a Mov. ${maiorCitada}. O mapa registra ato(s) decisório(s) posterior(es) (Mov. ${[...new Set(recentesNaoCitados)].slice(0, 6).join(", ")}); confira se algum precisa ser considerado.` });
+  const sent = m.faseAtual?.sentencaMov;
+  if (sent && /^[\s\S]{0,400}SENTEN[ÇC]A/i.test(t) && /JULGO\s+(?:PROCEDENTE|IMPROCEDENTE|PARCIALMENTE|EXTINTO)/i.test(t) && !new RegExp(`Mov\\.?\\s*${sent}\\b`, "i").test(t))
+    out.push({ codigo: "fase", texto: `O mapa indica que o processo já foi sentenciado (Mov. ${sent}), e esta minuta parece uma nova sentença que não menciona a anterior. Confira se o ato cabível agora não é a decisão sobre o que veio depois da sentença.` });
   const q = m.estadoAtual.questaoAtual;
   if (q) {
     const chaves = [...new Set(q.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter((w) => w.length >= 6))].slice(0, 12);

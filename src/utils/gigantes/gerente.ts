@@ -1,5 +1,6 @@
 import { extractTextFromPdf } from "../pdfExtractor";
 import { getApiHeaders } from "../apiKeyManager";
+import { prepararMapaDoProcesso } from "../mapaDoProcessoCliente";
 import { recordApiExecution } from "../apiUsageTracker";
 import { getCabinetTeses } from "../tesesDb";
 import { saveToHistory } from "../historyDb";
@@ -547,7 +548,11 @@ class Gerente {
     const parteTxt = cfg.parte ? ` ATENÇÃO: estes autos foram divididos automaticamente e este é o trecho ${cfg.parte.indice} de ${cfg.parte.total} (páginas ${cfg.parte.de.toLocaleString("pt-BR")} a ${cfg.parte.ate.toLocaleString("pt-BR")} de ${cfg.parte.totalPaginas.toLocaleString("pt-BR")}). As demais partes NÃO foram consideradas nesta minuta: não conclua o mérito do processo como um todo, não afirme ausência de prova que possa estar nas outras partes e registre no Relatório que a minuta cobre apenas as páginas ${cfg.parte.de} a ${cfg.parte.ate}.` : "";
     const regra = `[PROCESSO GIGANTE LIDO EM LOTES]:${parteTxt} o texto fornecido é um DOSSIÊ estruturado (fichas por trecho, com a página de cada item) mais as peças essenciais na íntegra. Redija a minuta com base nele e cite páginas quando útil. NÃO afirme "não há prova", "não foi juntado" ou "a parte não comprovou" só por não constar do dossiê: só registre ausência quando a ficha disser expressamente; no mais, use "não localizei no dossiê dos autos" e indique conferência humana.`;
     const unidadeDosAutos = job.capa?.judicialUnit || "";      // o juízo da capa vale mais que a unidade escolhida no painel
+    // amarração: o mapa do processo (estado atual, fase, o que está em vigor) é montado a partir do dossiê e acompanha a minuta; se falhar, segue sem ele
+    job.etapa = "Montando o mapa do processo (estado atual e fase)…"; this.avisar();
+    const mapaExec = await prepararMapaDoProcesso(processText, `mapa-${job.id}`, { forcar: true });
     const corpo = {
+      mapaProcesso: mapaExec?.bloco,
       processText, pdfFiles: [], knowledgePdfs: [], customPromptText: cfg.promptText || "", activePromptTitle: cfg.promptTitle || "",
       cabinetTesesText: tesesTxt, isTesesEnabled: Boolean(tesesTxt),
       paradigmModelText: cfg.paradigmText || "", paradigmModelTitle: cfg.paradigmTitle || "", isParadigmEnabled: Boolean(cfg.paradigmText),
@@ -573,7 +578,7 @@ class Gerente {
     const analise: SavedAnalysis = {
       id: analysisId, unitId: cfg.unitId || "montes_claros", promptTitle: cfg.promptTitle, promptId: cfg.promptId, promptCategory: cfg.promptCategory || "civel", promptScope: (cfg.promptScope as any) || "judicial",
       date: Date.now(), processNumber: numero,
-      result: { ...data, gigante: info, alertaInjecao, minute: data.minute ? { ...data.minute, judicialUnit: unidadeDosAutos || cfg.unitName || data.minute.judicialUnit, ...(job.capa?.author || job.capa?.defendant ? { parties: { ...(data.minute.parties || {}), ...(job.capa?.author ? { author: job.capa.author } : {}), ...(job.capa?.defendant ? { defendant: job.capa.defendant } : {}) } } : {}) } : data.minute },
+      result: { ...data, gigante: info, alertaInjecao, ...(mapaExec ? { mapaProcesso: { ...mapaExec.mapa, bloco: mapaExec.bloco } } : {}), minute: data.minute ? { ...data.minute, judicialUnit: unidadeDosAutos || cfg.unitName || data.minute.judicialUnit, ...(job.capa?.author || job.capa?.defendant ? { parties: { ...(data.minute.parties || {}), ...(job.capa?.author ? { author: job.capa.author } : {}), ...(job.capa?.defendant ? { defendant: job.capa.defendant } : {}) } } : {}) } : data.minute },
       originalMinute: data.originalMinute || JSON.parse(JSON.stringify(data.minute)),
       processTextContext: `[Processo gigante: ${job.arquivos.map((a) => a.nome).join(", ")} — ${job.totalPaginas} páginas lidas em lotes]`,
       createdBy: cfg.userUid || "anonymous", creatorName: cfg.userName || "Assessor", creatorEmail: cfg.userEmail || "", chatMessages: [],

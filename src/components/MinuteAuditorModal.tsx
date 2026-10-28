@@ -76,6 +76,7 @@ import { AvisoGigante } from "./AvisoGigante";
 
 // acima disso a Lupa não consegue ler os autos de uma vez (limite de entrada da chave gratuita): usa o dossiê preparado em lotes
 const LIMITE_CHARS_LUPA = 700_000;
+const CODIGOS_AUTOS_GRANDES_LUPA = ["ENTRADA_GRANDE_GRATUITA", "AUTOS_GRANDES_SEGUNDO_PLANO"];
 import { AvisoCoberturaLeitura } from "./AvisoCoberturaLeitura";
 import { EtiquetaValidade } from "./EtiquetaValidade";
 import {
@@ -161,6 +162,7 @@ export const MinuteAuditorModal: React.FC<MinuteAuditorModalProps> = ({
   const { resolver: resolverCoberturaLeitura, dialog: dialogCobertura } = useCoberturaLeitura();
   const coberturaRef = useRef<any>(null);
   const [dossieJobId, setDossieJobId] = useState<string | null>(null);
+  const forcarDossieRef = useRef(false);      // a chave gratuita recusou o tamanho: o próximo envio passa pelo dossiê em lotes (sem omitir páginas)
   const [dlgDossie, setDlgDossie] = useState<{ paginas: number; tokens: number; corte: CorteInfo | null; resolver: (e: EscolhaDossie) => void } | null>(null);
   const [inputMode, setInputMode] = useState<"pdf" | "text">("pdf");
   const [specificInstructions, setSpecificInstructions] = useState<string>("");
@@ -762,7 +764,8 @@ ${specificInstructions}`
     // Processo grande: acima do limite de leitura da Lupa, usa o dossiê preparado em lotes (lê todas as páginas, em segundo plano)
     let dossie: Awaited<ReturnType<typeof gerenteGigantes.obterDossie>> | null = null;
     const totalChars = processText.length + pdfFiles.reduce((t, p) => t + (p.extractedText?.length || 0), 0);
-    if (totalChars > LIMITE_CHARS_LUPA) {
+    const forcarDossie = forcarDossieRef.current; forcarDossieRef.current = false;
+    if (totalChars > LIMITE_CHARS_LUPA || forcarDossie) {
       const numero = processNumberInput.trim() || extractProcessNumberFromText(draftText, [processText, ...pdfFiles.map((p) => p.name + "\n" + (p.extractedText || "").slice(0, 30000))]) || "";
       await gerenteGigantes.carregar();
       const prontoDoJob = dossieJobId ? gerenteGigantes.lista().find((j) => j.id === dossieJobId && j.status === "concluido")?.id : undefined;
@@ -867,6 +870,7 @@ ${specificInstructions}`
           const errText = await response.text();
           const errData = JSON.parse(errText);
           if (errData?.error || errData?.erro) errStr = errData.error || errData.erro;
+          if (CODIGOS_AUTOS_GRANDES_LUPA.includes(errData?.codigo) && !dossie) { forcarDossieRef.current = true; throw Object.assign(new Error(errStr), { refazerComDossie: true }); }
         } catch { errStr = `Falha na requisição de auditoria (erro ${response.status}${response.status === 413 ? ": o conteúdo enviado é grande demais" : [502, 503, 504].includes(response.status) ? ": o servidor demorou a responder; tente de novo" : ""}).`; }
         throw new Error(errStr);
       }
@@ -878,7 +882,7 @@ ${specificInstructions}`
       } catch (e) {
         throw new Error("O servidor retornou um formato inválido.");
       }
-      if ((data as any)?.error && typeof (data as any).score !== "number") throw new Error(String((data as any).error));      // a resposta é mantida viva por pulsos: o erro vem no corpo
+      if ((data as any)?.error && typeof (data as any).score !== "number") { if (CODIGOS_AUTOS_GRANDES_LUPA.includes((data as any)?.codigo) && !dossie) { forcarDossieRef.current = true; throw Object.assign(new Error(String((data as any).error)), { refazerComDossie: true }); } throw new Error(String((data as any).error)); }      // a resposta é mantida viva por pulsos: o erro vem no corpo
       if (dossie) data = { ...data, gigante: { ...dossie.info, omitidas: [], abreviadas: [] }, alertaInjecao: dossie.injecao?.verificado ? (dossie.injecao as any) : data.alertaInjecao } as any;
       setAuditResult(data);
       if (data.systemGeneratedMinute) {
@@ -1025,6 +1029,7 @@ ${specificInstructions}`
       showToast("Auditoria concluída e gravada com sucesso no banco de dados!");
     } catch (err: any) {
       console.error("Erro na auditoria do juiz:", err);
+      if (err?.refazerComDossie) { showToast("Autos acima do limite da chave gratuita: vou ler o processo por inteiro, em lotes, sem omitir páginas."); setTimeout(() => { void handleExecuteAudit(); }, 150); return; }
             const errorMsg = err.message || "Erro ao conectar com o serviço de auditoria.";
       setErrorMessage(errorMsg);
       if (errorMsg.includes("Erro 429") || errorMsg.includes("Limite de requisições") || errorMsg.includes("RESOURCE_EXHAUSTED")) {

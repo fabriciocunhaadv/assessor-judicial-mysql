@@ -225,7 +225,7 @@ process.on("unhandledRejection", (e: any) => console.error("[erro não tratado �
 process.on("uncaughtException", (e: any) => console.error("[erro não tratado — exceção]", e?.stack || e));
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORTA_TESTE) || 3000;      // PORTA_TESTE só para os testes locais (dois servidores ao mesmo tempo)
 
 app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ limit: "200mb", extended: true }));
@@ -1126,7 +1126,8 @@ app.post("/api/generate-minute-turbo", async (req, res) => {
         // PRESERVAÇÃO INTEGRAL DOS AUTOS (SEM SUPRESSÃO DE DADOS, PROVAS OU ATOS):
         // Conforme diretriz soberana, a IA recebe o contexto integral de todas as peças,
         // decisões anteriores, certidões e provas para avaliar com precisão a marcha processual.
-        if (accumulatedText.length > 1500000) accumulatedText = accumulatedText.substring(0, 750000) + "\n\n... [AUTOS ABREVIADOS: trecho do meio omitido por limite técnico] ...\n\n" + accumulatedText.substring(accumulatedText.length - 750000);
+        // Nunca corta o miolo dos autos: acima da janela do modelo (cerca de 800 mil tokens) o processo segue em segundo plano, em lotes, lido por inteiro.
+        if (accumulatedText.length > 2_800_000) throw Object.assign(new Error("Autos acima da janela de leitura do modelo: a leitura segue em segundo plano, em lotes."), { codigo: "AUTOS_GRANDES_SEGUNDO_PLANO" });
         const cobT = montarCobertura(req.body, false);
         // artigos citados nos autos conferidos no texto oficial do Planalto (até 6 e 5 s no máximo, para o Turbo continuar rápido; falha silenciosa)
         // súmulas, teses e informativos (nativos e anexados pelo gabinete, lidos do MySQL) que se aplicam aos autos: até 5, para o Turbo continuar rápido
@@ -1311,7 +1312,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
             }
         };
 
-        const response = await gerarResfriando(options, { userPrompt: options.contents[0].parts[0].text, texto: accumulatedText });
+        const response = await gerarResfriando(options, { userPrompt: options.contents[0].parts[0].text, texto: accumulatedText }, true);      // Turbo nunca reduz os autos: se a chave gratuita não aceitar o tamanho, o processo vai para os lotes
         const elapsedMs = Date.now() - startTime;
         let parsed: any = {};
         try {
@@ -1514,7 +1515,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
             keepAliveInterval = null;
         }
         console.error("Erro no generate-minute-turbo:", error);
-        const errPayload = { error: error.message || "Falha ao executar a análise turbo do processo." };
+        const errPayload = { error: error.message || "Falha ao executar a análise turbo do processo.", codigo: error?.codigo };
         if (!res.headersSent) {
             res.status(500).json(errPayload);
         } else {
@@ -1671,12 +1672,13 @@ REGRAS: (1) Fidelidade total: só o que está no texto; nada de inventar. (2) Ca
 Responda SOMENTE com JSON: {"numeroProcesso":"","partes":"autor x réu","eventos":[{"mov":0,"data":"dd/mm/aaaa","tipo":"Decisão|Despacho|Sentença|Petição|Laudo|Certidão|Recurso|Outro","resumo":"","determinou":"","situacao":"em_vigor"}]}`;
 const SISTEMA_MAPA_CONSOLIDAR = `MAPA-CONSOLIDAR. Você é um juiz de direito revisor. Recebe a LINHA DO TEMPO de um processo longo (levantada parte por parte) e o TEXTO INTEGRAL das últimas movimentações. Faça a amarração lógica do processo, em JSON.
 REGRAS: (1) Fidelidade total: use só o que consta na linha do tempo e no texto das últimas movimentações. (2) "questaoAtual" = o que o processo pede para ser decidido AGORA (pelo último ato de conclusão e pelas pendências), em até 3 frases. (3) "pendencias" = o que ainda falta resolver ou cumprir. (4) "vigentes" = decisões e comandos que continuam em vigor e limitam a decisão atual, cada um com "Mov. N". (5) "ligacoes" = de que atos anteriores a decisão atual depende ou o que ela afeta (com "Mov. N"). (6) "situacoes" = para cada evento que precisa de ajuste, a situação final: em_vigor, cumprido, reformado (uma decisão posterior mudou), superado, pendente ou informativo. (7) "ultimoAtoRelevante" = o último ato decisório relevante, com "Mov. N".
-Responda SOMENTE com JSON: {"numeroProcesso":"","partes":"","estadoAtual":{"ultimoAtoRelevante":"","questaoAtual":"","pendencias":[""],"vigentes":[""],"ligacoes":[""]},"situacoes":[{"mov":0,"situacao":"em_vigor"}]}`;
+(8) "faseAtual" = em que ponto o processo está: "fase" (ex.: conhecimento/instrução; SENTENCIADO, com a sentença na Mov. N; cumprimento de sentença; recursal), "sentencaMov" = o número da movimentação da sentença quando já houver (senão 0), "atoEsperado" = que tipo de ato cabe agora (ex.: decisão sobre petição posterior à sentença; despacho de mero expediente; sentença de mérito, se ainda não houve) e "naoRepetir" = o que já foi decidido e não pode ser decidido de novo (com "Mov. N"). Se houve sentença e depois vieram petições, o ato esperado é decidir essas petições, não refazer a sentença.
+Responda SOMENTE com JSON: {"numeroProcesso":"","partes":"","faseAtual":{"fase":"","sentencaMov":0,"atoEsperado":"","naoRepetir":[""]},"estadoAtual":{"ultimoAtoRelevante":"","questaoAtual":"","pendencias":[""],"vigentes":[""],"ligacoes":[""]},"situacoes":[{"mov":0,"situacao":"em_vigor"}]}`;
 app.post("/api/mapa-processo", async (req, res) => {
     try {
         const apiKey = extractApiKey(req);
         if (!apiKey) return res.status(401).json({ error: "Chave da API Gemini ausente." });
-        const autos = String(req.body?.processText || "");
+        const autos = filterInnocuousCertificates(cleanJudicialPdfText(String(req.body?.processText || "")));      // mesma limpeza das outras rotas: carimbo [Mov. N · Arq. · Pág.] em cada página e sem ruído de OCR
         if (autos.trim().length < 2000) return res.status(400).json({ error: "Autos insuficientes para montar o mapa." });
         manterViva(res);
         const resumo = resumirMovimentacoes(autos);
@@ -1714,7 +1716,7 @@ app.post("/api/mapa-processo", async (req, res) => {
         somaUso(rc);
         const cj: any = safeParseObj(rc.text || "{}") || {};
         const situ = new Map<number, string>((Array.isArray(cj.situacoes) ? cj.situacoes : []).map((x: any) => [Number(x?.mov), String(x?.situacao || "")] as [number, string]));
-        const mapa = normalizarMapa({ numeroProcesso: cj.numeroProcesso || numero, partes: cj.partes || partesProc, estadoAtual: cj.estadoAtual, eventos: ordenados.map((e) => ({ ...e, situacao: situ.get(Number(e.mov)) || e.situacao })) }, autos);
+        const mapa = normalizarMapa({ numeroProcesso: cj.numeroProcesso || numero, partes: cj.partes || partesProc, estadoAtual: cj.estadoAtual, faseAtual: cj.faseAtual, eventos: ordenados.map((e) => ({ ...e, situacao: situ.get(Number(e.mov)) || e.situacao })) }, autos);
         if (!mapa) return res.status(502).json({ error: "A IA não devolveu um mapa utilizável." });
         console.log(`[Mapa do processo] ${resumo.movs} movimentações, ${partes.length} partes (${falhas} falharam), ${mapa.eventos.length} eventos em ${Math.round((Date.now() - t0) / 1000)}s.`);
         setProg(progId, "Mapa do processo pronto.", 95, 95);
@@ -1792,17 +1794,8 @@ app.post("/api/audit-assessor-draft", async (req, res) => {
         // PRESERVAÇÃO INTEGRAL DOS AUTOS PARA AUDITORIA (GEMINI 3.8 FLASH SUPORTA AMPLA JANELA)
         let generatedHolisticSynopsis = "";
         let safeProcessText = accumulatedProcessText;
-        // Autos acima de 400 mil caracteres: em vez de cortar o miolo às cegas, a IA classifica as páginas por relevância e só o dispensável sai (mesma regra da análise normal).
-        // As páginas essenciais (peças, decisões, laudos, certidões) ficam INTEGRAIS. Se não der para classificar (sem marcadores de página) ou nem as essenciais couberem, vale o corte antigo (início + fim).
+        // Autos grandes: a Lupa NÃO omite páginas. Quem passa do limite de leitura (no app) usa o dossiê em lotes; abaixo disso o texto vai inteiro, com a sinopse.
         let reduzidoL: Awaited<ReturnType<typeof reduzirPorRelevancia>> = null;
-        if (accumulatedProcessText.length > 400000) {
-            const progAutosL = String(req.headers["x-progresso-id"] || "").slice(0, 80);
-            try {
-                setProg(progAutosL, "Autos extensos — classificando as páginas por relevância para auditar sem perder o miolo…", 6, 38);
-                reduzidoL = await reduzirPorRelevancia(generateWithFallbackAndRetry, { texto: accumulatedProcessText, permitido: 380000, contexto: "auditoria de uma minuta contra os autos", base: { apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res }, onProgresso: (t) => setProg(progAutosL, "Autos extensos — " + t, 8, 38) });
-                if (reduzidoL && !reduzidoL.cabe) { console.log("[Lupa do Magistrado] As páginas essenciais ainda passam do limite; segue com início + fim dos autos."); reduzidoL = null; }
-            } catch (eRed) { console.warn("[Lupa do Magistrado] Redução por relevância indisponível; segue com início + fim dos autos:", (eRed as any)?.message || eRed); reduzidoL = null; }
-        }
         if (accumulatedProcessText.length > 90000) {
             console.log(`[Lupa do Magistrado] Autos volumosos detectados (${accumulatedProcessText.length} caracteres). Elaborando Sinopse Holística dos Autos em 5 pilares para enriquecer a auditoria sem corte de fatos ou provas...`);
             try {
@@ -1812,23 +1805,12 @@ app.post("/api/audit-assessor-draft", async (req, res) => {
                     defesa: defesaInjecaoL
                 });
                 if (generatedHolisticSynopsis && generatedHolisticSynopsis.length > 200) {
-                    if (accumulatedProcessText.length <= 400000) {
-                        safeProcessText = `\n\n[=== SINOPSE HOLÍSTICA FORENSE DOS AUTOS (INTEGRAL EM 5 PILARES - AUDITORIA DE CONFORMIDADE) ===]\n${generatedHolisticSynopsis}\n\n[=== AUTOS DO PROCESSO NA ÍNTEGRA (CRONOLOGIA EXAUSTIVA) ===]\n${accumulatedProcessText}\n`;
-                    } else if (reduzidoL) {
-                        safeProcessText = `\n\n[=== SINOPSE HOLÍSTICA FORENSE DOS AUTOS (INTEGRAL EM 5 PILARES - AUDITORIA DE CONFORMIDADE) ===]\n${generatedHolisticSynopsis}\n\n[=== AUTOS DO PROCESSO (PÁGINAS ESSENCIAIS INTEGRAIS; as omitidas estão marcadas "[Página N omitida: motivo]") ===]\n${reduzidoL.texto}\n`;
-                    } else {
-                        // Preserva amplamente os atos iniciais (exordial, contratos, contestações) e os atos finais (decisões do juiz, réplicas, laudos e certidões recentes)
-                        const halfSlice = 180000;
-                        safeProcessText = `\n\n[=== SINOPSE HOLÍSTICA FORENSE DOS AUTOS (INTEGRAL EM 5 PILARES - AUDITORIA DE CONFORMIDADE) ===]\n${generatedHolisticSynopsis}\n\n[=== AUTOS DO PROCESSO (GÊNESE E ATOS INICIAIS) ===]\n${accumulatedProcessText.substring(0, halfSlice)}\n\n... [TRECHO INTERMEDIÁRIO COBERTO PELA SINOPSE HOLÍSTICA ACIMA] ...\n\n[=== AUTOS DO PROCESSO (PROVAS, LAUDOS, ÚLTIMAS DECISÕES E ANDAMENTOS SUBSEQUENTES) ===]\n${accumulatedProcessText.substring(accumulatedProcessText.length - halfSlice)}\n`;
-                    }
+                    safeProcessText = `\n\n[=== SINOPSE HOLÍSTICA FORENSE DOS AUTOS (INTEGRAL EM 5 PILARES - AUDITORIA DE CONFORMIDADE) ===]\n${generatedHolisticSynopsis}\n\n[=== AUTOS DO PROCESSO NA ÍNTEGRA (CRONOLOGIA EXAUSTIVA) ===]\n${accumulatedProcessText}\n`;      // nunca corta o miolo
                 }
             } catch (synErr) {
                 console.warn("[Lupa do Magistrado] Erro na elaboração da Sinopse Holística:", synErr);
             }
             if (!generatedHolisticSynopsis && reduzidoL) safeProcessText = reduzidoL.texto;      // sem sinopse: ao menos os autos reduzidos por relevância, em vez dos autos inteiros
-        } else if (safeProcessText.length > 350000) {
-            const halfSlice = 160000;
-            safeProcessText = safeProcessText.substring(0, halfSlice) + "\n\n... [AUTOS RESUMIDOS NO MIOLO PARA LIMITAÇÃO TÉCNICA - GÊNESE E ÚLTIMAS DECISÕES PRESERVADAS] ...\n\n" + safeProcessText.substring(safeProcessText.length - halfSlice);
         }
 
         const isReAudit = !!previousAuditResult;
@@ -2128,7 +2110,7 @@ Realize a conferência completa e gere o JSON rigoroso conforme o esquema acima.
         return res.json(finalResult);
     } catch (err: any) {
         console.error("Erro no audit-assessor-draft:", err);
-        return res.status(500).json({ error: formatGeminiError(err) || "Falha ao auditar minuta do assessor." });
+        return res.status(500).json({ error: formatGeminiError(err) || "Falha ao auditar minuta do assessor.", codigo: err?.codigo });
     }
 });
 
@@ -2884,7 +2866,7 @@ async function prepararChaves(pool: string[], modelo: string, est: number): Prom
 //  - a alternação de chaves/modelos já ocorre em generateWithFallbackAndRetry;
 //  - se TODAS as chaves ficarem sem cota (429) por causa da janela de 1 minuto, espera a janela renovar e tenta de novo (até 3 vezes);
 //  - se o pedido for maior que o limite de ENTRADA gratuito, gerarComAutosGrandes classifica as páginas e tira só o dispensável.
-async function gerarResfriando(opts: any, grande?: { userPrompt: string; texto: string }): Promise<any> {
+async function gerarResfriando(opts: any, grande?: { userPrompt: string; texto: string }, segundoPlano = false): Promise<any> {
     const entradaGrande = (e: any) => e?.codigo === "ENTRADA_GRANDE_GRATUITA" || String(e?.message || "").includes("free_tier_input_token_count");
     const semCota = (e: any) => !entradaGrande(e) && /\b429\b|RESOURCE_EXHAUSTED|Quota|chaves pessoais|limite de cota|Rate Limit/i.test(String(e?.message || ""));
     const esfriando = async (o: any) => {
@@ -2899,7 +2881,7 @@ async function gerarResfriando(opts: any, grande?: { userPrompt: string; texto: 
         }
     };
     if (!grande || grande.texto.length < 60000 || !grande.userPrompt.includes(grande.texto)) return esfriando(opts);
-    return gerarComAutosGrandes(esfriando, { ...opts, autosGrandes: { userPrompt: grande.userPrompt, textos: [grande.texto] } });
+    return gerarComAutosGrandes(esfriando, { ...opts, segundoPlano, autosGrandes: { userPrompt: grande.userPrompt, textos: [grande.texto] } });      // segundoPlano: em vez de omitir páginas, devolve o código para a leitura seguir em lotes
 }
 
 // Mantém a resposta HTTP viva (pulso a cada 2,5 s) em chamadas longas: o proxy não corta por tempo; o resultado (ou o erro) segue no corpo JSON.

@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { SignJWT } from "jose";
 import path from "node:path";
 const aqui = path.dirname(new URL(import.meta.url).pathname), raiz = path.resolve(aqui, "../..");
-const env = { ...process.env, MYSQL_USER: "t", MYSQL_DATABASE: "t", SESSION_SECRET: "x".repeat(40), GEMINI_API_KEY: "chave-falsa-de-teste-1234567890", GOOGLE_GEMINI_BASE_URL: "http://127.0.0.1:8999", PORTA_GEMINI: "8999", AUTOS_GRANDES_PAUSA_MS: "1", COTA_PAUSA_MS: "1" };
+const env = { ...process.env, MYSQL_USER: "t", MYSQL_DATABASE: "t", SESSION_SECRET: "x".repeat(40), GEMINI_API_KEY: "chave-falsa-de-teste-1234567890", GEMINI_FALSO_GRATUITO: "1", GOOGLE_GEMINI_BASE_URL: "http://127.0.0.1:8999", PORTA_GEMINI: "8999", AUTOS_GRANDES_PAUSA_MS: "1", COTA_PAUSA_MS: "1" };
 const filhos = [];
 const sobe = (cmd, args, rotulo) => { const p = spawn(cmd, args, { cwd: raiz, env, stdio: ["ignore", "pipe", "pipe"] }); p.stdout.on("data", (d) => process.env.VER_LOG && process.stdout.write(`[${rotulo}] ${d}`)); p.stderr.on("data", (d) => (p.erros = (p.erros || "") + d)); filhos.push(p); return p; };
 sobe("node", ["testes/servidor/gemini_falso.cjs"], "gemini");
@@ -27,7 +27,7 @@ try {
   r = await chamar("/api/audit-assessor-draft", { draftText: minuta, processText: grande });
   console.log("lupa grande:", r.status, r.t.slice(0, 200));
   ok(r.status === 200 && r.j && typeof r.j.score === "number", "Lupa (autos > 400 mil caracteres): responde 200");
-  ok(!!r.j?.autosReduzidos, "Lupa grande: devolve o resumo da redução por relevância");
+  ok(!r.j?.autosReduzidos, "Lupa grande: não omite páginas (sem redução por relevância)");
 
   // análise normal: etapa 1 e etapa 2
   const base = { processText: autos(30), customPromptText: "Prompt de teste", actType: "auto", processInfo: { processNumber: "5129546-88.2025.8.09.0100", comarca: "Montes Claros" } };
@@ -52,6 +52,13 @@ try {
   ok(Array.isArray(r.j?.mapa?.eventos) && r.j.mapa.eventos.some((e) => e.mov === 148) && r.j.mapa.eventos.find((e) => e.mov === 37)?.situacao === "cumprido", "Mapa: eventos por movimentação e situação ajustada pela consolidação");
   ok(typeof r.j?.bloco === "string" && r.j.bloco.startsWith("[MAPA DO PROCESSO") && r.j.mapa.movimentacoes.ultima === 157, "Mapa: bloco de texto para a IA e última movimentação 157");
   const blocoMapa = r.j?.bloco || "";
+  // chave gratuita (Gemini de mentira recusa acima de 250 mil tokens): nada de omitir páginas
+  let sem = 123456789; const aleatorio = (n) => { let s = ""; while (s.length < n) { sem = (sem + 0x6D2B79F5) | 0; let t = Math.imul(sem ^ (sem >>> 15), 1 | sem); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; s += (((t ^ (t >>> 14)) >>> 0).toString(36)) + (s.length % 90 < 6 ? "\n" : " "); } return s.slice(0, n); };
+  const enorme = Array.from({ length: 300 }, (_, i) => `[Página ${i + 1} de 300]\nMovimentacao ${i + 1} : Petição\nArquivo 1: p${i + 1}.pdf - Pag.1/1\n` + aleatorio(4000)).join("");
+  r = await chamar("/api/generate-minute-turbo", { processText: enorme, actType: "auto", promptTitle: "teste" });
+  ok(!r.j?.minute && (r.j?.codigo === "AUTOS_GRANDES_SEGUNDO_PLANO" || /segundo plano|gratuita|entrada/i.test(String(r.j?.error || ""))), "Turbo com autos acima do limite da chave gratuita: NÃO reduz (devolve o pedido de segundo plano)");
+  r = await chamar("/api/generate-minute", { processText: enorme, executionStage: 1, aceitaSegundoPlano: true, customPromptText: "p", activePromptTitle: "t", promptCategory: "civel" });
+  ok(r.j?.codigo === "AUTOS_GRANDES_SEGUNDO_PLANO" || r.j?.codigo === "ENTRADA_GRANDE_GRATUITA", `Etapa 1 com autos acima do limite gratuito vai para os lotes (código ${r.j?.codigo})`);
   r = await chamar("/api/generate-minute-turbo", { processText: longo, actType: "auto", promptTitle: "teste", mapaProcesso: blocoMapa });
   ok(r.status === 200 && /COM-MAPA/.test(r.t), "Turbo: o mapa do processo chega às instruções da IA");
   r = await chamar("/api/generate-minute-turbo", { processText: longo, actType: "auto", promptTitle: "teste", mapaProcesso: "texto qualquer que não veio do sistema" });

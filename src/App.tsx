@@ -1177,7 +1177,7 @@ export default function App() {
         },
         specificInstructions: "",
         executionStage: isTwoStageExecution ? 1 : undefined,
-        aceitaSegundoPlano: false,      // autos grandes na chave gratuita: o servidor reduz os autos (páginas essenciais, no texto original) e analisa de uma vez, como no assessor-judicial; o dossiê em lotes segue disponível pelo botão de processo gigante
+        aceitaSegundoPlano: true,      // autos grandes na chave gratuita (depois da compactação sem perda): NÃO omite páginas; o processo segue em segundo plano, em lotes, lido por inteiro e com o mapa do processo
       });
 
       const novoProg = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `p-${Date.now()}`);

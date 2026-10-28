@@ -12,6 +12,9 @@ http.createServer((req, res) => {
     let j = {}; try { j = JSON.parse(corpo); } catch {}
     const sis = JSON.stringify(j.systemInstruction || j.config?.systemInstruction || "") + JSON.stringify(j.generationConfig || {});
     const tudo = corpo;
+    if (process.env.GEMINI_FALSO_LOG) console.log("req ~tokens", Math.ceil(corpo.length / 3.2));
+    // chave gratuita de mentira: recusa pedidos acima de 250 mil tokens de entrada (como o Google), menos as chamadas de classificação/mapa/ficha, que são pequenas
+    if (!/CLASSIFICADOR DE RELEV|MAPA-PARTE|MAPA-CONSOLIDAR/.test(tudo.slice(0, 20000) + sis) && Math.ceil(corpo.length / 3.2) > 250000 && process.env.GEMINI_FALSO_GRATUITO === "1") { res.writeHead(429, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { code: 429, message: "You exceeded your current quota: generate_content_free_tier_input_token_count, limit: 250000, request: " + Math.ceil(corpo.length / 3.2), status: "RESOURCE_EXHAUSTED" } })); return; }
     let t;
     if (/MAPA-PARTE/.test(sis + tudo.slice(0, 4000)) && !/MAPA-CONSOLIDAR/.test(sis)) { const movs = [...new Set([...tudo.matchAll(/\[Mov\. (\d+) /g)].map((m) => +m[1]))]; t = JSON.stringify({ numeroProcesso: "5129546-88.2025.8.09.0100", partes: "Autor x Réu", eventos: movs.filter((n) => n % 37 === 0 || n === 148).map((n) => ({ mov: n, data: "01/01/2026", tipo: n === 148 ? "Decisão" : "Despacho", resumo: "Ato da movimentação " + n, determinou: "comando " + n, situacao: "em_vigor" })) }); }
     else if (/MAPA-CONSOLIDAR/.test(sis)) t = JSON.stringify({ numeroProcesso: "5129546-88.2025.8.09.0100", partes: "Autor x Réu", estadoAtual: { ultimoAtoRelevante: "Decisão da Mov. 148", questaoAtual: "Deliberar sobre a avaliação dos imóveis e a alienação pendente", pendencias: ["avaliação dos imóveis"], vigentes: ["Mov. 148: nova avaliação determinada"], ligacoes: ["Mov. 148 depende da Mov. 37"] }, situacoes: [{ mov: 37, situacao: "cumprido" }] });

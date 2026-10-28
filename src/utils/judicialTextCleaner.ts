@@ -8,6 +8,8 @@
 
 import { anotarLocalizacao } from "./localizacaoAutos";
 
+import { limparRuidoDeOcr } from "./ruidoOcr";
+
 export function cleanJudicialPdfText(rawText: string): string {
   if (!rawText || typeof rawText !== "string") return "";
 
@@ -17,6 +19,7 @@ export function cleanJudicialPdfText(rawText: string): string {
   cleaned = cleaned.replace(/\[---\s*P[AÁ]GINA\s+(\d+)\s+DE\s+(\d+)[^\]]*---\]/gi, "\n[Página $1 de $2]\n");
   cleaned = cleaned.replace(/===+\s*(?:DOCUMENTO|TEXTO ADICIONAL)[^=\n]*===+/gi, "\n\n");
   cleaned = anotarLocalizacao(cleaned);      // cada página ganha a linha [Mov. N · Arq. M · Pág. K/T] lida do próprio carimbo (antes da limpeza do rodapé)
+  cleaned = limparRuidoDeOcr(cleaned).texto;      // páginas de foto/digitalização ruim (OCR só com rabiscos) viram uma linha de aviso
 
   // 2. Remover assinaturas eletrônicas laterais, links de rodapés e marcas d'água
   const noisePatterns = [

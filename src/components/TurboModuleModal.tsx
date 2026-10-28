@@ -32,9 +32,7 @@ import { gerenteGigantes, ConfigGigante } from "../utils/gigantes/gerente";
 import { descreverCorte, juntarComoServidor, CorteInfo } from "../utils/corteAutos";
 
 // acima disso o Turbo cortaria o final dos autos: oferece a leitura em lotes (a minuta vai para o Histórico)
-const LIMITE_CHARS_TURBO = 1_400_000;
-const LIMITE_CHARS_TURBO_LENTO = 400_000;      // acima disto (cerca de 150 a 190 páginas) o Turbo não cabe numa chamada só e pode levar vários minutos: sugere a leitura em lotes
-const LIMITE_PAGINAS_TURBO_LENTO = 200;
+const LIMITE_CHARS_TURBO = 2_800_000;      // só a janela do modelo (~800 mil tokens) manda direto para os lotes; o limite da chave gratuita o servidor detecta pela recusa do Google e então o processo vai para os lotes (sem omitir páginas)
 import { AvisoCoberturaLeitura } from "./AvisoCoberturaLeitura";
 import type { GenerationResult, UploadedPdf } from "../types";
 import { CustomPrompt, SavedAnalysis } from "../types";
@@ -268,8 +266,8 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
     // Processo gigante: acima do limite do Turbo o final dos autos seria cortado; oferece a leitura em lotes (a minuta vai para o Histórico)
     const paginasAutos = inputMode === "pdf" && pdfFile ? (pdfFile.pageCount || 0) : (effectiveText.match(/\[P[áa]gina \d+ de (\d+)\]/)?.[1] ? Number(effectiveText.match(/\[P[áa]gina \d+ de (\d+)\]/)![1]) : 0);
     const muitoGrandeParaTurbo = effectiveText.length > LIMITE_CHARS_TURBO;
-    const lentoParaTurbo = !muitoGrandeParaTurbo && (effectiveText.length > LIMITE_CHARS_TURBO_LENTO || paginasAutos > LIMITE_PAGINAS_TURBO_LENTO);
-    if (muitoGrandeParaTurbo || (lentoParaTurbo && document.documentElement.dataset.assessorAuto !== "1")) {
+    const lentoParaTurbo = false;
+    if (muitoGrandeParaTurbo) {
       const paginas = paginasAutos;
       const automatico = document.documentElement.dataset.assessorAuto === "1";
       const escolhaG = automatico ? "lotes" : await new Promise<EscolhaGigante>((resolver) => setDlgGigante({ paginas, tokens: Math.round(effectiveText.length / 3.2), lento: lentoParaTurbo, corte: (() => { try { return descreverCorte(juntarComoServidor([{ nome: pdfFile?.name || "texto dos autos", texto: effectiveText, paginas }]), 1_500_000); } catch { return null; } })(), resolver }));
