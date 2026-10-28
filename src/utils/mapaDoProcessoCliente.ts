@@ -1,28 +1,27 @@
-// Chamada do mapa do processo a partir da tela: só para autos com 130 movimentações ou mais. Se falhar, a análise segue normalmente, sem o mapa.
+// Chamada do mapa do processo a partir da tela: só para autos extensos (por volume de tokens). O trabalho roda em segundo plano
+// (src/utils/mapaEmSegundoPlano.ts): grava cada parte lida, aparece no painel "Mapa do processo" e retoma depois de atualizar a página.
+// Se falhar, a análise segue normalmente, sem o mapa.
 import { toast } from "react-hot-toast";
-import { getApiHeaders } from "./apiKeyManager";
+import { gerenteMapas } from "./mapaEmSegundoPlano";
 import { precisaDeMapa, resumirMovimentacoes, estimarTokens, type MapaProcesso } from "./mapaDoProcesso";
 
 export interface MapaDaExecucao { mapa: MapaProcesso; bloco: string }
 
 /** `forcar`: monta o mapa mesmo abaixo do tamanho mínimo (usado na leitura em lotes, onde o texto já é o dossiê). */
-export async function prepararMapaDoProcesso(autos: string, progId: string, opcoes: { forcar?: boolean } = {}): Promise<MapaDaExecucao | null> {
+export async function prepararMapaDoProcesso(autos: string, _progId: string, opcoes: { forcar?: boolean } = {}): Promise<MapaDaExecucao | null> {
   let toastId: string | undefined;
+  let desinscrever = () => {};
   try {
     const r = resumirMovimentacoes(autos);
     if (autos.length < 2000 || (!opcoes.forcar && !precisaDeMapa(autos))) return null;
-    toastId = toast.loading(`Autos extensos (~${Math.round(estimarTokens(autos) / 1000)} mil tokens): montando o mapa do processo (leitura completa, pode levar alguns minutos)…`, { duration: 600000 });
-    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 25 * 60_000);
-    let txt = "";
-    try {
-      const resp = await fetch("/api/mapa-processo", { method: "POST", headers: getApiHeaders({ "x-progresso-id": progId }), body: JSON.stringify({ processText: autos }), signal: ctl.signal });
-      txt = await resp.text();
-    } finally { clearTimeout(to); }
-    let j: any = {}; try { j = JSON.parse(txt.trim()); } catch { /* resposta incompleta */ }
-    if (!j?.mapa || typeof j.bloco !== "string") { console.warn("[Mapa do processo] indisponível:", j?.error || txt.slice(0, 200)); return null; }
+    toastId = toast.loading(`Autos extensos (~${Math.round(estimarTokens(autos) / 1000)} mil tokens): montando o mapa do processo. Pode navegar por outras telas: o andamento aparece no selo "🗺️ Mapa" e continua se você atualizar a página.`, { duration: 600000 });
+    const id = toastId;
+    desinscrever = gerenteMapas.inscrever((ts) => { const t = ts.find((x) => ["planejando", "lendo", "consolidando"].includes(x.status) && x.texto === autos); if (t && t.partesTotal) toast.loading(`Mapa do processo: ${t.etapa} Pode navegar por outras telas; o selo "🗺️ Mapa" mostra o andamento.`, { id, duration: 600000 }); });
+    const res = await gerenteMapas.garantir(autos);
+    if (!res) { console.warn("[Mapa do processo] indisponível; a análise segue sem o mapa."); return null; }
     toast.success(`Mapa do processo pronto${r.movs ? ` (${r.movs} movimentações, até a Mov. ${r.ultima})` : ""}.`, { id: toastId, duration: 4000 }); toastId = undefined;
-    return { mapa: j.mapa, bloco: j.bloco };
+    return res;
   } catch (e) {
     console.warn("[Mapa do processo] falhou; a análise segue sem o mapa:", e); return null;
-  } finally { if (toastId) toast.dismiss(toastId); }
+  } finally { desinscrever(); if (toastId) toast.dismiss(toastId); }
 }

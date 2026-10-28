@@ -12,6 +12,7 @@ import { PromptManagerModal } from "./components/PromptManagerModal";
 import { PdfUploadZone } from "./components/PdfUploadZone";
 import { useCoberturaLeitura } from "./components/useCoberturaLeitura";
 import { GigantesPanel } from "./components/GigantesPanel";
+import { MapaSegundoPlano } from "./components/MapaSegundoPlano";
 import { PainelProgresso } from "./components/PainelProgresso";
 import { GiganteDialog, EscolhaGigante } from "./components/GiganteDialog";
 import { gerenteGigantes, ConfigGigante, LIMITE_PAGINAS_GIGANTE } from "./utils/gigantes/gerente";
@@ -2823,6 +2824,7 @@ export default function App() {
         currentPromptId={activePrompt.id}
       />
 
+      <MapaSegundoPlano />
       <GigantesPanel config={montarConfigGigante()} onVerHistorico={() => setIsHistoryModalOpen(true)} />
       <HistoryModal
         isOpen={isHistoryModalOpen}

@@ -1674,19 +1674,55 @@ const SISTEMA_MAPA_CONSOLIDAR = `MAPA-CONSOLIDAR. Você é um juiz de direito re
 REGRAS: (1) Fidelidade total: use só o que consta na linha do tempo e no texto das últimas movimentações. (2) "questaoAtual" = o que o processo pede para ser decidido AGORA (pelo último ato de conclusão e pelas pendências), em até 3 frases. (3) "pendencias" = o que ainda falta resolver ou cumprir. (4) "vigentes" = decisões e comandos que continuam em vigor e limitam a decisão atual, cada um com "Mov. N". (5) "ligacoes" = de que atos anteriores a decisão atual depende ou o que ela afeta (com "Mov. N"). (6) "situacoes" = para cada evento que precisa de ajuste, a situação final: em_vigor, cumprido, reformado (uma decisão posterior mudou), superado, pendente ou informativo. (7) "ultimoAtoRelevante" = o último ato decisório relevante, com "Mov. N".
 (8) "faseAtual" = em que ponto o processo está: "fase" (ex.: conhecimento/instrução; SENTENCIADO, com a sentença na Mov. N; cumprimento de sentença; recursal), "sentencaMov" = o número da movimentação da sentença quando já houver (senão 0), "atoEsperado" = que tipo de ato cabe agora (ex.: decisão sobre petição posterior à sentença; despacho de mero expediente; sentença de mérito, se ainda não houve) e "naoRepetir" = o que já foi decidido e não pode ser decidido de novo (com "Mov. N"). Se houve sentença e depois vieram petições, o ato esperado é decidir essas petições, não refazer a sentença.
 Responda SOMENTE com JSON: {"numeroProcesso":"","partes":"","faseAtual":{"fase":"","sentencaMov":0,"atoEsperado":"","naoRepetir":[""]},"estadoAtual":{"ultimoAtoRelevante":"","questaoAtual":"","pendencias":[""],"vigentes":[""],"ligacoes":[""]},"situacoes":[{"mov":0,"situacao":"em_vigor"}]}`;
+/** Mapa em três modos, para o navegador poder gravar cada parte pronta e retomar de onde parou: "plano" (só divide, sem IA), "parte" (lê uma parte) e "consolidar" (amarra a linha do tempo). Sem "modo", faz tudo de uma vez. */
 app.post("/api/mapa-processo", async (req, res) => {
     try {
+        const modo = String(req.body?.modo || "tudo");
         const apiKey = extractApiKey(req);
-        if (!apiKey) return res.status(401).json({ error: "Chave da API Gemini ausente." });
+        if (!apiKey && modo !== "plano") return res.status(401).json({ error: "Chave da API Gemini ausente." });
         const autos = filterInnocuousCertificates(cleanJudicialPdfText(String(req.body?.processText || "")));      // mesma limpeza das outras rotas: carimbo [Mov. N · Arq. · Pág.] em cada página e sem ruído de OCR
         if (autos.trim().length < 2000) return res.status(400).json({ error: "Autos insuficientes para montar o mapa." });
-        manterViva(res);
         const resumo = resumirMovimentacoes(autos);
-        const progId = String(req.headers["x-progresso-id"] || "").slice(0, 80);
         const partes = dividirParaMapa(autos, 110_000);
+        if (modo === "plano") return res.json({ total: partes.length, movs: resumo.movs, ultima: resumo.ultima, partes: partes.map((p) => ({ movDe: p.movDe, movAte: p.movAte })) });
+        if (modo === "parte" && !(Number.isInteger(Number(req.body?.indice)) && Number(req.body?.indice) >= 0 && Number(req.body?.indice) < partes.length)) return res.status(400).json({ error: "Parte do mapa inexistente." });
+        manterViva(res);
+        const progId = String(req.headers["x-progresso-id"] || "").slice(0, 80);
         const base = { apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res, primaryModel: "gemini-3.6-flash", fallbackModel: "gemini-3.8-flash", customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"] };
         const uso = { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 };
         const somaUso = (r: any) => { const u = r?.usageMetadata || {}; uso.promptTokenCount += u.promptTokenCount || 0; uso.candidatesTokenCount += u.candidatesTokenCount || 0; uso.totalTokenCount += u.totalTokenCount || 0; };
+        const lerParte = async (i: number) => {
+            const r = await generateWithFallbackAndRetry({ ...base, timeoutMs: 150000, maxCycles: 1,
+                contents: [{ role: "user", parts: [{ text: `PARTE ${i + 1} DE ${partes.length} (movimentações ${partes[i].movDe} a ${partes[i].movAte}):\n${partes[i].texto}` }] }],
+                config: { systemInstruction: SISTEMA_MAPA_PARTE, temperature: 0.1, maxOutputTokens: 12000, responseMimeType: "application/json" } });
+            somaUso(r);
+            const j: any = safeParseObj(r.text || "{}") || {};
+            return { eventos: Array.isArray(j.eventos) ? j.eventos : [], numeroProcesso: j.numeroProcesso ? String(j.numeroProcesso) : "", partes: j.partes ? String(j.partes) : "" };
+        };
+        const consolidar = async (eventos: any[], numero: string, partesProc: string) => {
+            const ordenados = eventos.filter((e) => e && Number(e.mov) > 0).sort((a, b) => Number(a.mov) - Number(b.mov));
+            const cauda = autos.slice(-60000);
+            const rc = await generateWithFallbackAndRetry({ ...base, timeoutMs: 150000, maxCycles: 1,
+                contents: [{ role: "user", parts: [{ text: `LINHA DO TEMPO (${ordenados.length} eventos; os autos têm ${resumo.movs} movimentações, até a Mov. ${resumo.ultima}):\n${JSON.stringify(ordenados).slice(0, 220000)}\n\n----- TEXTO INTEGRAL DAS ÚLTIMAS MOVIMENTAÇÕES -----\n${cauda}` }] }],
+                config: { systemInstruction: SISTEMA_MAPA_CONSOLIDAR, temperature: 0.1, maxOutputTokens: 8000, responseMimeType: "application/json" } });
+            somaUso(rc);
+            const cj: any = safeParseObj(rc.text || "{}") || {};
+            const situ = new Map<number, string>((Array.isArray(cj.situacoes) ? cj.situacoes : []).map((x: any) => [Number(x?.mov), String(x?.situacao || "")] as [number, string]));
+            const mapa = normalizarMapa({ numeroProcesso: cj.numeroProcesso || numero, partes: cj.partes || partesProc, estadoAtual: cj.estadoAtual, faseAtual: cj.faseAtual, eventos: ordenados.map((e) => ({ ...e, situacao: situ.get(Number(e.mov)) || e.situacao })) }, autos);
+            return { mapa, modelUsed: String((rc as any).modelVersion || "") };
+        };
+        if (modo === "parte") {
+            const i = Number(req.body?.indice);
+            if (!Number.isInteger(i) || i < 0 || i >= partes.length) return res.status(400).json({ error: "Parte do mapa inexistente." });
+            const r = await lerParte(i);
+            return res.json({ indice: i, total: partes.length, ...r, usage: uso });
+        }
+        if (modo === "consolidar") {
+            const ev = Array.isArray(req.body?.eventos) ? req.body.eventos.slice(0, 5000) : [];
+            const { mapa, modelUsed } = await consolidar(ev, String(req.body?.numeroProcesso || ""), String(req.body?.partesProc || ""));
+            if (!mapa) return res.status(502).json({ error: "A IA não devolveu um mapa utilizável." });
+            return res.json({ mapa, bloco: blocoDoMapa(mapa), usage: uso, modelUsed });
+        }
         const eventos: any[] = []; let numero = "", partesProc = "", falhas = 0, feitas = 0;
         const t0 = Date.now(), fila = [...partes.keys()];
         setProg(progId, `Mapa do processo — lendo as ${partes.length} partes dos autos (${resumo.movs} movimentações)…`, 2, 60);
@@ -1694,13 +1730,9 @@ app.post("/api/mapa-processo", async (req, res) => {
             while (fila.length) {
                 const i = fila.shift()!;
                 try {
-                    const r = await generateWithFallbackAndRetry({ ...base, timeoutMs: 150000, maxCycles: 1,
-                        contents: [{ role: "user", parts: [{ text: `PARTE ${i + 1} DE ${partes.length} (movimentações ${partes[i].movDe} a ${partes[i].movAte}):\n${partes[i].texto}` }] }],
-                        config: { systemInstruction: SISTEMA_MAPA_PARTE, temperature: 0.1, maxOutputTokens: 12000, responseMimeType: "application/json" } });
-                    somaUso(r);
-                    const j: any = safeParseObj(r.text || "{}") || {};
-                    if (Array.isArray(j.eventos)) eventos.push(...j.eventos);
-                    if (!numero && j.numeroProcesso) numero = String(j.numeroProcesso); if (!partesProc && j.partes) partesProc = String(j.partes);
+                    const r = await lerParte(i);
+                    eventos.push(...r.eventos);
+                    if (!numero && r.numeroProcesso) numero = r.numeroProcesso; if (!partesProc && r.partes) partesProc = r.partes;
                 } catch (e: any) { falhas++; console.warn(`[Mapa do processo] parte ${i + 1}/${partes.length} falhou:`, e?.message || e); }
                 feitas++; setProg(progId, `Mapa do processo — parte ${feitas} de ${partes.length} lida…`, 2 + Math.round((feitas / partes.length) * 55), 60);
             }
@@ -1708,19 +1740,11 @@ app.post("/api/mapa-processo", async (req, res) => {
         await Promise.all([trabalhador(), trabalhador(), trabalhador()]);
         if (falhas === partes.length) return res.status(502).json({ error: "Não consegui montar o mapa do processo (a IA não respondeu)." });
         setProg(progId, "Mapa do processo — amarrando o estado atual…", 62, 90);
-        const ordenados = eventos.filter((e) => e && Number(e.mov) > 0).sort((a, b) => Number(a.mov) - Number(b.mov));
-        const cauda = autos.slice(-60000);
-        const rc = await generateWithFallbackAndRetry({ ...base, timeoutMs: 150000, maxCycles: 1,
-            contents: [{ role: "user", parts: [{ text: `LINHA DO TEMPO (${ordenados.length} eventos; os autos têm ${resumo.movs} movimentações, até a Mov. ${resumo.ultima}):\n${JSON.stringify(ordenados).slice(0, 220000)}\n\n----- TEXTO INTEGRAL DAS ÚLTIMAS MOVIMENTAÇÕES -----\n${cauda}` }] }],
-            config: { systemInstruction: SISTEMA_MAPA_CONSOLIDAR, temperature: 0.1, maxOutputTokens: 8000, responseMimeType: "application/json" } });
-        somaUso(rc);
-        const cj: any = safeParseObj(rc.text || "{}") || {};
-        const situ = new Map<number, string>((Array.isArray(cj.situacoes) ? cj.situacoes : []).map((x: any) => [Number(x?.mov), String(x?.situacao || "")] as [number, string]));
-        const mapa = normalizarMapa({ numeroProcesso: cj.numeroProcesso || numero, partes: cj.partes || partesProc, estadoAtual: cj.estadoAtual, faseAtual: cj.faseAtual, eventos: ordenados.map((e) => ({ ...e, situacao: situ.get(Number(e.mov)) || e.situacao })) }, autos);
+        const { mapa, modelUsed } = await consolidar(eventos, numero, partesProc);
         if (!mapa) return res.status(502).json({ error: "A IA não devolveu um mapa utilizável." });
         console.log(`[Mapa do processo] ${resumo.movs} movimentações, ${partes.length} partes (${falhas} falharam), ${mapa.eventos.length} eventos em ${Math.round((Date.now() - t0) / 1000)}s.`);
         setProg(progId, "Mapa do processo pronto.", 95, 95);
-        return res.json({ mapa, bloco: blocoDoMapa(mapa), partesLidas: partes.length - falhas, partesTotal: partes.length, usage: uso, modelUsed: String((rc as any).modelVersion || "") });
+        return res.json({ mapa, bloco: blocoDoMapa(mapa), partesLidas: partes.length - falhas, partesTotal: partes.length, usage: uso, modelUsed });
     } catch (err: any) {
         console.error("Erro no mapa-processo:", err);
         return res.status(500).json({ error: formatGeminiError(err) || "Falha ao montar o mapa do processo." });

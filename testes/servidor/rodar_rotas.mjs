@@ -52,6 +52,17 @@ try {
   ok(Array.isArray(r.j?.mapa?.eventos) && r.j.mapa.eventos.some((e) => e.mov === 148) && r.j.mapa.eventos.find((e) => e.mov === 37)?.situacao === "cumprido", "Mapa: eventos por movimentação e situação ajustada pela consolidação");
   ok(typeof r.j?.bloco === "string" && r.j.bloco.startsWith("[MAPA DO PROCESSO") && r.j.mapa.movimentacoes.ultima === 157, "Mapa: bloco de texto para a IA e última movimentação 157");
   const blocoMapa = r.j?.bloco || "";
+  // mapa em modos (segundo plano: o navegador grava cada parte e retoma de onde parou)
+  r = await chamar("/api/mapa-processo", { modo: "plano", processText: longo });
+  ok(r.status === 200 && r.j?.total >= 1 && r.j?.movs === 157 && r.j?.ultima === 157, `Mapa (modo plano): divide sem usar IA (${r.j?.total} parte(s))`);
+  const totalPartes = r.j?.total || 1;
+  r = await chamar("/api/mapa-processo", { modo: "parte", indice: 0, processText: longo });
+  ok(r.status === 200 && Array.isArray(r.j?.eventos) && r.j.total === totalPartes, "Mapa (modo parte): lê uma parte e devolve os eventos");
+  const evParte = r.j?.eventos || [];
+  r = await chamar("/api/mapa-processo", { modo: "parte", indice: 99, processText: longo });
+  ok(r.status === 400, "Mapa (modo parte): parte inexistente vira erro 400");
+  r = await chamar("/api/mapa-processo", { modo: "consolidar", processText: longo, eventos: evParte });
+  ok(r.status === 200 && r.j?.mapa?.movimentacoes?.ultima === 157 && String(r.j?.bloco || "").startsWith("[MAPA DO PROCESSO"), "Mapa (modo consolidar): amarra a linha do tempo e devolve o bloco");
   // chave gratuita (Gemini de mentira recusa acima de 250 mil tokens): nada de omitir páginas
   let sem = 123456789; const aleatorio = (n) => { let s = ""; while (s.length < n) { sem = (sem + 0x6D2B79F5) | 0; let t = Math.imul(sem ^ (sem >>> 15), 1 | sem); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; s += (((t ^ (t >>> 14)) >>> 0).toString(36)) + (s.length % 90 < 6 ? "\n" : " "); } return s.slice(0, n); };
   const enorme = Array.from({ length: 300 }, (_, i) => `[Página ${i + 1} de 300]\nMovimentacao ${i + 1} : Petição\nArquivo 1: p${i + 1}.pdf - Pag.1/1\n` + aleatorio(4000)).join("");
