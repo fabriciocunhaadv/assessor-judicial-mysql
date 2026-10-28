@@ -1608,6 +1608,12 @@ function conferenciasPorCodigo(minuta: string, autos: string): AlertaAuditoria[]
     return out;
 }
 
+/** Alerta que alega "cópia / reaproveitamento de outro processo": não é verificável pelo sistema e já errou com precedente transcrito. */
+export function alegaCopiaDeOutroProcesso(t: string): boolean {
+    const alvo = "(?:(?:outro|diverso|alheio|distinto)s?\\s+(?:processo|caso|feito|autos)|(?:processo|caso|feito)s?\\s+(?:diverso|distinto|alheio|outro))";
+    return new RegExp(`(?:c[óo]pi|copiad|colad|reaproveit|transpost|replic)[^.]{0,80}\\b${alvo}|\\b${alvo}[^.]{0,80}(?:c[óo]pi|copiad|colad|reaproveit)`, "i").test(t);
+}
+
 /** Valida os apontamentos da IA: cada um precisa de prova literal (trecho da minuta e/ou dos autos que realmente existam). Sem prova, é descartado. */
 function validarAlertasIa(brutos: any[], minuta: string, autos: string): { validos: AlertaAuditoria[]; descartados: number; naoConfirmados: { severity: string; title: string; description: string; location: string }[] } {
     const validos: AlertaAuditoria[] = []; let descartados = 0; const naoConfirmados: { severity: string; title: string; description: string; location: string }[] = [];
@@ -1615,6 +1621,11 @@ function validarAlertasIa(brutos: any[], minuta: string, autos: string): { valid
         if (/\bTPU\b|tabelas?\s+processuais\s+unificadas|\(CNJ:\s*\d+\)/i.test(`${a?.title || ""} ${a?.description || ""} ${a?.minutaTrecho || ""} ${a?.autosTrecho || ""}`)) continue;      // TPU é auxílio de lançamento no Projudi: não entra na auditoria
         const sev = ["bloqueante", "atencao", "informativo"].includes(a?.severity) ? a.severity : "atencao";
         const tipo = ["contradicao", "omissao", "sem_lastro", "forma"].includes(a?.tipoProva) ? a.tipoProva : (a?.autosTrecho && a?.minutaTrecho ? "contradicao" : "");
+        if (alegaCopiaDeOutroProcesso(`${a?.title || ""} ${a?.description || ""}`)) {      // "copiou de outro processo" a IA não consegue provar (precedente transcrito traz outros números e partes): fica à vista, mas não entra na nota
+            descartados++;
+            if (String(a?.title || "").trim() && naoConfirmados.length < 8) naoConfirmados.push({ severity: "informativo", title: String(a.title).slice(0, 200), description: ("Observação da IA, sem comprovação pelo sistema: transcrição de precedente, súmula ou ementa é citação normal e não indica cópia de outro processo. " + String(a?.description || "")).slice(0, 600), location: String(a?.location || "").slice(0, 200) });
+            continue;
+        }
         const mT = String(a?.minutaTrecho || "").trim(), aT = String(a?.autosTrecho || "").trim();
         const okMin = mT ? citacaoExiste(mT, minuta) : false, okAut = aT ? citacaoExiste(aT, autos) : false;
         const prova = tipo === "contradicao" ? okMin && okAut : tipo === "omissao" ? okAut : tipo === "sem_lastro" ? okMin : tipo === "forma" ? okMin : false;
@@ -1791,7 +1802,8 @@ CALIBRAGEM DO AUDITOR (VALE PARA QUALQUER PROCESSO E QUALQUER ÁREA):
 3. SEM PRESUNÇÕES: não presuma problemas pelo tipo de ato nem pelo assunto. Só levante um ponto se os próprios autos o mostrarem, citando onde está.
 4. PRESUNÇÃO DE REGULARIDADE: minuta coerente com os autos (pedidos apreciados, fatos fiéis, decisões anteriores respeitadas) e fundamentada em base jurídica plausível é APROVADA. Escolhas de fundamentação, de solução entre alternativas juridicamente possíveis ou de redação não são erro e não reduzem a nota.
 5. VOCABULÁRIO: só use "sem base legal", "ilegal", "ignorou" ou "contraria" quando puder indicar o dispositivo violado ou a prova dos autos desconsiderada. Caso contrário use "diverge de ..." ou "não localizei nos autos ...".
-6. IDENTIDADE: confira o número do processo e as partes da minuta e dos autos. Se não coincidirem, emita um único alerta bloqueante: "autos não correspondem à minuta".
+6. IDENTIDADE: confira o número do processo e as partes que a minuta atribui a ESTE caso (cabeçalho, relatório e dispositivo) com os dos autos. Se não coincidirem, emita um único alerta bloqueante: "autos não correspondem à minuta". Número de processo, partes, relator ou órgão que apareçam DENTRO de uma citação (ementa, acórdão, precedente de Turma Recursal, súmula, tese, jurisprudência, doutrina) NÃO contam para esta regra.
+6-A. CITAÇÕES E TRANSCRIÇÕES: transcrever precedente, súmula, ementa, acórdão ou trecho de lei, mesmo longo e com números de outros processos, é prática normal e legítima. NUNCA aponte "cópia", "reaproveitamento" ou "fundamentação de outro processo" por causa de citação transcrita. Só levante isso se FATOS de outro caso (nomes de partes, valores, datas, pedidos) estiverem narrados como se fossem os fatos deste processo, e nesse caso cite o trecho literal e o que difere dos autos.
 7. NOTA (score): a nota é SUA, de 0 a 100, e deve refletir a sua análise. 100 só quando a minuta está aprovada sem NENHUMA ressalva; toda ressalva ou correção necessária reduz a nota (leve para atenção, forte para bloqueante). Nota, "verdict" e "summary" têm de ser coerentes entre si: 100 = "Aprovada sem Ressalvas"; 75 a 99 = "Aprovada com Ressalvas"; 50 a 74 = "Requer Correções Obrigatórias"; abaixo de 50 = "Crítica / Risco de Nulidade". Se o summary fala em problema, a nota não pode ser alta.
 8. TOM: objetivo e construtivo. No campo "summary", a primeira frase é a conclusão (aprovar / aprovar com ajuste / devolver), depois no máximo 3 pontos.
 9. ABERTURA DO RELATÓRIO: o relatório da minuta deve começar com "Trata-se de [natureza], movida por [autor], em face de [réu], [objeto]". Se não começar assim, emita um alerta de atenção (pilar "redacao_clareza") com o trecho inicial real e a abertura sugerida; não reduza a nota por isso além do peso de um alerta de atenção.
