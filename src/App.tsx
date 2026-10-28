@@ -2800,6 +2800,9 @@ export default function App() {
             <span className="text-[11px] text-slate-500">
               Assessor Judicial • Sistema de Análise e Minutas Judiciais
             </span>
+            <span data-testid="versao-sistema" title="Versão do sistema no ar (código da atualização e data/hora do deploy)" className="text-[10px] text-slate-600 font-mono">
+              {__APP_VERSAO__.commit ? `v ${__APP_VERSAO__.commit} · ` : "versão de "}{__APP_VERSAO__.data}
+            </span>
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-slate-400">
