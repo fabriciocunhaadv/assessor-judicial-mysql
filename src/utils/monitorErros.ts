@@ -170,3 +170,18 @@ export function pedidoDeCorrecao(aceitos: ErroMonitorado[]): string {
   });
   return L.join("\n");
 }
+
+/** Relatório em texto dos erros (já mascarados) para o super admin enviar ao Claude, sem passar pela IA do painel. */
+export function exportarErros(erros: ErroMonitorado[]): string {
+  const dt = (t: number) => (t ? new Date(t).toLocaleString("pt-BR") : "—");
+  const L = [`Claude, abaixo estão os erros exportados do Monitor de Erros do assessor-judicial (${erros.length} grupo(s), gerado em ${dt(Date.now())}). Analise cada um, diga a causa provável e apresente as soluções; não altere o código sem minha autorização.`, ""];
+  erros.forEach((e, i) => {
+    L.push(`${i + 1}. [${e.modulo}] ${e.tipo}${e.status ? ` · HTTP ${e.status}` : ""} · origem: ${e.origem} · situação: ${e.situacao}`,
+      `   Mensagem: ${e.mensagem}`,
+      `   Ocorrências: ${e.contagem} · usuários: ${e.usuarios.length} · gabinete: ${e.tenantId} · primeira: ${dt(e.primeiraEm)} · última: ${dt(e.ultimaEm)} · versão: ${e.versao}`);
+    if (e.contexto && Object.keys(e.contexto).length) L.push(`   Contexto: ${Object.entries(e.contexto).map(([k, v]) => `${k}=${mascarar(v, 200)}`).join(" | ")}`);
+    if (e.decisao?.nota) L.push(`   Nota do super admin: ${e.decisao.nota}`);
+    L.push("");
+  });
+  return L.join("\n");
+}

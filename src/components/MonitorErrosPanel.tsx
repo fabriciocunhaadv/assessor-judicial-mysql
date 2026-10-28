@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
-import { Bug, RefreshCw, Sparkles, Check, X, CheckCheck, Copy, Loader2, ShieldAlert } from "lucide-react";
-import { ErroMonitorado, StatusErro, DiagnosticoErro, listarErros, salvarDiagnostico, decidirErro, pedidoDeCorrecao } from "../utils/monitorErros";
+import { Bug, RefreshCw, Sparkles, Check, X, CheckCheck, Copy, Loader2, ShieldAlert, Download } from "lucide-react";
+import { ErroMonitorado, StatusErro, DiagnosticoErro, listarErros, salvarDiagnostico, decidirErro, pedidoDeCorrecao, exportarErros } from "../utils/monitorErros";
 import { getApiHeaders } from "../utils/apiKeyManager";
 
 const ROTULO_SITUACAO: Record<StatusErro, string> = { novo: "Novo", diagnosticado: "Diagnosticado", aceito: "Ajuste aceito", recusado: "Recusado", resolvido: "Resolvido" };
@@ -53,6 +53,12 @@ export function MonitorErrosPanel() {
   const diagnosticarNovos = async () => { for (const e of lista.filter((x) => x.situacao === "novo" && x.tipo === "falha").slice(0, 5)) await diagnosticar(e); };
   const copiarPedido = async () => { try { await navigator.clipboard.writeText(pedidoDeCorrecao(aceitos)); toast.success("Pedido copiado. Cole no chat com o Claude."); } catch { toast.error("Não consegui copiar."); } };
 
+  const copiarErros = async () => { try { await navigator.clipboard.writeText(exportarErros(visiveis)); toast.success(`${visiveis.length} erro(s) copiado(s). Cole no chat com o Claude.`); } catch { toast.error("Não consegui copiar. Use Baixar .txt."); } };
+  const baixarErros = () => {
+    const url = URL.createObjectURL(new Blob([exportarErros(visiveis)], { type: "text/plain;charset=utf-8" }));
+    const a = document.createElement("a"); a.href = url; a.download = `erros-assessor-${new Date().toISOString().slice(0, 10)}.txt`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   return (
     <div className="space-y-5" data-testid="monitor-erros">
       <div className="bg-slate-900 border border-rose-500/40 rounded-2xl p-5 space-y-3">
@@ -73,6 +79,8 @@ export function MonitorErrosPanel() {
         <label className="flex items-center gap-1.5 text-slate-300"><input type="checkbox" checked={ocultarPassageiros} onChange={(ev) => setOcultarPassageiros(ev.target.checked)} /> Ocultar passageiros (503, cota, rede)</label>
         <div className="ml-auto flex flex-wrap gap-2">
           <button onClick={carregar} disabled={carregando} className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center gap-1.5">{carregando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}Atualizar</button>
+          <button onClick={copiarErros} disabled={visiveis.length === 0} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold flex items-center gap-1.5"><Copy className="w-3.5 h-3.5" />Copiar erros ({visiveis.length})</button>
+          <button onClick={baixarErros} disabled={visiveis.length === 0} className="px-3 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 text-white font-bold flex items-center gap-1.5"><Download className="w-3.5 h-3.5" />Baixar .txt</button>
           <button onClick={diagnosticarNovos} disabled={!!ocupado} className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" />Diagnosticar novos (até 5)</button>
           <button onClick={copiarPedido} disabled={aceitos.length === 0} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold flex items-center gap-1.5"><Copy className="w-3.5 h-3.5" />Copiar pedido de correção ({aceitos.length})</button>
         </div>
