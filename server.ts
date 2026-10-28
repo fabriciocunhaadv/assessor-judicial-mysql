@@ -502,6 +502,7 @@ app.get("/api/progresso/:id", (req, res) => {
 
 app.post("/api/ocr-paginas", async (req, res) => {
     try {
+        if (Array.isArray(req.body?.images) && req.body.images.length > 0) manterViva(res);      // leitura por IA pode demorar: pulsos evitam o corte do Hostinger (erro vai no corpo JSON)
         const imagens: any[] = Array.isArray(req.body?.images) ? req.body.images.slice(0, 8) : [];
         if (imagens.length === 0) return res.status(400).json({ error: "Nenhuma página recebida para leitura." });
         const parts: any[] = [{ text: `Você é um leitor de documentos judiciais (OCR). Abaixo seguem ${imagens.length} página(s) de autos de processo, cada uma identificada pelo número da página. Transcreva FIELMENTE todo o texto legível de cada página (nomes, números, valores, datas, assinaturas, carimbos, tabelas, texto manuscrito legível), sem resumir, sem interpretar e sem inventar. Se a página estiver em branco ou ilegível, marque emBranco=true e deixe texto vazio. Se for foto ou documento sem texto (ex.: foto de objeto), descreva em uma linha entre colchetes, ex.: "[foto: veículo com avaria na porta]". Responda SOMENTE com JSON: {"paginas":[{"pagina":<número>,"texto":"...","emBranco":false}]}` }];

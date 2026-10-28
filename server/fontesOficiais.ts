@@ -177,14 +177,19 @@ export async function importarLei(id: string): Promise<ResumoLei> {
 }
 /** Descobre qual lei é pelo nome do arquivo salvo (ex.: l13105.htm) ou pelo começo do texto. */
 export function descobrirLei(nomeArquivo: string, texto: string): LeiConfig | null {
-  const base = (nomeArquivo || "").toLowerCase().replace(/\.[a-z]+$/, "");
+  const base = (nomeArquivo || "").toLowerCase().replace(/\.[a-z]+$/, "").replace(/(\d)\.(?=\d)/g, "$1");      // "Lei nº 11.340" vira "lei nº 11340" para bater com l11340
   for (const l of LEIS) {
     const arq = l.url.split("/").pop()!.toLowerCase().replace(/\.[a-z]+$/, "");
     const n = (x: string) => /(\d{3,5})/.exec(x)?.[1];
     if (base && (base === arq || (n(base) && n(base) === n(arq) && /^(l|del|lei)/.test(base)) || (arq === "constituicao" && /^constitui/.test(base)))) return l;
   }
   const inicio = htmlParaLinhas(texto).slice(0, 25).join(" ");
-  return LEIS.find((l) => l.aliases.slice(0, 6).some((re) => /\d{4,}/.test(re.source) && re.test(inicio))) || null;
+  const porAlias = LEIS.find((l) => l.aliases.slice(0, 6).some((re) => /\d{4,}/.test(re.source) && re.test(inicio)));
+  if (porAlias) return porAlias;
+  // cabeçalho do Planalto: "LEI Nº 11.340, DE 7 DE AGOSTO DE 2006" (sem a barra do ano)
+  const cab = /\bLei\s*(?:n[º°o.]*\s*)?(\d{1,2})\.?(\d{3})\s*,\s*de\s/i.exec(inicio);
+  if (cab) { const num = cab[1] + cab[2]; return LEIS.find((l) => new RegExp(`/l${num}(?:\\D|$)`, "i").test(l.url)) || null; }
+  return null;
 }
 export async function importarArquivoLei(nomeArquivo: string, buf: Buffer, idForcado?: string, formato = ""): Promise<ResumoLei> {
   let texto: string;
