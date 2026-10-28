@@ -2659,11 +2659,22 @@ ${reAuditNotes}`
                   <strong>Auditoria feita antes da correção da nota.</strong> {avisoNotaAntiga(auditResult, auditResult) === "forte" ? "O resumo abaixo fala em problema grave, mas a nota ficou alta: não confie nela. Confira os autos ou refaça a auditoria." : "Os pontos que a IA não conseguiu provar por citação não foram guardados nesta versão. Se a decisão for importante, refaça a auditoria."}
                 </div>
               )}
-              {auditResult.normativa && (!auditResult.normativa.conferida || auditResult.normativa.respondida === false) && (
-                <div data-testid="aviso-normativa" className="p-3 rounded-xl border border-slate-500/60 bg-slate-900/60 text-slate-200 text-xs">
-                  <strong>Súmulas e leis aplicáveis: não conferidas nesta auditoria.</strong> {auditResult.normativa.motivo === "tempo" ? "A busca passou do tempo limite e a auditoria seguiu sem ela. Se quiser essa conferência, audite de novo." : auditResult.normativa.motivo === "erro" ? "A busca falhou e a auditoria seguiu sem ela. Se quiser essa conferência, audite de novo." : auditResult.normativa.motivo === "sem_base" ? "Nenhuma súmula, tese ou lei cadastrada combinou com este caso (confira se as leis foram importadas)." : "A IA não devolveu a conferência. Se quiser, audite de novo."} A nota e os demais apontamentos continuam valendo.
-                </div>
-              )}
+              {auditResult.normativa && (() => {
+                const n = auditResult.normativa, lista: any[] = Array.isArray(auditResult.conformidadeNormativa) ? auditResult.conformidadeNormativa : [];
+                const feita = n.conferida && n.respondida !== false;
+                return (
+                  <div data-testid="aviso-normativa" className="px-3 py-1.5 rounded-lg border border-slate-700/70 bg-slate-900/40 text-slate-400 text-[11px] leading-relaxed">
+                    {feita ? (
+                      <>
+                        <span>⚖️ Conferência com súmulas, teses e leis aplicáveis ao caso: feita ({n.sumulas || 0} súmula(s)/tese(s) e {n.leis || 0} dispositivo(s) de lei considerados{lista.length ? `; ${lista.filter((x) => x?.seguida === true).length} seguido(s) pela minuta` : ""}).</span>
+                        {lista.length > 0 && <details className="mt-1"><summary className="cursor-pointer text-slate-500 hover:text-slate-300">ver quais</summary><ul className="list-disc pl-4 mt-1 space-y-0.5">{lista.map((x, i) => <li key={i}>{x?.referencia}: {x?.seguida === true ? "seguido" : "ponto de atenção"}{x?.observacao ? ` — ${x.observacao}` : ""}</li>)}</ul></details>}
+                      </>
+                    ) : (
+                      <span>⚖️ Desta vez a conferência com súmulas, teses e leis aplicáveis não foi feita ({n.motivo === "tempo" ? "a busca demorou" : n.motivo === "erro" ? "houve uma instabilidade na busca" : n.motivo === "sem_base" ? "nenhuma súmula ou lei cadastrada combinou com o caso" : "a IA não devolveu esse item"}). Fica como sugestão conferir esses pontos se achar útil; a nota e os demais apontamentos valem normalmente.</span>
+                    )}
+                  </div>
+                );
+              })()}
               {Boolean(auditResult.apontamentosNaoConfirmados?.length) && (
                 <div data-testid="nao-confirmados" className="p-3 rounded-xl border border-amber-500/50 bg-amber-950/40 text-amber-100 text-xs space-y-1.5">
                   <strong>A IA levantou {auditResult.apontamentosNaoConfirmados!.length} ponto(s) que não deu para provar por citação literal.</strong> Não entram na nota, mas vale conferir nos autos antes de aprovar:
