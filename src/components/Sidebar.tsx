@@ -125,6 +125,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {!isCollapsed && <span>Histórico Local</span>}
             </button>
           )}
+
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("agaia:abrir"))}
+            className={`flex items-center gap-2.5 px-3 h-10 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs transition cursor-pointer ${isCollapsed ? 'justify-center' : 'justify-start'}`}
+            title="Minutas do Agaia: acompanhar as que chegaram e colar uma minuta feita fora do Studio"
+            data-testid="menu-agaia"
+          >
+            <Bot className="w-4 h-4 text-teal-600" />
+            {!isCollapsed && <span>Minutas do Agaia</span>}
+          </button>
         </div>
 
         {/* Separator */}

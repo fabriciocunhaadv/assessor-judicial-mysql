@@ -2,7 +2,7 @@
 // com o número do processo, a serventia (unidade) e o prompt, para o histórico do usuário ficar organizado como o das demais minutas.
 import type { SavedAnalysis, JudicialUnit, MinuteData } from "../types";
 
-export interface MinutaExterna { processo: string; serventia?: string; prompt?: string; promptAgaia?: string; minutaTexto: string; minutaHtml?: string; aproximado?: string; origem?: string }
+export interface MinutaExterna { processo: string; serventia?: string; prompt?: string; promptAgaia?: string; minutaTexto: string; minutaHtml?: string; aproximado?: string; origem?: string; unidadeId?: string }
 
 const semAcento = (s: string) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const IGNORAR = new Set(["goias", "comarca", "vara", "unica", "judicial", "de", "da", "do", "das", "dos", "tjgo"]);

@@ -41,5 +41,12 @@ redeCaida = false;
 await e3.carregar();
 ok(await espera(() => gravados.length === 1), "depois de atualizar a página, o que ficou pendente é retomado e gravado sozinho");
 ok(e3.lista()[0].status === "gravada", "e passa a constar como gravada");
+// minuta colada à mão: a unidade escolhida vale (mesmo sem nome parecido com a serventia)
+dados.clear(); gravados.length = 0;
+const m4: any = await import(out + "?d"); const e4 = m4.entradasExternas;
+e4.definirContexto({ unidades: [{ id: "a", name: "Comarca A" }, { id: "fp", name: "Fazendas Públicas" }], ativa: { id: "a", name: "Comarca A" }, user: { uid: "u1" } });
+await e4.receber({ processo: "5189520-44.2026.8.09.0166", serventia: "Fazendas Públicas", unidadeId: "fp", prompt: "Prompt X", minutaTexto: texto.replace("5285460-70", "5189520-44"), origem: "Colada manualmente" });
+await espera(() => gravados.length === 1);
+ok(gravados[0]?.unitId === "fp" && gravados[0].promptTitle === "Prompt X" && /Colada manualmente/.test(gravados[0].processTextContext), "minuta colada à mão: grava na unidade escolhida, com o prompt informado e a origem");
 console.log(falhas ? `${falhas} FALHA(S)` : "TUDO OK"); try { (await import("node:fs")).unlinkSync(out); } catch { /* ok */ }
 process.exit(falhas ? 1 : 0);

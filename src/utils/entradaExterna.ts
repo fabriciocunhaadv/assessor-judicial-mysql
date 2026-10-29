@@ -66,7 +66,8 @@ class Entradas {
   }
 
   private montar(e: EntradaExterna) {
-    const c = this.ctx; const un = resolverUnidade(e.dados.serventia || "", c?.unidades || [], c?.ativa);
+    const c = this.ctx; const escolhida = e.dados.unidadeId ? (c?.unidades || []).find((u: any) => u.id === e.dados.unidadeId) : null;      // unidade escolhida à mão (minuta colada)
+    const un = escolhida ? { id: escolhida.id, name: escolhida.name } : resolverUnidade(e.dados.serventia || "", c?.unidades || [], c?.ativa);
     return montarAnaliseDeMinutaExterna(e.dados, { unitId: un.id, unitName: un.name, uid: c?.user?.uid, nome: c?.user?.displayName || c?.user?.email?.split("@")[0], email: c?.user?.email || "" });
   }
 
