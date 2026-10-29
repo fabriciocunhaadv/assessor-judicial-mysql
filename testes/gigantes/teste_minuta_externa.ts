@@ -1,0 +1,16 @@
+import { montarAnaliseDeMinutaExterna, resolverUnidade } from "../../src/utils/minutaExterna";
+let falhas = 0; const ok = (c: boolean, m: string) => { if (!c) { falhas++; console.log("FALHOU:", m); } else console.log("ok:", m); };
+const unidades: any[] = [{ id: "montes_claros", name: "Montes Claros / Vara Única" }, { id: "mc_jec", name: "Montes Claros de Goiás / Juizado Especial Cível" }, { id: "mc_fp", name: "Montes Claros de Goiás / Juizado das Fazendas Públicas" }];
+ok(resolverUnidade("Montes Claros de Goias - Juizado Especial Civel - GO", unidades, unidades[0]).id === "mc_jec", "acha a unidade pela serventia do Agaia/Projudi (Juizado Especial Cível)");
+ok(resolverUnidade("Montes Claros de Goias - Juizado das Fazendas Publicas - GO", unidades, unidades[0]).id === "mc_fp", "acha a unidade da Fazenda Pública");
+ok(resolverUnidade("Outra Comarca - Vara X", unidades, unidades[0]).id === "montes_claros", "sem correspondência clara, usa a unidade ativa");
+const texto = ["PODER JUDICIÁRIO DO ESTADO DE GOIÁS", "Processo nº: 5285460-70.2025.8.09.0166", "Exequente: Mauri Pereira Morais", "Executados: Helena Moreira de Oliveira e Onison Martins Arruda", "DECISÃO INTERLOCUTÓRIA", "I. RELATÓRIO", "Trata-se de cumprimento de sentença. ".repeat(5), "II. FUNDAMENTAÇÃO", "Rejeito a compensação. ".repeat(5), "III. DISPOSITIVO", "Intimem-se.".repeat(3)].join("\n");
+const a = montarAnaliseDeMinutaExterna({ processo: "5285460-70.2025.8.09.0166", serventia: "x", prompt: "Outros Área Judicial - Fabrício Juizado Especial Cível", promptAgaia: "Outros Área Judicial - Fabrício Juizado Especial Civel", minutaTexto: texto, minutaHtml: "<p>x</p>" }, { unitId: "mc_jec", unitName: "Montes Claros de Goiás / Juizado Especial Cível", uid: "u1", nome: "Fabrício", email: "f@x" });
+const m = a.result.minute!;
+ok(m.title === "DECISÃO INTERLOCUTÓRIA" && m.processNumber === "5285460-70.2025.8.09.0166", "título e número do processo lidos da minuta");
+ok(m.relatorio.startsWith("Trata-se") && m.fundamentacao.startsWith("Rejeito") && m.dispositivo.startsWith("Intimem-se"), "separa relatório, fundamentação e dispositivo");
+ok(m.parties.author === "Mauri Pereira Morais" && m.parties.defendant.startsWith("Helena"), "partes lidas do cabeçalho");
+ok(a.unitId === "mc_jec" && a.promptTitle.includes("Juizado Especial") && a.createdBy === "u1", "organizada por unidade, prompt e usuário");
+const b = montarAnaliseDeMinutaExterna({ processo: "5285460-70.2025.8.09.0166", minutaTexto: texto }, { unitId: "mc_jec", unitName: "" });
+ok(a.id === b.id, "o mesmo texto do mesmo processo tem sempre o mesmo id (nova tentativa não duplica)");
+console.log(falhas ? `${falhas} FALHA(S)` : "TUDO OK"); process.exit(falhas ? 1 : 0);

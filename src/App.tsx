@@ -13,6 +13,9 @@ import { PdfUploadZone } from "./components/PdfUploadZone";
 import { useCoberturaLeitura } from "./components/useCoberturaLeitura";
 import { GigantesPanel } from "./components/GigantesPanel";
 import { MapaSegundoPlano } from "./components/MapaSegundoPlano";
+import { type MinutaExterna } from "./utils/minutaExterna";
+import { entradasExternas } from "./utils/entradaExterna";
+import { EntradaAgaia } from "./components/EntradaAgaia";
 import { AvisoSegundoPlano } from "./components/AvisoSegundoPlano";
 import { PainelProgresso } from "./components/PainelProgresso";
 import { GiganteDialog, EscolhaGigante } from "./components/GiganteDialog";
@@ -888,6 +891,23 @@ export default function App() {
   };
 
   // Processos gigantes: configuração usada pela leitura em lotes (mesmo prompt, ato e unidade da análise normal)
+  // Minuta que veio pronta do Agaia (pela esteira da extensão): guardada no navegador na hora e gravada no Histórico em segundo plano (src/utils/entradaExterna.ts); o resultado volta à extensão por um atributo da página
+  entradasExternas.definirContexto({ unidades: allowedUnits, ativa: activeUnit, user });
+  useEffect(() => {
+    void entradasExternas.carregar();
+    const ouvir = async (ev: Event) => {
+      let d: (MinutaExterna & { reqId?: string }) | null = null;
+      try { d = JSON.parse(String((ev as CustomEvent).detail || "null")); } catch { d = null; }
+      if (!d?.reqId) return;
+      let r: { ok: boolean; id?: string; erro?: string };
+      try { r = await entradasExternas.receber(d); } catch (e: any) { r = { ok: false, erro: String(e?.message || e) }; }
+      try { document.documentElement.dataset.agaiaCadastro = JSON.stringify({ reqId: d.reqId, guardada: r.ok, ...r }); } catch { /* sem dataset */ }
+      if (r.ok) toast(`Chegou do Agaia: ${d.processo}. Está sendo gravada no Histórico em segundo plano.`, { icon: "🤖", duration: 4000 });
+    };
+    window.addEventListener("assessor:cadastrar-minuta", ouvir);
+    return () => window.removeEventListener("assessor:cadastrar-minuta", ouvir);
+  }, []);
+
   const montarConfigGigante = (): ConfigGigante => {
     const par = selectedParadigmId ? getJudgeParadigms().find((p) => p.id === selectedParadigmId) : null;
     return {
@@ -2843,6 +2863,7 @@ export default function App() {
       />
 
       <MapaSegundoPlano />
+      <EntradaAgaia onVerHistorico={() => setIsHistoryModalOpen(true)} />
       <AvisoSegundoPlano />
       <GigantesPanel config={montarConfigGigante()} onVerHistorico={() => setIsHistoryModalOpen(true)} />
       <HistoryModal
