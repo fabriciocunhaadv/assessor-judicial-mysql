@@ -42,5 +42,17 @@ const autos = "[Página 1 de 1]\n" + "texto dos autos ".repeat(300);
   ok(t2?.status === "concluido", "depois de atualizar a página, o mapa retoma sozinho e conclui");
   ok(chamadas.filter((c) => c.modo === "parte").map((c) => c.indice).sort().join() === "2,3", `retoma só das partes que faltavam (${chamadas.filter((c) => c.modo === "parte").map((c) => c.indice).sort()})`);
   ok(chamadas.find((c) => c.modo === "consolidar") && !t2.texto, "ao concluir, descarta o texto dos autos guardado");
+  // histórico temporário: some sozinho depois de 24 horas
+  dados.clear();
+  const velho = { id: "mapa-velho", nome: "velho", status: "concluido", etapa: "", partesTotal: 1, partesFeitas: 1, partesFalhas: 0, movs: 1, ultima: 1, partes: {}, mapa: { eventos: [] }, bloco: "[MAPA DO PROCESSO] v", criadoEm: Date.now() - 26 * 3600_000, atualizadoEm: Date.now() - 25 * 3600_000 };
+  const novo = { ...velho, id: "mapa-novo", nome: "novo", criadoEm: Date.now() - 23 * 3600_000, atualizadoEm: Date.now() - 22 * 3600_000 };
+  const parado = { ...velho, id: "mapa-erro", nome: "erro", status: "erro", mapa: undefined, bloco: undefined };
+  dados.set("mapa-velho", velho); dados.set("mapa-novo", novo); dados.set("mapa-erro", parado);
+  const mod3: any = await import(String("../../src/utils/mapaEmSegundoPlano.ts?c"));
+  await mod3.gerenteMapas.carregar();
+  const ids = mod3.gerenteMapas.lista().map((x: any) => x.id).sort().join();
+  ok(ids === "mapa-novo", `ao abrir, apaga o que passou de 24 horas (mapa pronto e tentativa com erro) e mantém o recente (${ids})`);
+  ok(!dados.has("mapa-velho") && !dados.has("mapa-erro") && dados.has("mapa-novo"), "a remoção vale também no banco do navegador");
+  ok(mod3.VALIDADE_MAPA_MS === 24 * 3600_000, "validade de 24 horas");
   console.log(falhas ? `${falhas} FALHA(S)` : "TUDO OK"); process.exit(falhas ? 1 : 0);
 })();

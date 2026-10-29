@@ -25,7 +25,9 @@ export interface TarefaMapa {
 export interface MapaPronto { mapa: MapaProcesso; bloco: string }
 
 const NOME_BANCO = "assessor_mapas_v1";
-const VALIDADE_MS = 7 * 24 * 3600_000;
+/** O histórico temporário do mapa (e de tentativas paradas) é apagado sozinho depois de 24 horas. */
+export const VALIDADE_MAPA_MS = 24 * 3600_000;
+const vencida = (t: TarefaMapa) => !EM_ANDAMENTO.includes(t.status) && Date.now() - t.atualizadoEm > VALIDADE_MAPA_MS;
 const EM_ANDAMENTO = ["planejando", "lendo", "consolidando"];
 
 let abrindo: Promise<IDBDatabase> | null = null;
@@ -65,20 +67,28 @@ class GerenteMapas {
     return this.carregado ||= (async () => {
       try {
         for (const t of await listarBanco()) {
-          if (t.status === "concluido" && Date.now() - t.atualizadoEm > VALIDADE_MS) { await apagarBanco(t.id); continue; }
+          if (vencida(t)) { await apagarBanco(t.id).catch(() => {}); continue; }
           this.tarefas.set(t.id, t);
         }
       } catch (e) { console.warn("[Mapa] banco local indisponível:", e); }
       this.avisar();
+      if (typeof setInterval === "function") { const iv: any = setInterval(() => { void this.limparVencidas(); }, 10 * 60_000); iv?.unref?.(); }      // com a página aberta por muito tempo, a limpeza também acontece sozinha
       for (const t of this.tarefas.values()) if (EM_ANDAMENTO.includes(t.status) && t.texto) void this.garantir(t.texto, { nome: t.nome, numeroProcesso: t.numeroProcesso }).catch(() => null);
     })();
+  }
+
+  /** Apaga o que passou de 24 horas (mapas prontos, erros e cancelados). */
+  async limparVencidas() {
+    let mudou = false;
+    for (const t of Array.from(this.tarefas.values())) if (vencida(t)) { this.tarefas.delete(t.id); mudou = true; try { await apagarBanco(t.id); } catch { /* ignora */ } }
+    if (mudou) this.avisar();
   }
 
   /** O mapa destes autos, se já estiver pronto (guardado no navegador por 7 dias). */
   async pronto(autos: string): Promise<MapaPronto | null> {
     await this.carregar();
     const t = this.tarefas.get(resumoDosAutos(autos));
-    return t?.status === "concluido" && t.mapa && t.bloco ? { mapa: t.mapa, bloco: t.bloco } : null;
+    return t?.status === "concluido" && t.mapa && t.bloco && !vencida(t) ? { mapa: t.mapa, bloco: t.bloco } : null;
   }
 
   /** Devolve o mapa dos autos: reaproveita o que já está pronto, retoma o que estava parado ou começa um novo. Nunca lança erro: devolve null se não conseguir. */
@@ -87,7 +97,7 @@ class GerenteMapas {
     const id = resumoDosAutos(autos);
     const andando = this.rodando.get(id); if (andando) return andando;
     let t = this.tarefas.get(id);
-    if (t?.status === "concluido" && t.mapa && t.bloco) return { mapa: t.mapa, bloco: t.bloco };
+    if (t?.status === "concluido" && t.mapa && t.bloco && !vencida(t)) return { mapa: t.mapa, bloco: t.bloco };
     if (!t) t = { id, nome: info.nome || "Autos do processo", numeroProcesso: info.numeroProcesso, status: "planejando", etapa: "Preparando o mapa do processo…", partesTotal: 0, partesFeitas: 0, partesFalhas: 0, movs: 0, ultima: 0, partes: {}, texto: autos, criadoEm: Date.now(), atualizadoEm: Date.now() };
     else { t.texto = autos; t.status = "planejando"; t.erro = undefined; t.etapa = "Retomando o mapa do processo…"; }
     this.cancelar.delete(id);
