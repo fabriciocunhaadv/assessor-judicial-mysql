@@ -376,6 +376,7 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
           }
           if (!response.ok || data.error) {
             const e: any = new Error(data.error || `Erro HTTP ${response.status}`);
+            e.codigo = data.codigo;
             e.transitorio = [502, 503, 504].includes(response.status);
             throw e;
           }
@@ -482,7 +483,8 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
       clearTimeout(abortTimeout);
       console.error("Erro no Módulo Turbo:", error);
       // O Turbo não conseguiu: o processo vai para o segundo plano e é refeito pela análise normal padrão (a minuta vai para o Histórico). Só não vale para erro de chave/acesso/texto vazio.
-      const semSaida = /chave|api key|acesso|permiss|n[aã]o autorizad|nenhum texto|forne[cç]a/i.test(String(error?.message || ""));
+      const autosGrandes = ["AUTOS_GRANDES_SEGUNDO_PLANO", "ENTRADA_GRANDE_GRATUITA", "AUTOS_ESSENCIAIS_ACIMA_DO_LIMITE"].includes(error?.codigo);      // “chave gratuita” na mensagem não é erro de chave: os autos não cabem de uma vez e vão para a leitura em lotes
+      const semSaida = !autosGrandes && /chave|api key|acesso|permiss|n[aã]o autorizad|nenhum texto|forne[cç]a/i.test(String(error?.message || ""));
       if (!semSaida) {
         try {
           const paginasBg = inputMode === "pdf" && pdfFile ? (pdfFile.pageCount || 0) : Math.max(1, Math.ceil(textoDosAutos.length / 3500));
@@ -494,7 +496,7 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
           await gerenteGigantes.iniciarComTextos([{ nome: pdfFile?.name || "Texto dos autos (colado)", texto: textoDosAutos, pageCount: paginasBg, semTexto: pdfFile?.paginasSemTexto, naoLidas: pdfFile?.paginasNaoLidas, arquivo: async () => pdfFile?.file || null }], config);
           window.dispatchEvent(new CustomEvent("gigantes:abrir"));
           void registrarOperacao({ ...dadosOp(), processo: (textoDosAutos.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || [""])[0], resultado: "segundo_plano", erro: String(error?.message || error) });
-          toast(error?.name === "AbortError" ? "O Turbo passou de 3 minutos: este processo foi para o segundo plano e será lido em lotes pela análise normal. A minuta irá para o Histórico (acompanhe pelo selo “Gigantes”)." : "Turbo indisponível agora: este processo foi para o segundo plano e será refeito pela análise normal. A minuta irá para o Histórico.", { icon: "🔁", duration: 12000 });
+          toast(autosGrandes ? "Autos grandes para a chave gratuita: o processo foi para a leitura em lotes, em segundo plano. A tela está livre; a minuta irá para o Histórico (acompanhe pelo selo “Gigantes”)." : error?.name === "AbortError" ? "O Turbo passou de 3 minutos: este processo foi para o segundo plano e será lido em lotes pela análise normal. A minuta irá para o Histórico (acompanhe pelo selo “Gigantes”)." : "Turbo indisponível agora: este processo foi para o segundo plano e será refeito pela análise normal. A minuta irá para o Histórico.", { icon: "🔁", duration: 12000 });
           setIsLoading(false);
           return;
         } catch (bgErr) { console.warn("Segundo plano do Turbo:", bgErr); }
