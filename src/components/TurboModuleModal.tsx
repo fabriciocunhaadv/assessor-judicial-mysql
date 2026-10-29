@@ -1,4 +1,4 @@
-import { prepararMapaDoProcesso, type MapaDaExecucao } from "../utils/mapaDoProcessoCliente";
+import { prepararMapaDoProcesso, precisaDeSegundoPlano, type MapaDaExecucao } from "../utils/mapaDoProcessoCliente";
 import React, { useState, useRef, useEffect } from "react";
 import { useModoJanela } from "../utils/areaPrincipal";
 import {
@@ -311,6 +311,23 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
       coberturaEnvio = cob.cobertura;
       imagensEnvio = cob.imagens;
       setPdfFile({ ...pdfFile, text: up.extractedText, paginasSemTexto: up.paginasSemTexto, paginasNaoLidas: up.paginasNaoLidas, paginasOcr: up.paginasOcr });
+    }
+
+    // Autos extensos sem mapa pronto: o Turbo é para o que é rápido, então não fica esperando. O pedido segue em segundo plano (mapa do processo + minuta com os autos inteiros), a minuta vai para o Histórico e a tela fica livre.
+    if (await precisaDeSegundoPlano(textoDosAutos)) {
+      try {
+        const paginasBg = inputMode === "pdf" && pdfFile ? (pdfFile.pageCount || 0) : Math.max(1, Math.ceil(textoDosAutos.length / 3500));
+        const config: ConfigGigante = {
+          promptText: selectedPrompt?.promptText || "", promptTitle: selectedPrompt?.title || "Minuta Turbo", promptId: selectedPrompt?.id, promptCategory: selectedPrompt?.category, promptScope: selectedPrompt?.scope,
+          actType: actType, unitId: activeUnitId, unitName: activeUnitName, instrucao: directive.trim(), origem: "turbo", direto: true, ocr: false,
+          userUid: user?.uid, userName: user?.displayName || user?.email?.split("@")[0] || "Assessor", userEmail: user?.email || "",
+        };
+        await gerenteGigantes.iniciarComTextos([{ nome: pdfFile?.name || "Texto dos autos (colado)", texto: textoDosAutos, pageCount: paginasBg, semTexto: pdfFile?.paginasSemTexto, naoLidas: pdfFile?.paginasNaoLidas }], config);
+        window.dispatchEvent(new CustomEvent("gigantes:abrir"));
+        toast("Autos extensos: o mapa do processo e a minuta seguem em segundo plano. A tela está livre; a minuta irá para o Histórico (acompanhe pelos selos “Mapa” e “Gigantes”).", { icon: "🗺️", duration: 10000 });
+        setIsLoading(false);
+        return;
+      } catch (bgErr) { console.warn("Segundo plano do mapa (Turbo):", bgErr); }
     }
 
     // processos longos (130 movimentações ou mais): mapa do processo antes do Turbo, para a minuta ficar coerente com o estado atual; se falhar, segue sem ele

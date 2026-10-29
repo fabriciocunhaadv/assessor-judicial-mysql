@@ -74,6 +74,13 @@ class GerenteMapas {
     })();
   }
 
+  /** O mapa destes autos, se já estiver pronto (guardado no navegador por 7 dias). */
+  async pronto(autos: string): Promise<MapaPronto | null> {
+    await this.carregar();
+    const t = this.tarefas.get(resumoDosAutos(autos));
+    return t?.status === "concluido" && t.mapa && t.bloco ? { mapa: t.mapa, bloco: t.bloco } : null;
+  }
+
   /** Devolve o mapa dos autos: reaproveita o que já está pronto, retoma o que estava parado ou começa um novo. Nunca lança erro: devolve null se não conseguir. */
   async garantir(autos: string, info: { nome?: string; numeroProcesso?: string } = {}): Promise<MapaPronto | null> {
     await this.carregar();

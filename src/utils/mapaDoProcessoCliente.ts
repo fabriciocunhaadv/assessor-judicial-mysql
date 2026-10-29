@@ -5,6 +5,11 @@ import { toast } from "react-hot-toast";
 import { gerenteMapas } from "./mapaEmSegundoPlano";
 import { precisaDeMapa, resumirMovimentacoes, estimarTokens, type MapaProcesso } from "./mapaDoProcesso";
 
+/** Autos que precisam do mapa e ainda não o têm: a montagem demora minutos, então o Turbo e a Etapa 1 não ficam esperando; o pedido segue em segundo plano (mapa + minuta + Histórico). */
+export async function precisaDeSegundoPlano(autos: string): Promise<boolean> {
+  try { return autos.length >= 2000 && precisaDeMapa(autos) && !(await gerenteMapas.pronto(autos)); } catch { return false; }
+}
+
 export interface MapaDaExecucao { mapa: MapaProcesso; bloco: string }
 
 /** `forcar`: monta o mapa mesmo abaixo do tamanho mínimo (usado na leitura em lotes, onde o texto já é o dossiê). */

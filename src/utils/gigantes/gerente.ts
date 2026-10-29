@@ -30,6 +30,8 @@ export interface ConfigGigante {
   origem?: string;
   /** OCR por IA das páginas sem texto (padrão: ligado) */
   ocr?: boolean;
+  /** Autos extensos que precisam do mapa do processo (Turbo e Etapa 1): em segundo plano monta o mapa e redige a minuta com os AUTOS INTEIROS, sem ler em lotes; só cai nos lotes se a chave gratuita recusar o tamanho. */
+  direto?: boolean;
   /** quando os autos foram divididos automaticamente: esta minuta cobre só uma parte */
   parte?: { indice: number; total: number; de: number; ate: number; totalPaginas: number };
 }
@@ -123,10 +125,11 @@ class Gerente {
   private async preparar(job: JobGig, fontes: Fonte[]) {
     const id = job.id;
     try {
-      const todas: PaginaGig[] = []; let ocrTotal = 0;
+      const todas: PaginaGig[] = []; let ocrTotal = 0, textoOriginal = "";
       for (let a = 0; a < fontes.length; a++) {
         job.etapa = `Lendo ${fontes[a].nome} (${a + 1}/${fontes.length})…`; this.avisar();
         const ex = await fontes[a].ler((c, t) => { job.progresso = { feitas: c, total: t }; this.avisar(); });
+        if (job.config.direto) textoOriginal += (textoOriginal ? "\n" : "") + ex.text;
         const pags = dividirPaginas(ex.text, ex.pageCount);
         const baseN = job.arquivos.reduce((t, x) => t + (x.paginas || 0), 0), ini = fontes[a].paginaInicial || 1;       // numeração = posição física da página no processo
         if (job.config.ocr !== false && fontes[a].arquivo) {
@@ -145,6 +148,7 @@ class Gerente {
       const fisicas = job.arquivos.reduce((n, a) => n + (a.paginas || 0), 0);
       if (Math.max(fisicas, job.totalPaginas) > LIMITE_PAGINAS) throw new Error(`Este processo tem ${Math.max(fisicas, job.totalPaginas)} páginas. Esta versão processa até ${LIMITE_PAGINAS}; acima disso é preciso mais cota (várias chaves ou faturamento) e execução em servidor. Divida os autos em partes menores ou aguarde a próxima fase.`);
       for (let i = 0; i < todas.length; i += 400) await salvarPaginas(todas.slice(i, i + 400));
+      if (job.config.direto) await salvarPaginas([{ chave: chavePagina(id, 0), jobId: id, n: 0, arquivo: 0, pagina: 0, texto: textoOriginal, tipo: "essencial" }]);      // n = 0: o texto original inteiro (a retomada depois de atualizar a página não precisa dos arquivos)
       const cont = (t: PaginaGig["tipo"]) => todas.filter((p) => p.tipo === t).length;
       job.triagem.essenciais = cont("essencial"); job.triagem.relevantes = cont("relevante"); job.triagem.dispensaveis = cont("dispensavel"); job.triagem.repetidas = cont("repetida");
       job.triagem.omitidas = faixasDe(todas, (p) => (p.tipo === "repetida" ? p.rotuloTipo || "página repetida" : ""));
@@ -258,12 +262,12 @@ class Gerente {
         let txt = "";
         try { const r = await fetch(rota, { method: "POST", headers: getApiHeaders(), body: JSON.stringify(corpo), signal: ctl.signal }); txt = await r.text(); } finally { clearTimeout(to); }
         let data: any; try { data = JSON.parse(txt.trim()); } catch { throw new Error("resposta do servidor incompleta"); }
-        if (data?.error || data?.isError) throw new Error(typeof data.error === "string" ? data.error : "erro do servidor");
+        if (data?.error || data?.isError) throw Object.assign(new Error(typeof data.error === "string" ? data.error : "erro do servidor"), { codigo: data?.codigo });
         this.registrarUso(id, rota, data);
         return data;
       } catch (e: any) {
         ultimoErro = e;
-        if (e?.message === "__parar__") throw e;
+        if (e?.message === "__parar__" || e?.codigo) throw e;      // erro com código (autos grandes demais para a chave gratuita): quem chamou decide, sem repetir
         if (!/incompleta|503|indispon|429|cota|quota|rate|Failed to fetch|Network|aborted|timeout/i.test(String(e?.message || e)) || t === 5) throw e;
         const j = this.jobs.get(id); if (j) { j.etapa = `Aguardando a cota da IA renovar (tentativa ${t + 2}/6)…`; this.avisar(); }
         await dorme(70000);
@@ -325,6 +329,8 @@ class Gerente {
       // 0) OCR por IA das páginas sem texto, em lotes de 5 páginas (a pista normal tem prioridade)
       await this.fazerOcr(job);
       if (this.sinais.has(id)) return this.encerrarPorSinal(job);
+      // autos que precisam do mapa (Turbo e Etapa 1): mapa + minuta com os autos inteiros; só segue para os lotes se a chave gratuita recusar o tamanho
+      if (job.config.direto) { if (await this.tentarDireto(job)) return; if (this.sinais.has(id)) return this.encerrarPorSinal(job); }
       // 1) lotes: uma ficha por trecho dos autos
       job.status = "lendo"; job.progresso = { feitas: job.lotes.filter((l) => job.fichas[`n0:${l.i}`]).length, total: job.lotes.length };
       for (const lote of job.lotes) {
@@ -541,12 +547,30 @@ class Gerente {
     return { total: r.total, achados: r.achados.map((x) => ({ ...x, nomeArquivo: job?.arquivos[x.arquivo]?.nome || "" })) };
   }
 
-  private async redigir(job: JobGig, fichas: any[]) {
+  /** Devolve true se a minuta saiu (e foi salva no Histórico); false se os autos não cabem na chave gratuita e o trabalho segue em lotes. */
+  private async tentarDireto(job: JobGig): Promise<boolean> {
+    const id = job.id;
+    await this.aguardarVez(id); if (this.sinais.has(id)) return false;
+    job.status = "redigindo"; job.etapa = "Montando o mapa do processo e redigindo a minuta com os autos inteiros…"; job.progresso = { feitas: 0, total: 1 }; await this.gravar(job);
+    try { await this.redigir(job, [], true); }
+    catch (e: any) {
+      if (["AUTOS_GRANDES_SEGUNDO_PLANO", "ENTRADA_GRANDE_GRATUITA", "AUTOS_ESSENCIAIS_ACIMA_DO_LIMITE"].includes(e?.codigo)) {
+        job.config = { ...job.config, direto: false }; job.status = "lendo"; job.etapa = "Autos acima do limite da chave gratuita: seguindo com a leitura em lotes…"; await this.gravar(job); return false;
+      }
+      throw e;
+    }
+    job.status = "concluido"; job.etapa = "Minuta pronta e salva no Histórico."; job.fim = Date.now(); job.progresso = { feitas: 1, total: 1 };
+    await this.gravar(job);
+    return true;
+  }
+
+  private async redigir(job: JobGig, fichas: any[], direto = false) {
     const cfg = job.config as ConfigGigante;
-    const { processText, escolhidas, dossieAbreviado } = await this.montarTextoDossie(job, fichas);
+    const { processText, escolhidas, dossieAbreviado } = direto ? { processText: (await lerPaginas(job.id, 0, 0))[0]?.texto || "", escolhidas: [] as any[], dossieAbreviado: false } : await this.montarTextoDossie(job, fichas);
+    if (direto && processText.trim().length < 200) throw new Error("O texto dos autos não está mais guardado: envie o processo de novo.");
     let tesesTxt = ""; try { const t: any = await getCabinetTeses(); if (t && t.isEnabled !== false && typeof t.text === "string") tesesTxt = t.text.trim(); } catch { /* sem teses */ }
     const parteTxt = cfg.parte ? ` ATENÇÃO: estes autos foram divididos automaticamente e este é o trecho ${cfg.parte.indice} de ${cfg.parte.total} (páginas ${cfg.parte.de.toLocaleString("pt-BR")} a ${cfg.parte.ate.toLocaleString("pt-BR")} de ${cfg.parte.totalPaginas.toLocaleString("pt-BR")}). As demais partes NÃO foram consideradas nesta minuta: não conclua o mérito do processo como um todo, não afirme ausência de prova que possa estar nas outras partes e registre no Relatório que a minuta cobre apenas as páginas ${cfg.parte.de} a ${cfg.parte.ate}.` : "";
-    const regra = `[PROCESSO GIGANTE LIDO EM LOTES]:${parteTxt} o texto fornecido é um DOSSIÊ estruturado (fichas por trecho, com a página de cada item) mais as peças essenciais na íntegra. Redija a minuta com base nele e cite páginas quando útil. NÃO afirme "não há prova", "não foi juntado" ou "a parte não comprovou" só por não constar do dossiê: só registre ausência quando a ficha disser expressamente; no mais, use "não localizei no dossiê dos autos" e indique conferência humana.`;
+    const regra = direto ? "" : `[PROCESSO GIGANTE LIDO EM LOTES]:${parteTxt} o texto fornecido é um DOSSIÊ estruturado (fichas por trecho, com a página de cada item) mais as peças essenciais na íntegra. Redija a minuta com base nele e cite páginas quando útil. NÃO afirme "não há prova", "não foi juntado" ou "a parte não comprovou" só por não constar do dossiê: só registre ausência quando a ficha disser expressamente; no mais, use "não localizei no dossiê dos autos" e indique conferência humana.`;
     const unidadeDosAutos = job.capa?.judicialUnit || "";      // o juízo da capa vale mais que a unidade escolhida no painel
     // amarração: o mapa do processo (estado atual, fase, o que está em vigor) é montado a partir do dossiê e acompanha a minuta; se falhar, segue sem ele
     job.etapa = "Montando o mapa do processo (estado atual e fase)…"; this.avisar();
@@ -558,12 +582,13 @@ class Gerente {
       paradigmModelText: cfg.paradigmText || "", paradigmModelTitle: cfg.paradigmTitle || "", isParadigmEnabled: Boolean(cfg.paradigmText),
       proceduralPhase: "conhecimento", actType: cfg.actType || "auto", specificInstructions: [cfg.instrucao, regra].filter(Boolean).join("\n\n"),
       processInfo: { processNumber: job.numeroProcesso || cfg.processNumber || "Extrair automaticamente dos autos", comarca: unidadeDosAutos ? `Comarca de ${unidadeDosAutos.split("-")[0].trim()} - TJGO` : cfg.unitName ? `Comarca de ${cfg.unitName.split("/")[0].trim()} - TJGO` : "", vara: unidadeDosAutos ? (unidadeDosAutos.split("-").slice(1).join("-").trim() || unidadeDosAutos) : cfg.unitName ? (cfg.unitName.split("/")[1]?.trim() || cfg.unitName) : "", juiz: "Juiz(a) de Direito", autor: job.capa?.author || "", reu: job.capa?.defendant || "" },
-      coberturaLeitura: { escolha: "gigante", paginasOcr: 0, arquivos: job.arquivos.map((a) => arquivoParaServidor(a)) },
+      coberturaLeitura: { escolha: direto ? "completa" : "gigante", paginasOcr: 0, arquivos: job.arquivos.map((a) => arquivoParaServidor(a)) },
+      ...(direto ? { aceitaSegundoPlano: true } : {}),
     };
     const data = await this.chamar(job.id, "/api/generate-minute", corpo);
     if (!data?.minute) throw new Error("A IA não devolveu uma minuta válida a partir do dossiê.");
     let verificacaoAusencia: any[] = [];
-    try {
+    if (!direto) try {
       const conf = await conferirAusencias(job.id, data.minute);
       verificacaoAusencia = conf.map((c) => ({ ...c, paginas: c.paginas.map((p) => ({ arquivo: job.arquivos[p.arquivo]?.nome || `arquivo ${p.arquivo + 1}`, pagina: p.pagina, trecho: p.trecho })) }));
     } catch (e) { console.warn("[Gigantes] conferência de ausência de prova falhou (ignorada):", e); }
@@ -578,9 +603,9 @@ class Gerente {
     const analise: SavedAnalysis = {
       id: analysisId, unitId: cfg.unitId || "montes_claros", promptTitle: cfg.promptTitle, promptId: cfg.promptId, promptCategory: cfg.promptCategory || "civel", promptScope: (cfg.promptScope as any) || "judicial",
       date: Date.now(), processNumber: numero,
-      result: { ...data, gigante: info, alertaInjecao, ...(mapaExec ? { mapaProcesso: { ...mapaExec.mapa, bloco: mapaExec.bloco } } : {}), minute: data.minute ? { ...data.minute, judicialUnit: unidadeDosAutos || cfg.unitName || data.minute.judicialUnit, ...(job.capa?.author || job.capa?.defendant ? { parties: { ...(data.minute.parties || {}), ...(job.capa?.author ? { author: job.capa.author } : {}), ...(job.capa?.defendant ? { defendant: job.capa.defendant } : {}) } } : {}) } : data.minute },
+      result: { ...data, ...(direto ? {} : { gigante: info }), alertaInjecao, ...(mapaExec ? { mapaProcesso: { ...mapaExec.mapa, bloco: mapaExec.bloco } } : {}), minute: data.minute ? { ...data.minute, judicialUnit: unidadeDosAutos || cfg.unitName || data.minute.judicialUnit, ...(job.capa?.author || job.capa?.defendant ? { parties: { ...(data.minute.parties || {}), ...(job.capa?.author ? { author: job.capa.author } : {}), ...(job.capa?.defendant ? { defendant: job.capa.defendant } : {}) } } : {}) } : data.minute },
       originalMinute: data.originalMinute || JSON.parse(JSON.stringify(data.minute)),
-      processTextContext: `[Processo gigante: ${job.arquivos.map((a) => a.nome).join(", ")} — ${job.totalPaginas} páginas lidas em lotes]`,
+      processTextContext: direto ? `[Autos lidos na íntegra em segundo plano: ${job.arquivos.map((a) => a.nome).join(", ")} — ${job.totalPaginas} páginas]` : `[Processo gigante: ${job.arquivos.map((a) => a.nome).join(", ")} — ${job.totalPaginas} páginas lidas em lotes]`,
       createdBy: cfg.userUid || "anonymous", creatorName: cfg.userName || "Assessor", creatorEmail: cfg.userEmail || "", chatMessages: [],
     } as SavedAnalysis;
     const salvo = await saveToHistory(analise);

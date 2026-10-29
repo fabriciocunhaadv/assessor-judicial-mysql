@@ -34,7 +34,7 @@ import { AprovacaoUsuarios } from "./components/AprovacaoUsuarios";
 import { TrocarSenha } from "./components/TrocarSenha";
 import { BancoBadge } from "./components/BancoBadge";
 import { aplicarTema, temaAtual } from "./utils/tema";
-import { prepararMapaDoProcesso, type MapaDaExecucao } from "./utils/mapaDoProcessoCliente";
+import { prepararMapaDoProcesso, precisaDeSegundoPlano, type MapaDaExecucao } from "./utils/mapaDoProcessoCliente";
 import { TrocaSenhaObrigatoria } from "./components/TrocaSenhaObrigatoria";
 import { PresentationModal } from "./components/PresentationModal";
 import { UserManagerModal } from "./components/UserManagerModal";
@@ -992,6 +992,23 @@ export default function App() {
       window.dispatchEvent(new CustomEvent("gigantes:abrir"));
       toast("Autos gigantes recebidos como texto: leitura em lotes em segundo plano. Acompanhe pelo selo “Gigantes”.", { duration: 8000, icon: "📚" });
       return;
+    }
+
+    // Autos extensos sem mapa pronto: a Etapa 1 não fica esperando a montagem do mapa (leva minutos). O pedido segue em segundo plano (mapa do processo + minuta com os autos inteiros), a minuta vai para o Histórico e a tela fica livre.
+    {
+      const autosParaMapa = [effectiveText, ...effectivePdfFiles.map((p) => p.extractedText || "")].filter(Boolean).join("\n");
+      if (await precisaDeSegundoPlano(autosParaMapa)) {
+        try {
+          let paginasBg = 0; for (const p of effectivePdfFiles) paginasBg += p.pageCount || 0;
+          if (!paginasBg) { try { for (const m of autosParaMapa.matchAll(/\[Página (\d+)(?: de \d+)?\]/g)) paginasBg = Math.max(paginasBg, Number(m[1])); } catch { /* sem marcadores */ } }
+          if (!paginasBg) paginasBg = Math.max(1, Math.ceil(autosParaMapa.length / 3500));
+          const numBg = numeroEntradaRef.current ?? processNumber;
+          await gerenteGigantes.iniciarComTextos([{ nome: numBg && !/extrair/i.test(numBg) ? `Autos ${numBg}` : (effectivePdfFiles[0]?.name || "Autos (texto)"), texto: autosParaMapa, pageCount: paginasBg }], { ...montarConfigGigante(), direto: true, ocr: false });
+          window.dispatchEvent(new CustomEvent("gigantes:abrir"));
+          toast("Autos extensos: o mapa do processo e a minuta seguem em segundo plano. A tela está livre; a minuta irá para o Histórico (acompanhe pelos selos “Mapa” e “Gigantes”).", { duration: 10000, icon: "🗺️" });
+          return;
+        } catch (bgErr) { console.warn("Segundo plano do mapa (Etapa 1):", bgErr); }
+      }
     }
 
     // esteira da extensão: não deixa o resultado do processo anterior na tela (a esteira o confundia com o do processo que está começando)
