@@ -13,6 +13,7 @@ import { PdfUploadZone } from "./components/PdfUploadZone";
 import { useCoberturaLeitura } from "./components/useCoberturaLeitura";
 import { GigantesPanel } from "./components/GigantesPanel";
 import { MapaSegundoPlano } from "./components/MapaSegundoPlano";
+import { AvisoSegundoPlano } from "./components/AvisoSegundoPlano";
 import { PainelProgresso } from "./components/PainelProgresso";
 import { GiganteDialog, EscolhaGigante } from "./components/GiganteDialog";
 import { gerenteGigantes, ConfigGigante, LIMITE_PAGINAS_GIGANTE } from "./utils/gigantes/gerente";
@@ -2842,6 +2843,7 @@ export default function App() {
       />
 
       <MapaSegundoPlano />
+      <AvisoSegundoPlano />
       <GigantesPanel config={montarConfigGigante()} onVerHistorico={() => setIsHistoryModalOpen(true)} />
       <HistoryModal
         isOpen={isHistoryModalOpen}

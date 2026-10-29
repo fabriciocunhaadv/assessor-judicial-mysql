@@ -1,3 +1,4 @@
+import { avisarSegundoPlano } from "./AvisoSegundoPlano";
 import { prepararMapaDoProcesso, precisaDeSegundoPlano, type MapaDaExecucao } from "../utils/mapaDoProcessoCliente";
 import React, { useState, useRef, useEffect } from "react";
 import { useModoJanela } from "../utils/areaPrincipal";
@@ -313,6 +314,14 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
       setPdfFile({ ...pdfFile, text: up.extractedText, paginasSemTexto: up.paginasSemTexto, paginasNaoLidas: up.paginasNaoLidas, paginasOcr: up.paginasOcr });
     }
 
+    // Foi para o segundo plano: o Turbo se fecha (não é lugar de espera) e um aviso diz o que aconteceu; na esteira automática só o aviso rápido, para não atrapalhar a automação.
+    const fecharNoSegundoPlano = (texto: string) => {
+      let auto = false; try { auto = document.documentElement.dataset.assessorAuto === "1"; } catch { /* sem dataset */ }
+      if (auto) return;
+      avisarSegundoPlano({ titulo: "Processo enviado para o segundo plano", texto: texto + "\n\nO Turbo foi fechado. Você pode continuar usando o sistema normalmente; acompanhe pelos selos “Mapa” e “Gigantes”, no canto inferior esquerdo." });
+      onClose();
+    };
+
     // Autos extensos sem mapa pronto: o Turbo é para o que é rápido, então não fica esperando. O pedido segue em segundo plano (mapa do processo + minuta com os autos inteiros), a minuta vai para o Histórico e a tela fica livre.
     if (await precisaDeSegundoPlano(textoDosAutos)) {
       try {
@@ -326,6 +335,7 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
         window.dispatchEvent(new CustomEvent("gigantes:abrir"));
         toast("Autos extensos: o mapa do processo e a minuta seguem em segundo plano. A tela está livre; a minuta irá para o Histórico (acompanhe pelos selos “Mapa” e “Gigantes”).", { icon: "🗺️", duration: 10000 });
         setIsLoading(false);
+        fecharNoSegundoPlano("Os autos são extensos: o sistema está montando o mapa do processo e, em seguida, redigirá a minuta com os autos inteiros. Isso leva alguns minutos. A minuta será gravada no Histórico.");
         return;
       } catch (bgErr) { console.warn("Segundo plano do mapa (Turbo):", bgErr); }
     }
@@ -498,6 +508,7 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
           void registrarOperacao({ ...dadosOp(), processo: (textoDosAutos.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || [""])[0], resultado: "segundo_plano", erro: String(error?.message || error) });
           toast(autosGrandes ? "Autos grandes para a chave gratuita: o processo foi para a leitura em lotes, em segundo plano. A tela está livre; a minuta irá para o Histórico (acompanhe pelo selo “Gigantes”)." : error?.name === "AbortError" ? "O Turbo passou de 3 minutos: este processo foi para o segundo plano e será lido em lotes pela análise normal. A minuta irá para o Histórico (acompanhe pelo selo “Gigantes”)." : "Turbo indisponível agora: este processo foi para o segundo plano e será refeito pela análise normal. A minuta irá para o Histórico.", { icon: "🔁", duration: 12000 });
           setIsLoading(false);
+          fecharNoSegundoPlano(autosGrandes ? "Os autos são grandes demais para a chave gratuita ler de uma vez: o processo está sendo lido em lotes, em segundo plano. A minuta será gravada no Histórico." : "O Turbo não conseguiu terminar este processo: ele foi para o segundo plano e será refeito pela análise normal. A minuta será gravada no Histórico.");
           return;
         } catch (bgErr) { console.warn("Segundo plano do Turbo:", bgErr); }
       }
