@@ -22,7 +22,7 @@ http.createServer((req, res) => {
     else if (/FICHA DOS AUTOS/.test(tudo) && /analista de autos judiciais/.test(tudo)) t = JSON.stringify(ficha);
     else if (/Corregedor e Auditor/.test(tudo)) t = JSON.stringify(auditoria);
     else if (/SINOPSE|Sinopse/.test(tudo) && !/MINUTA SUBMETIDA/.test(tudo)) t = "Sinopse. ".repeat(60);
-    else { const comMapa = /COERÊNCIA COM O ESTADO ATUAL/.test(tudo) ? " COM-MAPA" : ""; const mm = { ...minuta1, relatorio: minuta1.relatorio + comMapa }; t = JSON.stringify({ minute: mm, ...mm }); }
+    else { const comMapa = (/COERÊNCIA COM O ESTADO ATUAL/.test(tudo) ? " COM-MAPA" : "") + (/CADERNO DE TESES E DIRETRIZES VINCULANTES/.test(tudo) ? " COM-TESES" : "") + (/TUANNY ALVES CARNEIRO/.test(tudo) ? " VIU-TESE-TUANNY" : "") + (/BASE DE CONHECIMENTO INTERNA: modelo-gabinete/.test(tudo) ? " COM-BASE" : ""); const mm = { ...minuta1, relatorio: minuta1.relatorio + comMapa }; t = JSON.stringify({ minute: mm, ...mm }); }
     res.writeHead(200, { "Content-Type": "application/json" }); res.end(resposta(t, Math.min(200000, Math.ceil(corpo.length / 3))));
   });
 }).listen(porta, () => console.log("gemini falso na porta", porta));

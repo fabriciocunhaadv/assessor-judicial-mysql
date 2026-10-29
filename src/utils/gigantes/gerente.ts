@@ -3,6 +3,7 @@ import { getApiHeaders } from "../apiKeyManager";
 import { prepararMapaDoProcesso } from "../mapaDoProcessoCliente";
 import { recordApiExecution } from "../apiUsageTracker";
 import { getCabinetTeses } from "../tesesDb";
+import { getKnowledgeDocs } from "../knowledgeDb";
 import { saveToHistory } from "../historyDb";
 import { registrarOperacao } from "../monitorOperacao";
 import type { SavedAnalysis } from "../historyDb";
@@ -569,6 +570,7 @@ class Gerente {
     const { processText, escolhidas, dossieAbreviado } = direto ? { processText: (await lerPaginas(job.id, 0, 0))[0]?.texto || "", escolhidas: [] as any[], dossieAbreviado: false } : await this.montarTextoDossie(job, fichas);
     if (direto && processText.trim().length < 200) throw new Error("O texto dos autos não está mais guardado: envie o processo de novo.");
     let tesesTxt = ""; try { const t: any = await getCabinetTeses(); if (t && t.isEnabled !== false && typeof t.text === "string") tesesTxt = t.text.trim(); } catch { /* sem teses */ }
+    let baseConhecimento: any[] = []; try { baseConhecimento = (await getKnowledgeDocs()).filter((d: any) => d.isActive); } catch { /* sem base */ }
     const parteTxt = cfg.parte ? ` ATENÇÃO: estes autos foram divididos automaticamente e este é o trecho ${cfg.parte.indice} de ${cfg.parte.total} (páginas ${cfg.parte.de.toLocaleString("pt-BR")} a ${cfg.parte.ate.toLocaleString("pt-BR")} de ${cfg.parte.totalPaginas.toLocaleString("pt-BR")}). As demais partes NÃO foram consideradas nesta minuta: não conclua o mérito do processo como um todo, não afirme ausência de prova que possa estar nas outras partes e registre no Relatório que a minuta cobre apenas as páginas ${cfg.parte.de} a ${cfg.parte.ate}.` : "";
     const regra = direto ? "" : `[PROCESSO GIGANTE LIDO EM LOTES]:${parteTxt} o texto fornecido é um DOSSIÊ estruturado (fichas por trecho, com a página de cada item) mais as peças essenciais na íntegra. Redija a minuta com base nele e cite páginas quando útil. NÃO afirme "não há prova", "não foi juntado" ou "a parte não comprovou" só por não constar do dossiê: só registre ausência quando a ficha disser expressamente; no mais, use "não localizei no dossiê dos autos" e indique conferência humana.`;
     const unidadeDosAutos = job.capa?.judicialUnit || "";      // o juízo da capa vale mais que a unidade escolhida no painel
@@ -577,7 +579,7 @@ class Gerente {
     const mapaExec = await prepararMapaDoProcesso(processText, `mapa-${job.id}`, { forcar: true });
     const corpo = {
       mapaProcesso: mapaExec?.bloco,
-      processText, pdfFiles: [], knowledgePdfs: [], customPromptText: cfg.promptText || "", activePromptTitle: cfg.promptTitle || "",
+      processText, pdfFiles: [], knowledgePdfs: baseConhecimento, customPromptText: cfg.promptText || "", activePromptTitle: cfg.promptTitle || "",
       cabinetTesesText: tesesTxt, isTesesEnabled: Boolean(tesesTxt),
       paradigmModelText: cfg.paradigmText || "", paradigmModelTitle: cfg.paradigmTitle || "", isParadigmEnabled: Boolean(cfg.paradigmText),
       proceduralPhase: "conhecimento", actType: cfg.actType || "auto", specificInstructions: [cfg.instrucao, regra].filter(Boolean).join("\n\n"),

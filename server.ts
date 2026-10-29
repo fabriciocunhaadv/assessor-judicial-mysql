@@ -220,6 +220,25 @@ function getActiveCabinetTeses(cabinetTesesText: any, isTesesEnabled: any, caseC
     return effectiveBase;
 }
 
+/** Caderno de Teses do gabinete como regra soberana (usado pelo Turbo): teses condicionais (ex.: suspeição quando certo advogado atua) só valem se a condição estiver nos autos, e as materiais valem sempre. */
+function blocoCadernoDeTesesTurbo(cabinetTesesText: any, isTesesEnabled: any): string {
+    const t = getActiveCabinetTeses(cabinetTesesText, isTesesEnabled);
+    if (!t) return "";
+    return `\n\n[CADERNO DE TESES E DIRETRIZES VINCULANTES DO GABINETE (PRIORIDADE MÁXIMA E SOBERANIA NORMATIVA)]:\n${t.slice(0, 80000)}
+
+DIRETRIZ MANDATÓRIA DE APLICAÇÃO DAS TESES DO GABINETE (vale sobre qualquer modelo pré-moldado de ato):
+1. TESES CONDICIONAIS (ex.: suspeição/impedimento do magistrado quando determinado advogado, procurador ou parte atua no processo): ANTES de redigir, examine procurações, substabelecimentos, petições, contestações e assinaturas de TODAS as peças para ver se a condição está REALMENTE presente (confira nome e inscrição OAB). Se estiver presente, aplique a tese com rigor absoluto: o ato deve ser o que a tese manda (ex.: declarar a suspeição por motivo de foro íntimo, art. 145, § 1º, do CPC, e determinar a remessa/redistribuição), e NÃO uma decisão de mérito. Se NÃO estiver presente, é PROIBIDO aplicar a tese; siga o exame regular da lide.
+2. TESES MATERIAIS E PROCESSUAIS (extinção pelo pagamento, dano moral, juros, honorários, custas, gratuidade, alvarás etc.): sempre que o processo tratar da matéria, aplique os parâmetros e comandos da tese na fundamentação e no dispositivo. É proibido decidir de forma contrária ou dissonante das teses cadastradas.
+3. O tipo de ato, a questão pendente, o relatório, a fundamentação e o dispositivo devem refletir a aplicação das teses ao caso concreto.\n`;
+}
+/** Base de Conhecimento do gabinete (documentos ativos) para o Turbo; limitada para o Turbo continuar rápido. */
+function blocoBaseConhecimentoTurbo(knowledgePdfs: any): string {
+    if (!Array.isArray(knowledgePdfs) || !knowledgePdfs.length) return "";
+    let txt = "";
+    for (const k of knowledgePdfs) { const t = typeof k?.extractedText === "string" ? k.extractedText.trim() : ""; if (t) txt += `\n[=== BASE DE CONHECIMENTO INTERNA: ${String(k.name || "documento").slice(0, 120)} ===]\n${t}\n`; }
+    return txt ? `\n\n[BASE DE CONHECIMENTO DO GABINETE (modelos e orientações a seguir)]:${txt.slice(0, 200000)}\n` : "";
+}
+
 // Um erro solto (promessa sem tratamento, exceção fora de uma rota) derrubava o processo inteiro: a hospedagem devolvia "erro 500" sem mensagem a quem estava usando. Agora vai para o log e o servidor segue.
 process.on("unhandledRejection", (e: any) => console.error("[erro não tratado — promessa]", e?.stack || e));
 process.on("uncaughtException", (e: any) => console.error("[erro não tratado — exceção]", e?.stack || e));
@@ -1101,7 +1120,10 @@ app.post("/api/generate-minute-turbo", async (req, res) => {
             promptHint = "",
             promptTitle = "",
             promptText = "",
-            promptCategory = ""
+            promptCategory = "",
+            cabinetTesesText = "",
+            isTesesEnabled,
+            knowledgePdfs = []
         } = req.body;
 
         let accumulatedText = (processText || "").trim();
@@ -1287,7 +1309,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
                 { role: "user", parts: [{ text: userPrompt }, ...cobT.partes] }
             ],
             config: {
-                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + REGRA_ESTRUTURA_POR_ATO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
+                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + REGRA_ESTRUTURA_POR_ATO + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoCadernoDeTesesTurbo(cabinetTesesText, isTesesEnabled) + blocoBaseConhecimentoTurbo(knowledgePdfs) + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
                 temperature: 0.1,
                 maxOutputTokens: 16384,      // era 8192, e parte dele era gasta repetindo o texto inteiro em fullFormattedText
                 responseMimeType: "application/json",

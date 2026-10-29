@@ -76,6 +76,13 @@ try {
   ok(r.status === 200 && !/COM-MAPA/.test(r.t), "Turbo: texto de mapa que não veio do sistema é ignorado");
   r = await chamar("/api/generate-minute", { processText: longo, executionStage: 1, mapaProcesso: blocoMapa, customPromptText: "p", activePromptTitle: "t", promptCategory: "civel" });
   ok(r.status === 200 && /COM-MAPA/.test(r.t), "Etapa 1: o mapa do processo chega às instruções da IA");
+  // Turbo obedece o Caderno de Teses e a Base de Conhecimento (antes ignorava os dois)
+  const teses = "3. Suspeição Dr. Rafael\nCaso verifique a atuação da advogada TUANNY ALVES CARNEIRO - OAB/GO 34.196, declare a suspeição por foro íntimo.";
+  r = await chamar("/api/generate-minute-turbo", { processText: longo, actType: "auto", promptTitle: "teste", cabinetTesesText: teses, isTesesEnabled: true, knowledgePdfs: [{ name: "modelo-gabinete.pdf", extractedText: "Modelo de decisão do gabinete. ".repeat(20) }] });
+  ok(r.status === 200 && /COM-TESES/.test(r.t) && /VIU-TESE-TUANNY/.test(r.t), "Turbo: o Caderno de Teses (inclusive a regra da advogada) chega às instruções da IA");
+  ok(/COM-BASE/.test(r.t), "Turbo: a Base de Conhecimento do gabinete chega às instruções da IA");
+  r = await chamar("/api/generate-minute-turbo", { processText: longo, actType: "auto", promptTitle: "teste", cabinetTesesText: teses, isTesesEnabled: false });
+  ok(r.status === 200 && !/COM-TESES/.test(r.t), "Turbo: com as teses desligadas pelo gabinete, elas não entram");
   r = await chamar("/api/mapa-processo", { processText: "curto" });
   ok(r.status === 400, "Mapa: autos curtos demais viram erro 400");
   r = await chamar("/api/generate-minute-turbo", { processText: autos(25), actType: "auto", promptTitle: "teste" });

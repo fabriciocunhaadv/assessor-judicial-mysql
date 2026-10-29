@@ -1,4 +1,6 @@
 import { avisarSegundoPlano } from "./AvisoSegundoPlano";
+import { getCabinetTeses } from "../utils/tesesDb";
+import { getKnowledgeDocs } from "../utils/knowledgeDb";
 import { prepararMapaDoProcesso, precisaDeSegundoPlano, type MapaDaExecucao } from "../utils/mapaDoProcessoCliente";
 import React, { useState, useRef, useEffect } from "react";
 import { useModoJanela } from "../utils/areaPrincipal";
@@ -346,7 +348,11 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
     let controller = new AbortController();
     let abortTimeout: any = null;
     const limiteMs = () => (globalThis as any).__turboTimeoutMs ?? 180000; // 3 minutos: passou disso, o processo vai para o segundo plano (leitura em lotes) em vez de deixar a tela presa
+    // Caderno de Teses e Base de Conhecimento do gabinete: o Turbo também precisa obedecê-los (teses de suspeição, honorários etc.)
+    let tesesTxt = "", tesesAtivas = true; try { const t: any = await getCabinetTeses(); if (t) { tesesAtivas = t.isEnabled !== false; tesesTxt = typeof t.text === "string" ? t.text.trim() : ""; } } catch { /* sem teses */ }
+    let baseConhecimento: any[] = []; try { baseConhecimento = (await getKnowledgeDocs()).filter((d: any) => d.isActive); } catch { /* sem base */ }
     const corpoDaRequisicao = JSON.stringify({
+          cabinetTesesText: tesesTxt, isTesesEnabled: tesesAtivas && !!tesesTxt, knowledgePdfs: baseConhecimento,
           // Não duplica o texto no body: envia apenas em processText ou no array de pdfFiles
           mapaProcesso: mapaExec?.bloco,
           processText: inputMode === "text" ? effectiveText : "",
