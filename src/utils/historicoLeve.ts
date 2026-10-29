@@ -32,6 +32,7 @@ export function resumoLeve(a: any, fonte?: string): any {
       dispositivo: typeof min.dispositivo === "string" ? min.dispositivo.slice(0, 400) : undefined,
     },
     ...(a?.result?.paradigmUsed?.title ? { paradigmUsed: { title: a.result.paradigmUsed.title } } : {}),
+    ...(a?.result?.origemExterna ? { origemExterna: { sistema: String(a.result.origemExterna.sistema || "").slice(0, 40), promptAgaia: String(a.result.origemExterna.promptAgaia || "").slice(0, 200), aproximado: String(a.result.origemExterna.aproximado || "").slice(0, 300) } } : {}),      // etiqueta “Agaia” da lista (sem o html original, que é pesado)
   };
   out.chatCount = Array.isArray(a?.chatMessages) ? a.chatMessages.length : 0;
   out.versoesCount = Math.max(Array.isArray(a?.versions) ? a.versions.length : 0, Array.isArray(a?.result?.versions) ? a.result.versions.length : 0);

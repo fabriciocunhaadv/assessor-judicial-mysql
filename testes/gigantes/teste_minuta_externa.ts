@@ -1,4 +1,5 @@
 import { montarAnaliseDeMinutaExterna, resolverUnidade } from "../../src/utils/minutaExterna";
+import { resumoLeve } from "../../src/utils/historicoLeve";
 let falhas = 0; const ok = (c: boolean, m: string) => { if (!c) { falhas++; console.log("FALHOU:", m); } else console.log("ok:", m); };
 const unidades: any[] = [{ id: "montes_claros", name: "Montes Claros / Vara Única" }, { id: "mc_jec", name: "Montes Claros de Goiás / Juizado Especial Cível" }, { id: "mc_fp", name: "Montes Claros de Goiás / Juizado das Fazendas Públicas" }];
 ok(resolverUnidade("Montes Claros de Goias - Juizado Especial Civel - GO", unidades, unidades[0]).id === "mc_jec", "acha a unidade pela serventia do Agaia/Projudi (Juizado Especial Cível)");
@@ -18,4 +19,6 @@ const livre = ["Processo nº: 5189520.44.2026.8.09.0166", "Natureza: Cumprimento
 const c = montarAnaliseDeMinutaExterna({ processo: "5189520-44.2026.8.09.0166", minutaTexto: livre }, { unitId: "x", unitName: "y" }).result.minute!;
 ok(c.title === "DECISÃO" && c.fundamentacao.startsWith("Vistos os autos") && c.dispositivo.startsWith("Ante o exposto") && c.dispositivo.includes("Intimem-se"), "decisão sem títulos: o texto integral vai na fundamentação e o trecho final no dispositivo (nada fica vazio)");
 ok(!/Exequente|Natureza/.test(c.fundamentacao) && c.parties.author.startsWith("B. G. T."), "o cabeçalho de identificação não se repete no corpo");
+const leve = resumoLeve(a, "mysql");
+ok(leve.result.origemExterna?.sistema === "Agaia" && !("htmlOriginal" in leve.result.origemExterna), "o resumo da lista do Histórico mantém a origem (etiqueta Agaia) sem o html pesado");
 console.log(falhas ? `${falhas} FALHA(S)` : "TUDO OK"); process.exit(falhas ? 1 : 0);

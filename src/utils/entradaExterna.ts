@@ -15,7 +15,7 @@ export interface ContextoEntrada { unidades: any[]; ativa: any; user: any }
 
 const NOME = "assessor_entrada_externa_v1";
 const VALIDADE_GRAVADA_MS = 24 * 3600_000;
-const FORMATO = 2;
+const FORMATO = 3;
 let abrindo: Promise<IDBDatabase> | null = null;
 const abrir = (): Promise<IDBDatabase> => abrindo ||= new Promise((ok, falha) => {
   const rq = indexedDB.open(NOME, 1);

@@ -128,6 +128,13 @@ const chaveAutor = (it: any): string => {
   return it?.createdBy && it.createdBy !== "anonymous" ? String(it.createdBy) : "__sem__";
 };
 
+/** Minutas que vieram prontas de fora do Studio (Agaia ou coladas à mão): a etiqueta do Histórico mostra de onde veio. */
+const origemExterna = (a: any): { rotulo: string; dica: string } | null => {
+  const o = a?.result?.origemExterna; if (!o) return null;
+  const colada = /colada/i.test(String(o.sistema || ""));
+  return { rotulo: colada ? "✍ Colada" : "🤖 Agaia", dica: colada ? "Minuta feita fora do Studio e colada à mão no Histórico" : `Analisado pelo Agaia${o.promptAgaia ? ` (prompt “${o.promptAgaia}”)` : ""}: a minuta não foi gerada pelo Studio` };
+};
+
 export const HistoryModal: React.FC<HistoryModalProps> = ({
   isOpen,
   onClose,
@@ -752,6 +759,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-extrabold flex items-center gap-1 border ${hasMultipleActs ? "bg-emerald-50 text-emerald-800 border-emerald-300" : "bg-slate-100 text-slate-700 border-slate-200"}`} title={dossier.actTypes.join(", ")}>
                         <GitCommit className="w-3 h-3 shrink-0" />{dossier.totalActs} {dossier.totalActs === 1 ? "ato" : "atos"}
                       </span>
+                      {(() => { const ag = dossier.analyses.map(origemExterna).find(Boolean); const todos = dossier.analyses.every((a: any) => origemExterna(a)); return ag ? <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-teal-100 text-teal-900 border-teal-400 whitespace-nowrap" title={todos ? ag.dica : "Este processo tem minuta(s) feita(s) fora do Studio. " + ag.dica} data-testid="etiqueta-agaia">{ag.rotulo}{todos ? "" : " +"}</span> : null; })()}
                       {!unidade && (
                         <button onClick={editarVara} className="px-1.5 py-0.5 rounded-md bg-amber-50 border border-amber-300 text-amber-900 text-[10px] font-bold flex items-center gap-1 cursor-pointer" title="Cadastrar Unidade / Vara para este Processo">
                           <Plus className="w-2.5 h-2.5" />Definir vara
@@ -908,6 +916,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
 
                       {/* Judicial Unit / Comarca Tag */}
                       <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        {origemExterna(item) && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-teal-100 text-teal-900 border-teal-400 whitespace-nowrap" title={origemExterna(item)!.dica} data-testid="etiqueta-agaia">{origemExterna(item)!.rotulo}</span>}
                         {getSafeUnitText(item.result?.minute?.judicialUnit) ? (
                           <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 text-[10px] font-bold">
                             <span className="text-slate-900">📍</span>
