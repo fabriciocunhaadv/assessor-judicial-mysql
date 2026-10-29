@@ -13,4 +13,9 @@ ok(m.parties.author === "Mauri Pereira Morais" && m.parties.defendant.startsWith
 ok(a.unitId === "mc_jec" && a.promptTitle.includes("Juizado Especial") && a.createdBy === "u1", "organizada por unidade, prompt e usuário");
 const b = montarAnaliseDeMinutaExterna({ processo: "5285460-70.2025.8.09.0166", minutaTexto: texto }, { unitId: "mc_jec", unitName: "" });
 ok(a.id === b.id, "o mesmo texto do mesmo processo tem sempre o mesmo id (nova tentativa não duplica)");
+// decisão do Agaia sem os títulos I/II/III (como a da tela real)
+const livre = ["Processo nº: 5189520.44.2026.8.09.0166", "Natureza: Cumprimento Provisório de Alimentos (Rito da Penhora)", "Exequente: B. G. T. dos S. (representado por sua genitora)", "Executado: Kauan Matheus Freitas dos Santos", "DECISÃO", "Vistos os autos.", "Por meio da decisão proferida em Mov. 35, este Juízo homologou o cálculo do saldo remanescente.".repeat(2), "Em Mov. 38, aportou comunicação da lavra do Egrégio Tribunal.".repeat(2), "Ante o exposto, DETERMINO a intimação do devedor para pagamento no prazo de 15 dias.", "Intimem-se. Cumpra-se."].join("\n\n");
+const c = montarAnaliseDeMinutaExterna({ processo: "5189520-44.2026.8.09.0166", minutaTexto: livre }, { unitId: "x", unitName: "y" }).result.minute!;
+ok(c.title === "DECISÃO" && c.fundamentacao.startsWith("Vistos os autos") && c.dispositivo.startsWith("Ante o exposto") && c.dispositivo.includes("Intimem-se"), "decisão sem títulos: o texto integral vai na fundamentação e o trecho final no dispositivo (nada fica vazio)");
+ok(!/Exequente|Natureza/.test(c.fundamentacao) && c.parties.author.startsWith("B. G. T."), "o cabeçalho de identificação não se repete no corpo");
 console.log(falhas ? `${falhas} FALHA(S)` : "TUDO OK"); process.exit(falhas ? 1 : 0);

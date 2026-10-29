@@ -9,11 +9,13 @@ export interface EntradaExterna {
   id: string; processo: string; serventia?: string; prompt?: string;
   status: "recebida" | "gravando" | "gravada" | "tentando"; erro?: string; tentativas: number;
   recebidoEm: number; atualizadoEm: number; historicoId?: string; dados: MinutaExterna;
+  formato?: number;      // versão do jeito de montar a minuta no Histórico: ao melhorar, o mesmo texto reenviado é regravado (mesmo id, sem duplicar)
 }
 export interface ContextoEntrada { unidades: any[]; ativa: any; user: any }
 
 const NOME = "assessor_entrada_externa_v1";
 const VALIDADE_GRAVADA_MS = 24 * 3600_000;
+const FORMATO = 2;
 let abrindo: Promise<IDBDatabase> | null = null;
 const abrir = (): Promise<IDBDatabase> => abrindo ||= new Promise((ok, falha) => {
   const rq = indexedDB.open(NOME, 1);
@@ -56,8 +58,8 @@ class Entradas {
     const montada = this.montar({ id: "", processo: d.processo, status: "recebida", tentativas: 0, recebidoEm: Date.now(), atualizadoEm: Date.now(), dados: d } as EntradaExterna);
     const id = montada.id;
     const antiga = this.itens.get(id);
-    if (antiga?.status === "gravada") return { ok: true, id };      // a esteira reenviou a mesma minuta: já está no Histórico
-    const e: EntradaExterna = antiga || { id, processo: montada.processNumber, serventia: d.serventia, prompt: d.prompt || d.promptAgaia, status: "recebida", tentativas: 0, recebidoEm: Date.now(), atualizadoEm: Date.now(), dados: d };
+    if (antiga?.status === "gravada" && antiga.formato === FORMATO) return { ok: true, id };      // a esteira reenviou a mesma minuta: já está no Histórico
+    const e: EntradaExterna = antiga ? { ...antiga, status: "recebida", dados: d, formato: FORMATO, tentativas: 0 } : { id, processo: montada.processNumber, serventia: d.serventia, prompt: d.prompt || d.promptAgaia, status: "recebida", tentativas: 0, recebidoEm: Date.now(), atualizadoEm: Date.now(), dados: d, formato: FORMATO };
     await this.guardar(e);
     void this.gravar(id);
     return { ok: true, id };
