@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { gerenteGigantes, ConfigGigante } from "../utils/gigantes/gerente";
 import type { JobGig } from "../utils/gigantes/db";
+import { useUmAbertoPorVez, CLASSE_PAINEL_FLUTUANTE } from "../utils/flutuantes";
 
 function PesquisaNosAutos({ jobId }: { jobId: string }) {
   const [termo, setTermo] = useState("");
@@ -35,6 +36,7 @@ const ATIVO = (s: JobGig["status"]) => ["preparando", "na_fila", "ocr", "lendo",
 export function GigantesPanel({ config, onVerHistorico }: { config: ConfigGigante; onVerHistorico?: () => void }) {
   const [jobs, setJobs] = useState<JobGig[]>([]);
   const [aberto, setAberto] = useState(false);
+  useUmAbertoPorVez("gigantes", aberto, () => setAberto(false));
   const arq = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -65,7 +67,7 @@ export function GigantesPanel({ config, onVerHistorico }: { config: ConfigGigant
         {ativos.length > 0 ? <span className="px-1.5 rounded-full bg-white/20">{ativos.length} em andamento · {pct(ativos[0])}%</span> : <span className="px-1.5 rounded-full bg-white/20">{jobs.length}</span>}
       </button>
       {aberto && (
-        <div className="fixed bottom-14 left-3 z-[9001] w-[min(96vw,30rem)] max-h-[75vh] overflow-y-auto bg-white text-slate-800 rounded-2xl shadow-2xl border border-sky-300 p-3 space-y-3" data-testid="gigantes-painel">
+        <div className={`${CLASSE_PAINEL_FLUTUANTE} w-[min(96vw,30rem)] overflow-y-auto bg-white text-slate-800 rounded-2xl shadow-2xl border border-sky-300 p-3 space-y-3`} data-testid="gigantes-painel">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-black text-sky-900">📚 Processos gigantes (leitura em lotes)</h3>
             <button onClick={() => setAberto(false)} className="text-slate-500 hover:text-slate-800 text-lg leading-none cursor-pointer" aria-label="Fechar">×</button>

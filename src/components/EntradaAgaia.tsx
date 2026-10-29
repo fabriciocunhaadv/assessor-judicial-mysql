@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { entradasExternas, type EntradaExterna } from "../utils/entradaExterna";
 import { useAuth } from "../lib/AuthContext";
+import { useUmAbertoPorVez, CLASSE_PAINEL_FLUTUANTE } from "../utils/flutuantes";
 
 const ROTULO: Record<EntradaExterna["status"], string> = { recebida: "Recebida", gravando: "Gravando no Histórico…", gravada: "✔ No Histórico", tentando: "⚠ Tentando de novo" };
 
@@ -9,6 +10,7 @@ export function EntradaAgaia({ onVerHistorico }: { onVerHistorico?: () => void }
   const { allowedUnits, activeUnit } = useAuth() as any;
   const [lista, setLista] = useState<EntradaExterna[]>([]);
   const [aberto, setAberto] = useState(false);
+  useUmAbertoPorVez("agaia", aberto, () => setAberto(false));
   const [colar, setColar] = useState({ processo: "", unidadeId: "", prompt: "", texto: "" });
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -31,12 +33,12 @@ export function EntradaAgaia({ onVerHistorico }: { onVerHistorico?: () => void }
   const pendentes = lista.filter((e) => e.status !== "gravada").length;
   return (
     <>
-      {lista.length > 0 && <button onClick={() => setAberto((v) => !v)} className="fixed bottom-[5.5rem] left-3 z-[8998] px-3 py-2 rounded-full bg-teal-700 hover:bg-teal-600 text-white text-xs font-bold shadow-lg border border-teal-400 cursor-pointer flex items-center gap-2" data-testid="agaia-selo" title="Minutas que chegaram do Agaia">
+      {lista.length > 0 && <button onClick={() => setAberto((v) => !v)} className="fixed bottom-[6.75rem] left-3 z-[8998] px-3 py-2 rounded-full bg-teal-700 hover:bg-teal-600 text-white text-xs font-bold shadow-lg border border-teal-400 cursor-pointer flex items-center gap-2" data-testid="agaia-selo" title="Minutas que chegaram do Agaia">
         <span>🤖 Agaia</span>
         <span className="px-1.5 rounded-full bg-white/20">{pendentes > 0 ? `${pendentes} gravando` : `${lista.length} no Histórico`}</span>
       </button>}
       {aberto && (
-        <div className="fixed bottom-[8.5rem] left-3 z-[9000] w-[min(96vw,28rem)] max-h-[60vh] overflow-y-auto bg-white text-slate-800 rounded-2xl shadow-2xl border border-teal-300 p-3 space-y-2" data-testid="agaia-painel">
+        <div className={`${CLASSE_PAINEL_FLUTUANTE} w-[min(96vw,28rem)] overflow-y-auto bg-white text-slate-800 rounded-2xl shadow-2xl border border-teal-300 p-3 space-y-2`} data-testid="agaia-painel">
           <div className="flex items-center justify-between"><h3 className="text-sm font-black text-teal-900">🤖 Minutas do Agaia</h3><button onClick={() => setAberto(false)} className="text-xs text-slate-500 cursor-pointer">fechar</button></div>
           <p className="text-[11px] text-slate-600 leading-snug">As minutas feitas no Agaia chegam pela esteira e são gravadas no Histórico em segundo plano, na unidade da serventia e com o prompt usado. Você não precisa esperar: continue trabalhando e abra o Histórico depois. Se a internet cair ou a página for atualizada, a gravação continua sozinha quando voltar.</p>
           <details className="rounded-lg border border-teal-200 bg-teal-50/50 p-2 text-[11px]" data-testid="agaia-colar">
