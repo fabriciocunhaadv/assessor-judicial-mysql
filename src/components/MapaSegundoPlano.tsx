@@ -9,6 +9,10 @@ export function MapaSegundoPlano() {
   const [tarefas, setTarefas] = useState<TarefaMapa[]>([]);
   const [aberto, setAberto] = useState(false);
   useEffect(() => { void gerenteMapas.carregar(); return gerenteMapas.inscrever(setTarefas); }, []);
+  // resumo legível pela extensão: enquanto o app monta o mapa, a esteira não conta esse tempo nos limites de espera da análise
+  useEffect(() => {
+    try { document.documentElement.dataset.mapas = JSON.stringify(tarefas.map((t) => ({ id: t.id, processo: t.numeroProcesso || "", status: t.status, feitas: t.partesFeitas, total: t.partesTotal }))); } catch { /* ignora */ }
+  }, [tarefas]);
   const visiveis = tarefas.filter((t) => t.status !== "cancelado");
   const ativos = visiveis.filter((t) => ATIVO(t.status));
   if (visiveis.length === 0) return null;
