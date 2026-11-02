@@ -13,7 +13,7 @@ import { PdfUploadZone } from "./components/PdfUploadZone";
 import { useCoberturaLeitura } from "./components/useCoberturaLeitura";
 import { GigantesPanel } from "./components/GigantesPanel";
 import { MapaSegundoPlano } from "./components/MapaSegundoPlano";
-import { type MinutaExterna } from "./utils/minutaExterna";
+import { type MinutaExterna, reorganizarAnaliseExterna } from "./utils/minutaExterna";
 import { entradasExternas } from "./utils/entradaExterna";
 import { EntradaAgaia } from "./components/EntradaAgaia";
 import { AvisoSegundoPlano } from "./components/AvisoSegundoPlano";
@@ -1954,6 +1954,8 @@ export default function App() {
         return;
       }
 
+      // minuta que veio do Agaia com a separação antiga (tudo na fundamentação): reorganiza ao abrir, se o usuário ainda não a editou
+      analysis = reorganizarAnaliseExterna(analysis) || analysis;
       const loadedResult = analysis.result ? {
         ...analysis.result,
         originalMinute: analysis.result.originalMinute || analysis.originalMinute || analysis.result.minute,

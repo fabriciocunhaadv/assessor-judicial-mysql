@@ -1,6 +1,7 @@
 // Minuta que já chega pronta de fora do Studio (hoje: o Agaia, pela esteira da extensão). O Studio não gera nada: só lança no Histórico,
 // com o número do processo, a serventia (unidade) e o prompt, para o histórico do usuário ficar organizado como o das demais minutas.
 import type { SavedAnalysis, JudicialUnit, MinuteData } from "../types";
+import { organizarMinutaExterna } from "./organizarMinutaExterna";
 
 export interface MinutaExterna { processo: string; serventia?: string; prompt?: string; promptAgaia?: string; minutaTexto: string; minutaHtml?: string; aproximado?: string; origem?: string; unidadeId?: string }
 
@@ -22,41 +23,21 @@ export function resolverUnidade(serventia: string, unidades: JudicialUnit[], ati
   return { id: u?.id || "montes_claros", name: u?.name || "" };
 }
 
-function secao(texto: string, inicio: RegExp, fim: RegExp | null): string {
-  const m = inicio.exec(texto); if (!m) return "";
-  const resto = texto.slice(m.index + m[0].length);
-  const f = fim ? fim.exec(resto) : null;
-  return (f ? resto.slice(0, f.index) : resto).trim();
-}
+const SEM_FUNDAMENTACAO = "(O ato não traz fundamentação em separado: segue do relatório direto ao dispositivo.)";
+const SEM_RELATORIO = "(O ato não traz relatório em separado: começa direto na fundamentação.)";
 
 export function montarAnaliseDeMinutaExterna(d: MinutaExterna, ctx: { unitId: string; unitName: string; uid?: string; nome?: string; email?: string }): SavedAnalysis {
   const texto = String(d.minutaTexto || "").trim();
   const cnj = (texto.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || String(d.processo || "").match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || [d.processo || "Sem número"])[0];
-  const titulo = (texto.match(/^\s*(SENTEN[ÇC]A|DECIS[ÃA]O(?: INTERLOCUT[ÓO]RIA)?|DESPACHO|ATO ORDINAT[ÓO]RIO)\s*$/im) || [])[1]?.toUpperCase() || "MINUTA (AGAIA)";
-  // texto do ato: o que vem depois da linha do título (antes dele ficam o número, a natureza e as partes)
-  const mTitulo = /^[ \t]*(SENTEN[ÇC]A|DECIS[ÃA]O(?: INTERLOCUT[ÓO]RIA)?|DESPACHO|ATO ORDINAT[ÓO]RIO)[ \t]*$/im.exec(texto);
-  const corpo = mTitulo ? texto.slice(mTitulo.index + mTitulo[0].length).trim() : texto;
-  const relatorio = secao(texto, /^\W*I\.?\s*[-–.]?\s*RELAT[ÓO]RIO\W*$/im, /^\W*II\.?\s*[-–.]?\s*FUNDAMENTA[ÇC][ÃA]O/im);
-  const fundamentacao = secao(texto, /^\W*II\.?\s*[-–.]?\s*FUNDAMENTA[ÇC][ÃA]O\W*$/im, /^\W*III\.?\s*[-–.]?\s*DISPOSITIVO/im);
-  const dispositivo = secao(texto, /^\W*III\.?\s*[-–.]?\s*DISPOSITIVO\W*$/im, null);
-  // decisão sem os títulos I/II/III (o Agaia nem sempre os usa): nada fica vazio nem se perde; o texto integral vai na fundamentação e o dispositivo é o trecho final (“Ante o exposto…”, “Determino…”, “Intimem-se”)
-  let rel = relatorio, fund = fundamentacao, disp = dispositivo, semSecoes = false;
-  if (!relatorio && !fundamentacao && !dispositivo) {
-    semSecoes = true;
-    const paragrafos = corpo.split(/\n\s*\n|\n(?=\S)/).map((x) => x.trim()).filter(Boolean);
-    let k = paragrafos.findIndex((x, i) => i > 0 && /^(Ante o exposto|Diante do exposto|Pelo exposto|Isto posto|Posto isso|Dessa forma|Do exposto|Assim sendo|Por tais raz[õo]es|DETERMINO|Determino)/.test(x));
-    if (k < 0) k = paragrafos.findIndex((x, i) => i > 0 && /^(Intim(e|em)-se|Cumpra-se|Publique-se|Expe[çc]a-se)/.test(x));
-    const antes = k > 0 ? paragrafos.slice(0, k) : paragrafos;
-    fund = antes.join("\n\n"); disp = k > 0 ? paragrafos.slice(k).join("\n\n") : "(o ato está inteiro no texto acima)";
-    rel = "(Decisão elaborada no Agaia sem a divisão em relatório, fundamentação e dispositivo: o texto integral está abaixo.)";
-  }
-  const autor = (texto.match(/(?:Exequente|Autor(?:a)?|Requerente)\s*:\s*([^\n]+)/i) || [])[1]?.trim() || "";
-  const reu = (texto.match(/(?:Executad[oa]s?|R[ée]u?s?|Requerid[oa]s?)\s*:\s*([^\n]+)/i) || [])[1]?.trim() || "";
+  // título, seções (relatório / fundamentação / dispositivo), fecho e partes: separação inteligente (ver organizarMinutaExterna), com a mesma formatação da tela
+  const org = organizarMinutaExterna(texto, d.minutaHtml || "");
+  const titulo = org.titulo, rel = org.relatorio || SEM_RELATORIO, fund = org.fundamentacao || SEM_FUNDAMENTACAO, disp = org.dispositivo || "(o ato está inteiro no texto acima)", semSecoes = org.semSecoes;
+  const autor = org.autor, reu = org.reu;
   let h = 0; for (let i = 0; i < texto.length; i++) h = (Math.imul(31, h) + texto.charCodeAt(i)) | 0;
   const id = `agaia-${cnj.replace(/\D/g, "")}-${(h >>> 0).toString(36)}`;      // o mesmo texto do mesmo processo grava sempre no mesmo registro (uma segunda tentativa não duplica)
   const minute: MinuteData = {
     title: titulo, header: `${ctx.unitName || d.serventia || ""}\nPROCESSO Nº ${cnj}`, processNumber: cnj, judicialUnit: ctx.unitName || d.serventia || "",
-    parties: { author: autor, defendant: reu }, relatorio: rel, fundamentacao: fund, dispositivo: disp, closing: "", fullFormattedText: texto,
+    parties: { author: autor, defendant: reu }, relatorio: rel, fundamentacao: fund, dispositivo: disp, closing: org.closing || "Documento assinado digitalmente.", fullFormattedText: texto,
   };
   return {
     id, unitId: ctx.unitId, promptTitle: d.prompt || d.promptAgaia || "Agaia", promptCategory: "civel", promptScope: "judicial", date: Date.now(), processNumber: cnj,
@@ -65,4 +46,25 @@ export function montarAnaliseDeMinutaExterna(d: MinutaExterna, ctx: { unitId: st
     processTextContext: `[Minuta gerada no ${d.origem || "Agaia"}${d.promptAgaia ? ` com o prompt “${d.promptAgaia}”` : ""}; os autos não passaram pelo Studio]`,
     createdBy: ctx.uid || "anonymous", creatorName: ctx.nome || "Assessor", creatorEmail: ctx.email || "", chatMessages: [],
   } as SavedAnalysis;
+}
+
+/**
+ * Minuta do Agaia já gravada no Histórico com a separação antiga (tudo na fundamentação): reorganiza ao abrir, a partir do texto original guardado.
+ * Só mexe se o usuário NÃO editou a minuta (relatório/fundamentação/dispositivo iguais aos de origem) e só se o resultado mudar algo. Devolve null quando não há o que fazer.
+ */
+export function reorganizarAnaliseExterna(a: SavedAnalysis): SavedAnalysis | null {
+  try {
+    const r: any = a?.result, o = r?.origemExterna, m: MinuteData | undefined = r?.minute;
+    if (!o || !m) return null;
+    const orig: MinuteData | undefined = r.originalMinute || (a as any).originalMinute;
+    if (orig && (orig.relatorio !== m.relatorio || orig.fundamentacao !== m.fundamentacao || orig.dispositivo !== m.dispositivo)) return null; // o usuário já mexeu
+    const texto = String(m.fullFormattedText || "").trim(); if (texto.length < 80) return null;
+    const org = organizarMinutaExterna(texto, o.htmlOriginal || "");
+    const rel = org.relatorio || SEM_RELATORIO, fund = org.fundamentacao || SEM_FUNDAMENTACAO, disp = org.dispositivo || "(o ato está inteiro no texto acima)";
+    if (!org.fundamentacao && !org.dispositivo && !org.relatorio) return null;
+    if (rel === m.relatorio && fund === m.fundamentacao && disp === m.dispositivo) return null;
+    const novo: MinuteData = { ...m, relatorio: rel, fundamentacao: fund, dispositivo: disp, closing: org.closing || m.closing || "Documento assinado digitalmente." };
+    if (org.autor && !m.parties?.author) novo.parties = { ...m.parties, author: org.autor, defendant: m.parties?.defendant || org.reu };
+    return { ...a, result: { ...r, minute: novo, originalMinute: JSON.parse(JSON.stringify(novo)), origemExterna: { ...o, semSecoes: org.semSecoes } } } as SavedAnalysis;
+  } catch { return null; }
 }
