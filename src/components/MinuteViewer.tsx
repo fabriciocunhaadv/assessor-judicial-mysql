@@ -159,6 +159,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
   const [quickDefendant, setQuickDefendant] = useState("");
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const chatPainelRef = useRef<HTMLDivElement>(null);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const topViewerRef = useRef<HTMLDivElement>(null);
   const tabContentRef = useRef<HTMLDivElement>(null);
@@ -218,6 +219,16 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
       setChatMessages([]);
     }
   }, [currentAnalysisId, initialChatMessages]);
+
+  // Ao abrir o chat (painel abaixo da minuta): rola suavemente até ele e dá foco ao campo de mensagem
+  useEffect(() => {
+    if (!chatAberto) return;
+    const t = setTimeout(() => {
+      chatPainelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      chatTextareaRef.current?.focus({ preventScroll: true });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [chatAberto]);
 
   // Auto scroll chat to bottom
   useEffect(() => {
@@ -2551,7 +2562,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
           </button>
         </div>
       )}
-      <div id="tour-result-chat" data-testid="painel-chat-gemini" className={chatAberto ? "fixed bottom-4 right-4 z-[60] w-[min(96vw,540px)] max-h-[82vh] overflow-y-auto rounded-2xl shadow-2xl border border-slate-300 bg-slate-50 p-3.5 space-y-2.5" : "hidden"}>
+      <div id="tour-result-chat" ref={chatPainelRef} data-testid="painel-chat-gemini" className={chatAberto ? "bg-slate-50 border-t border-slate-200 p-3.5 space-y-2.5" : "hidden"}>
         {/* Top bar of Assistant with Title and Limpar Chat button */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">

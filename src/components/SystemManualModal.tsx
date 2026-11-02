@@ -1623,6 +1623,7 @@ export const SystemManualModal: React.FC<SystemManualModalProps> = ({
                         <time className="text-xs font-mono text-sky-800 dark:text-sky-400 font-medium">Outubro 2026</time>
                       </div>
                       <ul className="text-sm text-slate-600 dark:text-slate-400 list-disc list-inside space-y-1">
+                        <li>Chat de ajuste fino (“Editar com o chat Gemini”): agora abre dentro da própria tela, logo abaixo da minuta, em vez de uma janelinha flutuante por cima do texto; ao abrir, a tela rola até ele e o cursor já fica no campo de mensagem. “Recolher” só esconde o painel e a conversa é mantida.</li>
                         <li>Leitura em lotes, em segundo plano, de processos com milhares de páginas; acima de 3.000, em partes que se unem numa minuta só (aba “Processos Gigantes”).</li>
                         <li>OCR por IA das páginas escaneadas (com opção de pular) e aviso de cobertura da leitura: a minuta não decide por ausência de prova em página não lida.</li>
                         <li>Histórico: o ato grande não some mais (cópia reduzida para a nuvem, aviso visível e reenvio automático).</li>
