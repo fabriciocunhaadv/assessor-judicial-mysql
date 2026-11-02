@@ -137,6 +137,10 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
   }, [clientName, defendantName, lawArea, targetCourt, caseDescription, customPrompt, causeValue, pieceType]);
 
   // Duplo Upload Especializado: Autos do Processo (PDF) e Documentos do Cliente
+  // arquivos sendo lidos agora (ou que falharam): aparecem na hora, com progresso, em vez de a tela ficar parada até o fim
+  type ArquivoEmLeitura = { id: string; nome: string; destino: "autos" | "provas"; tamanho: number; atual: number; total: number; fila?: boolean; erro?: string };
+  const [emLeitura, setEmLeitura] = useState<ArquivoEmLeitura[]>([]);
+  const lendoAgora = emLeitura.some((x) => !x.erro);
   const [processFiles, setProcessFiles] = useState<ArquivoPeticao[]>([]);
   const [clientFiles, setClientFiles] = useState<ArquivoPeticao[]>([]);
   // Arquivos Probatórios Anexados (geral/legado)
@@ -239,74 +243,101 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
   };
 
 
-  const processFilesForUpload = async (files: File[]) => {
-    return await Promise.all(
-      files.map(async (file) => {
-        let extractedText = "";
-        let base64Data = "";
-        let leitura: { pageCount?: number; paginasSemTexto?: number[]; paginasNaoLidas?: number[] } = {};
-        
-        const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type.includes("pdf");
-        if (isPdf) {
-          try {
-            const result = await extractTextFromPdf(file);
-            if (result && result.hasText && result.text && result.text.trim().length > 0) {
-              extractedText = result.text;
-              leitura = { pageCount: result.pageCount, paginasSemTexto: result.paginasSemTexto, paginasNaoLidas: result.paginasNaoLidas };
-              console.log(`[Petição] Texto do PDF "${file.name}" extraído no navegador (${extractedText.length} caracteres).`);
-            }
-          } catch (e) {
-            console.warn(`[Petição] Falha na extração de texto no cliente para ${file.name}. Enviando cópia binária...`, e);
-          }
+  /** Lê UM arquivo (texto do PDF no navegador; sem texto, cópia binária). Lança erro com o motivo se não conseguir. */
+  const lerArquivoDaPeticao = async (file: File, aoProgredir?: (atual: number, total: number) => void): Promise<ArquivoPeticao> => {
+    let extractedText = "";
+    let base64Data = "";
+    let leitura: { pageCount?: number; paginasSemTexto?: number[]; paginasNaoLidas?: number[] } = {};
+
+    if (file.size === 0) throw new Error("o arquivo está vazio (0 bytes); confira se ele foi baixado por inteiro");
+    const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type.includes("pdf");
+    if (isPdf) {
+      try {
+        // vigia: se a leitura ficar parada (sem avançar de página) por muito tempo, desiste da extração no navegador e segue para a cópia binária, em vez de a tela ficar parada para sempre
+        const limiteParada = Number((window as any).__PETICAO_TIMEOUT_LEITURA_MS) || 120000;
+        let ultimoAvanco = Date.now(), parar: () => void = () => {};
+        const vigia = new Promise<never>((_, rejeita) => { const t = setInterval(() => { if (Date.now() - ultimoAvanco > limiteParada) { clearInterval(t); rejeita(new Error("a leitura do PDF travou (sem avanço por " + Math.round(limiteParada / 1000) + " s)")); } }, 1000); parar = () => clearInterval(t); });
+        vigia.catch(() => {});
+        const result = await Promise.race([extractTextFromPdf(file, (a, t) => { ultimoAvanco = Date.now(); aoProgredir?.(a, t); }), vigia]).finally(() => parar());
+        if (result && result.hasText && result.text && result.text.trim().length > 0) {
+          extractedText = result.text;
+          leitura = { pageCount: result.pageCount, paginasSemTexto: result.paginasSemTexto, paginasNaoLidas: result.paginasNaoLidas };
+          console.log(`[Petição] Texto do PDF "${file.name}" extraído no navegador (${extractedText.length} caracteres).`);
         }
-        
-        if (!extractedText) {
-          base64Data = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              const res = event.target?.result;
-              resolve(typeof res === "string" ? res.split(",")[1] : "");
-            };
-            reader.readAsDataURL(file);
-          });
-        }
-        
-        return {
-          name: file.name,
-          base64: base64Data,
-          mimeType: file.type || "application/pdf",
-          size: file.size,
-          extractedText,
-          id: `pet-${file.name}-${file.size}-${Math.random().toString(36).slice(2, 7)}`,
-          file,
-          ...leitura,
+      } catch (e) {
+        console.warn(`[Petição] Falha na extração de texto no cliente para ${file.name}. Enviando cópia binária...`, e);
+      }
+    }
+
+    if (!extractedText) {
+      if (file.size > 150 * 1024 * 1024) throw new Error("o PDF não tem texto legível e é grande demais (mais de 150 MB) para ser enviado como imagem; divida o arquivo ou use um PDF com texto");
+      base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const res = event.target?.result;
+          resolve(typeof res === "string" ? res.split(",")[1] : "");
         };
-      })
-    );
+        reader.onerror = () => reject(new Error("o navegador não conseguiu ler o arquivo"));
+        reader.onabort = () => reject(new Error("a leitura do arquivo foi interrompida"));
+        reader.readAsDataURL(file);
+      });
+      if (!base64Data) throw new Error("o arquivo parece vazio");
+    }
+
+    return {
+      name: file.name,
+      base64: base64Data,
+      mimeType: file.type || "application/pdf",
+      size: file.size,
+      extractedText,
+      id: `pet-${file.name}-${file.size}-${Math.random().toString(36).slice(2, 7)}`,
+      file,
+      ...leitura,
+    };
+  };
+
+  /** Lê os arquivos UM POR VEZ (menos memória), mostrando cada um na hora com o progresso e, se falhar, o motivo. Cada arquivo pronto entra na lista de imediato. */
+  const processFilesForUpload = async (files: File[], destino: "autos" | "provas" = "provas"): Promise<ArquivoPeticao[]> => {
+    const prontos: ArquivoPeticao[] = [];
+    const mb = (n: number) => (n / 1048576).toFixed(1).replace(".", ",");
+    const ids = files.map((f) => `ler-${destino}-${f.name}-${f.size}-${Math.random().toString(36).slice(2, 7)}`);
+    setEmLeitura((p) => [...p, ...files.map((f, i) => ({ id: ids[i], nome: f.name, destino, tamanho: f.size, atual: 0, total: 0, fila: i > 0 }))]); // todos aparecem de imediato; os que esperam a vez ficam “na fila”
+    for (let n = 0; n < files.length; n++) {
+      const file = files[n], id = ids[n];
+      setEmLeitura((p) => p.map((x) => (x.id === id ? { ...x, fila: false } : x)));
+      try {
+        const arq = await lerArquivoDaPeticao(file, (atual, total) => setEmLeitura((p) => p.map((x) => (x.id === id ? { ...x, atual, total } : x))));
+        prontos.push(arq);
+        if (destino === "autos") setProcessFiles((prev) => [...prev, arq]); else setClientFiles((prev) => [...prev, arq]);
+        setAttachedFiles((prev) => [...prev, arq]);
+        setEmLeitura((p) => p.filter((x) => x.id !== id));
+      } catch (e: any) {
+        const motivo = String(e?.message || e || "erro desconhecido");
+        setEmLeitura((p) => p.map((x) => (x.id === id ? { ...x, erro: motivo } : x)));
+        toast.error(`Não consegui ler "${file.name}" (${mb(file.size)} MB): ${motivo}`);
+      }
+    }
+    return prontos;
   };
 
   // Processar Upload de Autos do Processo Existente em PDF
   const handleProcessFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const files = Array.from(e.target.files);
-    const newFiles = await processFilesForUpload(files);
-
-    setProcessFiles(prev => [...prev, ...newFiles]);
-    setAttachedFiles(prev => [...prev, ...newFiles]);
     if (processFileInputRef.current) processFileInputRef.current.value = "";
-    toast.success(`${newFiles.length} arquivo(s) dos autos anexado(s)!`);
+    toast(`Lendo ${files.length} arquivo(s) dos autos… arquivos grandes levam alguns minutos; o andamento aparece abaixo.`, { icon: "📄" });
+    const newFiles = await processFilesForUpload(files, "autos");
+    if (newFiles.length) toast.success(`${newFiles.length} de ${files.length} arquivo(s) dos autos pronto(s)!`);
   };
 
   // Processar Upload de Documentos e Provas do Cliente/Defesa
   const handleClientFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const files = Array.from(e.target.files);
-    const newFiles = await processFilesForUpload(files);
-
-    setClientFiles(prev => [...prev, ...newFiles]);
-    setAttachedFiles(prev => [...prev, ...newFiles]);
     if (clientFileInputRef.current) clientFileInputRef.current.value = "";
-    toast.success(`${newFiles.length} prova(s) do cliente anexada(s)!`);
+    toast(`Lendo ${files.length} arquivo(s) de prova… arquivos grandes levam alguns minutos; o andamento aparece abaixo.`, { icon: "📄" });
+    const newFiles = await processFilesForUpload(files, "provas");
+    if (newFiles.length) toast.success(`${newFiles.length} de ${files.length} prova(s) do cliente pronta(s)!`);
   };
 
   // Upload Geral/Legado
@@ -314,12 +345,9 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
     if (!e.target.files?.length) return;
 
     const files = Array.from(e.target.files);
-    const newFiles = await processFilesForUpload(files);
-
-    setClientFiles(prev => [...prev, ...newFiles]);
-    setAttachedFiles(prev => [...prev, ...newFiles]);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    toast.success(`${newFiles.length} documento(s) anexado(s)!`);
+    const newFiles = await processFilesForUpload(files, "provas");
+    if (newFiles.length) toast.success(`${newFiles.length} documento(s) anexado(s)!`);
   };
 
   const removeProcessFile = (index: number) => {
@@ -1283,6 +1311,26 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                       />
                     </div>
 
+                    {emLeitura.filter((x) => x.destino === "autos").length > 0 && (
+                      <div className="space-y-1" data-testid="lendo-autos">
+                        {emLeitura.filter((x) => x.destino === "autos").map((x) => (
+                          <div key={x.id} className={`p-1.5 rounded-lg border text-[11px] ${x.erro ? "bg-rose-950/40 border-rose-500/40 text-rose-200" : "bg-indigo-950/40 border-indigo-500/30 text-indigo-100"}`}>
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="truncate" title={x.nome}>{x.erro ? "✖ " : ""}{x.nome} <span className="opacity-70">({(x.tamanho / 1048576).toFixed(1).replace(".", ",")} MB)</span></span>
+                              {x.erro ? (
+                                <button type="button" onClick={() => setEmLeitura((p) => p.filter((y) => y.id !== x.id))} className="text-rose-300 hover:text-white shrink-0" title="Tirar este aviso"><X className="w-3.5 h-3.5" /></button>
+                              ) : (
+                                <span className="shrink-0 font-mono">{x.fila ? "na fila" : x.total > 0 ? `lendo pág. ${x.atual}/${x.total}` : "preparando…"}</span>
+                              )}
+                            </div>
+                            {x.erro ? <div className="mt-0.5 text-[10px] opacity-90">{x.erro}</div> : (
+                              <div className="mt-1 h-1 rounded bg-slate-700/60 overflow-hidden"><div className="h-full bg-indigo-400 transition-all" style={{ width: x.total > 0 ? `${Math.max(3, Math.round((x.atual / x.total) * 100))}%` : "8%" }} /></div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {processFiles.length > 0 && (
                       <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
                         {processFiles.map((file, idx) => (
@@ -1337,6 +1385,26 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                       />
                     </div>
 
+                    {emLeitura.filter((x) => x.destino === "provas").length > 0 && (
+                      <div className="space-y-1" data-testid="lendo-provas">
+                        {emLeitura.filter((x) => x.destino === "provas").map((x) => (
+                          <div key={x.id} className={`p-1.5 rounded-lg border text-[11px] ${x.erro ? "bg-rose-950/40 border-rose-500/40 text-rose-200" : "bg-indigo-950/40 border-indigo-500/30 text-indigo-100"}`}>
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="truncate" title={x.nome}>{x.erro ? "✖ " : ""}{x.nome} <span className="opacity-70">({(x.tamanho / 1048576).toFixed(1).replace(".", ",")} MB)</span></span>
+                              {x.erro ? (
+                                <button type="button" onClick={() => setEmLeitura((p) => p.filter((y) => y.id !== x.id))} className="text-rose-300 hover:text-white shrink-0" title="Tirar este aviso"><X className="w-3.5 h-3.5" /></button>
+                              ) : (
+                                <span className="shrink-0 font-mono">{x.fila ? "na fila" : x.total > 0 ? `lendo pág. ${x.atual}/${x.total}` : "preparando…"}</span>
+                              )}
+                            </div>
+                            {x.erro ? <div className="mt-0.5 text-[10px] opacity-90">{x.erro}</div> : (
+                              <div className="mt-1 h-1 rounded bg-slate-700/60 overflow-hidden"><div className="h-full bg-indigo-400 transition-all" style={{ width: x.total > 0 ? `${Math.max(3, Math.round((x.atual / x.total) * 100))}%` : "8%" }} /></div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {clientFiles.length > 0 && (
                       <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
                         {clientFiles.map((file, idx) => (
@@ -1373,7 +1441,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                   <button
                     id="auto-extract-btn"
                     onClick={handleAutoExtractEvidence}
-                    disabled={isExtractingEvidence || (processFiles.length === 0 && clientFiles.length === 0 && attachedFiles.length === 0 && !caseDescription.trim())}
+                    disabled={lendoAgora || isExtractingEvidence || (processFiles.length === 0 && clientFiles.length === 0 && attachedFiles.length === 0 && !caseDescription.trim())}
                     className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition disabled:opacity-50 flex items-center gap-1 shrink-0"
                   >
                     {isExtractingEvidence ? (
@@ -1568,7 +1636,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                   <button
                     id="generate-petition-btn"
                     onClick={handleGeneratePetition}
-                    disabled={isGenerating || (!caseDescription.trim() && processFiles.length === 0 && clientFiles.length === 0 && attachedFiles.length === 0)}
+                    disabled={lendoAgora || isGenerating || (!caseDescription.trim() && processFiles.length === 0 && clientFiles.length === 0 && attachedFiles.length === 0)}
                     className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider"
                   >
                     {isGenerating ? (
