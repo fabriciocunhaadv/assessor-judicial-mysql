@@ -369,6 +369,18 @@ export const SystemTour: React.FC<SystemTourProps> = ({
       placement: "bottom",
     },
     {
+      target: "[data-testid=minuta-secao-fundamentacao]",
+      content: (
+        <div className="text-left font-sans space-y-1.5">
+          <h3 className="font-bold text-md text-emerald-800">Edite a minuta direto no texto ✍️</h3>
+          <p className="text-sm text-slate-700 leading-relaxed">
+            Clique em qualquer trecho (Relatório, Fundamentação ou Dispositivo) e escreva, apague ou acrescente no próprio lugar, sem apertar “Editar”. O texto é <strong>salvo sozinho</strong>; <kbd>Esc</kbd> ou um clique fora volta à visão formatada.
+          </p>
+        </div>
+      ),
+      placement: "top",
+    },
+    {
       target: "[data-testid=barra-chat-fechado]",
       content: (
         <div className="text-left font-sans space-y-1.5">

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { AvisosDaMinuta } from "./AvisosDaMinuta";
 import ReactMarkdown from "react-markdown";
 import { organizarTextoDaMinuta } from "../utils/organizarTextoDaMinuta";
+import { MinutaSecaoEditavel } from "./MinutaSecaoEditavel";
 import {
   Copy,
   Check,
@@ -797,6 +798,37 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
     setIsQuickEditPartiesOpen(false);
     setUpdateNotification("Dados do Promovente (Autor), Réu e Processo ajustados e salvos com sucesso!");
     setTimeout(() => setUpdateNotification(null), 4000);
+  };
+
+  // Edição direta na tela (clique no trecho e escreva; salva sozinho). Atualiza a minuta, grava no banco e agrupa as edições seguidas numa única versão do histórico.
+  const handleSalvarSecaoDireta = async (campo: "relatorio" | "fundamentacao" | "dispositivo", valor: string) => {
+    if (!result?.minute || !minute) return;
+    const base: MinuteData = { ...minute, [campo]: valor };
+    if (base.fullFormattedText) {
+      const rel = base.relatorio || "", fund = base.fundamentacao || "", disp = base.dispositivo || "", clos = base.closing || "";
+      base.fullFormattedText = [
+        base.header ? base.header.toUpperCase() : "",
+        base.title ? `\n\n${base.title.toUpperCase()}\n` : "",
+        `\nProcesso nº: ${base.processNumber}`,
+        `Promovente (Autor): ${base.parties?.author || "Parte Autora"}`,
+        `Promovido (Réu): ${base.parties?.defendant || "Parte Ré"}`,
+        rel ? `\n\nI - RELATÓRIO\n${rel}` : "",
+        fund ? `\n\nII - FUNDAMENTAÇÃO\n${fund}` : "",
+        disp ? `\n\nIII - DISPOSITIVO\n${disp}` : "",
+        clos ? `\n\n${clos}` : `\n\nDocumento assinado digitalmente.`
+      ].filter(Boolean).join("\n");
+    }
+    onUpdateMinute(base);
+    const agora = Date.now(), ultima = versions[0];
+    const reaproveita = !!ultima && ultima.source === "editor" && (ultima.label || "").startsWith("Edição direta") && agora - ultima.timestamp < 10 * 60 * 1000;
+    const novasVersoes: MinuteVersion[] = reaproveita
+      ? [{ ...ultima, minute: base, timestamp: agora }, ...versions.slice(1)]
+      : [{ id: `v-${agora}-direta`, versionNumber: versions.length + 1, label: `Edição direta #${versions.length + 1}`, timestamp: agora, minute: base, source: "editor", author: "Assessor Judicial", changeSummary: "Edição direta na tela (salva automaticamente)" }, ...versions];
+    setVersions(novasVersoes);
+    if (currentAnalysisId) {
+      try { await updateAnalysisChatAndMinute(currentAnalysisId, chatMessages, base, novasVersoes); }
+      catch (dbErr) { console.warn("Não consegui gravar a edição direta no banco:", dbErr); throw dbErr; }
+    }
   };
 
   const handleSaveManualEdit = async () => {
@@ -1800,7 +1832,9 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
                   I - RELATÓRIO
                 </h3>
-                <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((minute.relatorio || "Dispensado o relatório nos termos do art. 38 da Lei nº 9.099/95.").replace(/\\n/g, '\n'), "relatorio")}</ReactMarkdown></div>
+                <MinutaSecaoEditavel testId="minuta-secao-relatorio" rotulo="Relatório" valor={(minute.relatorio || "").replace(/\\n/g, '\n')} onSalvar={(v) => handleSalvarSecaoDireta("relatorio", v)} textareaClassName=" text-[inherit]">
+                  <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((minute.relatorio || "Dispensado o relatório nos termos do art. 38 da Lei nº 9.099/95.").replace(/\\n/g, '\n'), "relatorio")}</ReactMarkdown></div>
+                </MinutaSecaoEditavel>
               </div>
 
               {/* Section 2: Fundamentação */}
@@ -1808,7 +1842,9 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
                   II - FUNDAMENTAÇÃO
                 </h3>
-                <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((minute.fundamentacao || "Fundamentação jurídica nos autos.").replace(/\\n/g, '\n'), "fundamentacao")}</ReactMarkdown></div>
+                <MinutaSecaoEditavel testId="minuta-secao-fundamentacao" rotulo="Fundamentação" valor={(minute.fundamentacao || "").replace(/\\n/g, '\n')} onSalvar={(v) => handleSalvarSecaoDireta("fundamentacao", v)} textareaClassName=" text-[inherit]">
+                  <div className="text-justify text-slate-800 leading-relaxed markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((minute.fundamentacao || "Fundamentação jurídica nos autos.").replace(/\\n/g, '\n'), "fundamentacao")}</ReactMarkdown></div>
+                </MinutaSecaoEditavel>
               </div>
 
               {/* Section 3: Dispositivo */}
@@ -1816,7 +1852,9 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
                   III - DISPOSITIVO
                 </h3>
-                <div className="text-justify text-slate-900 leading-relaxed font-medium markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((minute.dispositivo || "Dispositivo do ato judicial.").replace(/\\n/g, '\n'), "dispositivo")}</ReactMarkdown></div>
+                <MinutaSecaoEditavel testId="minuta-secao-dispositivo" rotulo="Dispositivo" valor={(minute.dispositivo || "").replace(/\\n/g, '\n')} onSalvar={(v) => handleSalvarSecaoDireta("dispositivo", v)} textareaClassName="font-medium text-[inherit]">
+                  <div className="text-justify text-slate-900 leading-relaxed font-medium markdown-body bg-transparent"><ReactMarkdown>{organizarTextoDaMinuta((minute.dispositivo || "Dispositivo do ato judicial.").replace(/\\n/g, '\n'), "dispositivo")}</ReactMarkdown></div>
+                </MinutaSecaoEditavel>
               </div>
 
               {/* Closing */}
