@@ -19,6 +19,17 @@ http.createServer((req, res) => {
     if (/MAPA-PARTE/.test(sis + tudo.slice(0, 4000)) && !/MAPA-CONSOLIDAR/.test(sis)) { const movs = [...new Set([...tudo.matchAll(/\[Mov\. (\d+) /g)].map((m) => +m[1]))]; t = JSON.stringify({ numeroProcesso: "5129546-88.2025.8.09.0100", partes: "Autor x Réu", eventos: movs.filter((n) => n % 37 === 0 || n === 148).map((n) => ({ mov: n, data: "01/01/2026", tipo: n === 148 ? "Decisão" : "Despacho", resumo: "Ato da movimentação " + n, determinou: "comando " + n, situacao: "em_vigor" })) }); }
     else if (/MAPA-CONSOLIDAR/.test(sis)) t = JSON.stringify({ numeroProcesso: "5129546-88.2025.8.09.0100", partes: "Autor x Réu", estadoAtual: { ultimoAtoRelevante: "Decisão da Mov. 148", questaoAtual: "Deliberar sobre a avaliação dos imóveis e a alienação pendente", pendencias: ["avaliação dos imóveis"], vigentes: ["Mov. 148: nova avaliação determinada"], ligacoes: ["Mov. 148 depende da Mov. 37"] }, situacoes: [{ mov: 37, situacao: "cumprido" }] });
     else if (/CLASSIFICADOR DE RELEV/.test(tudo)) { const pags = [...tudo.matchAll(/\[Página (\d+) de/g)].map((m) => +m[1]); t = JSON.stringify({ segmentos: pags.map((n) => ({ de: n, ate: n, classe: n % 4 === 0 ? "dispensavel" : "essencial", motivo: "teste" })) }); }
+    else if (/Redator Forense 360/.test(sis + tudo.slice(0, 30000)) && /fullPetitionMarkdown/.test(sis + tudo.slice(0, 30000))) {
+      // Petição & Defesa 360°: a IA de mentira se auto-aprova (nota 98, "seguro para protocolar") e inventa precedente, para o teste provar que o servidor corrige isso
+      const corpo = ("Dos fatos e do direito. A parte autora narra a relação de consumo e a impugnação específica de cada fato (art. 341 do CPC). " + "Parágrafo de argumentação sobre o caso concreto, com referência aos documentos (Mov. 1, Arq. 1, Pág. 1). ".repeat(20)) + (/\[\[FALSO-PREENCHER\]\]/.test(tudo) ? " Qualificação: CPF [PREENCHER: CPF do cliente]." : "");
+      const it = (id, label, req) => ({ id, label, requirement: req, isCompliant: true, details: "Adequado." });
+      const pet = { title: "CONTESTAÇÃO", fullPetitionMarkdown: "# CONTESTAÇÃO\n\n" + corpo.repeat(2), cleanTextPreview: "Resumo.",
+        favorableJurisprudence: [{ court: "TJGO", precedentNumber: "Apelação Cível nº 5123456-78.2020.8.09.0001", theme: "tema", summary: "s", favorableArgument: "a", fullCitation: "c", tipo: "real_verificado", isRealVerificado: true, fonteUrl: "" }, { court: "STJ", precedentNumber: "Súmula 297 do STJ", theme: "CDC e bancos", summary: "s", favorableArgument: "a", fullCitation: "c", tipo: "real_verificado", isRealVerificado: true, fonteUrl: "" }],
+        anticipatedDefenses: ["ponto"], matrizImpugnacao: [{ alegacaoAutor: "a", refutacaoDefesa: "r", documentoRef: "d" }],
+        auditCpc: { status: "aprovado", score: 98, safeForProtocol: true, criticalAlerts: [], items: [it("item_1", "Juízo e Endereçamento", "Art. 319, I ou Art. 335 CPC"), it("item_3", "Tempestividade", "Art. 219 e Art. 335 CPC"), it("item_4", "Impugnação Específica", "Art. 341 CPC")] },
+        kitProcuracao: "Procuração.", kitDeclaracaoPobreza: "Declaração." };
+      t = /\[\[FALSO-CERCA\]\]/.test(tudo) ? "```json\n" + JSON.stringify(pet) + "\n```" : JSON.stringify(pet);
+    }
     else if (/FICHA DOS AUTOS/.test(tudo) && /analista de autos judiciais/.test(tudo)) t = JSON.stringify(ficha);
     else if (/Corregedor e Auditor/.test(tudo)) t = JSON.stringify(auditoria);
     else if (/SINOPSE|Sinopse/.test(tudo) && !/MINUTA SUBMETIDA/.test(tudo)) t = "Sinopse. ".repeat(60);

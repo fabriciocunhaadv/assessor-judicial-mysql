@@ -81,18 +81,19 @@ export const SystemManualModal: React.FC<SystemManualModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { user, isSuperAdmin, isJudge } = useAuth();
+  const { user, isSuperAdmin, isJudge, userProfile } = useAuth();
+  const podePeticao360 = isSuperAdmin || Boolean((userProfile as any)?.peticao360);      // quem o Super Admin liberou também lê o manual do módulo
   const [activeTab, setActiveTab] = useState<TabType>("visao-geral");
   const [showMobileMenu, setShowMobileMenu] = useState(true);
 
   if (!isOpen) return null;
 
-  const allTabs: { id: TabType; label: string; icon: React.ReactNode; requiresSuperAdmin?: boolean; requiresJudgeOrSuperAdmin?: boolean }[] = [
+  const allTabs: { id: TabType; label: string; icon: React.ReactNode; requiresSuperAdmin?: boolean; requiresJudgeOrSuperAdmin?: boolean; requiresPeticao360?: boolean }[] = [
     { id: "visao-geral", label: "Visão Geral", icon: <Book className="w-4 h-4" /> },
     { id: "passo-a-passo", label: "Passo a Passo de Uso", icon: <ListOrdered className="w-4 h-4" /> },
     { id: "central-chamados", label: "Central de Chamados & Feedback (Novo)", icon: <MessageSquare className="w-4 h-4 text-amber-500" /> },
     { id: "pesquisa-legislativa", label: "Pesquisa Legislativa & Consectários (Novo)", icon: <BookOpen className="w-4 h-4 text-indigo-500" /> },
-    { id: "peticao-inicial", label: "Módulo Petição & Defesa 360° (Exclusivo)", icon: <Scale className="w-4 h-4 text-indigo-400" />, requiresSuperAdmin: true },
+    { id: "peticao-inicial", label: "Módulo Petição & Defesa 360° (liberado pelo Super Admin)", icon: <Scale className="w-4 h-4 text-indigo-400" />, requiresPeticao360: true },
     { id: "extensao-projudi", label: "Extensão Conclusões Projudi (Chrome)", icon: <Zap className="w-4 h-4 text-indigo-500" /> },
     { id: "processos-gigantes", label: "Processos Gigantes, OCR & Partes (Novo)", icon: <Layers className="w-4 h-4 text-sky-500" /> },
     { id: "super-admin-saas", label: "Painel Super Admin SaaS", icon: <Building2 className="w-4 h-4 text-indigo-500" />, requiresSuperAdmin: true },
@@ -116,6 +117,7 @@ export const SystemManualModal: React.FC<SystemManualModalProps> = ({
 
   const tabs = allTabs.filter(tab => {
     if (tab.requiresSuperAdmin && !isSuperAdmin) return false;
+    if (tab.requiresPeticao360 && !podePeticao360) return false;
     if (tab.requiresJudgeOrSuperAdmin && !isSuperAdmin && !isJudge) return false;
     return true;
   });
@@ -448,7 +450,7 @@ export const SystemManualModal: React.FC<SystemManualModalProps> = ({
             )}
 
             {/* TAB: MÓDULO PETIÇÃO & DEFESA 360° (EXCLUSIVO SUPER ADMIN) */}
-            {activeTab === "peticao-inicial" && isSuperAdmin && (
+            {activeTab === "peticao-inicial" && podePeticao360 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex items-center gap-3 text-indigo-600 dark:text-indigo-400 mb-2">
                   <Scale className="w-8 h-8" />
@@ -458,6 +460,10 @@ export const SystemManualModal: React.FC<SystemManualModalProps> = ({
                       Isolamento Total • Banco Separado • Inicial, Defesa, Contestação & Recursos
                     </span>
                   </div>
+                </div>
+
+                <div className="p-3 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 text-sm text-amber-900 dark:text-amber-200">
+                  <strong>⚠ Revise antes de protocolar.</strong> A peça é uma minuta gerada por inteligência artificial. Confira os fatos, os prazos (a IA não calcula prazo: informe a data de citação ou intimação), as citações de lei e a jurisprudência, e preencha os campos marcados como [PREENCHER] ou [CONFERIR]. A “Auditoria CPC” é uma conferência de apoio e <strong>não substitui a sua revisão</strong>; a responsabilidade pela peça é do advogado.
                 </div>
 
                 <div className="prose prose-slate dark:prose-invert max-w-none">
@@ -1623,6 +1629,7 @@ export const SystemManualModal: React.FC<SystemManualModalProps> = ({
                         <time className="text-xs font-mono text-sky-800 dark:text-sky-400 font-medium">Outubro 2026</time>
                       </div>
                       <ul className="text-sm text-slate-600 dark:text-slate-400 list-disc list-inside space-y-1">
+                        <li>Módulo Petição & Defesa 360° mais seguro: aviso de revisão pelo advogado em toda peça; a “Auditoria CPC” deixou de se aprovar sozinha (o servidor confere data de citação/prazo, número dos autos, campos [PREENCHER]/[CONFERIR] e limita a nota quando falta algo); lista “Pontos para conferir” antes de protocolar; a IA não inventa doutrina, dados de qualificação nem prazos (escreve [PREENCHER]/[CONFERIR]) e não enche a peça: a profundidade acompanha o caso. Quem o Super Admin libera passa a ver este manual.</li>
                         <li>Minutas do Agaia organizadas: ao chegar ao Histórico, e também ao abrir as que já estavam gravadas (desde que você não as tenha editado), o texto é separado em Relatório, Fundamentação e Dispositivo, reconhecendo os títulos em várias formas (com ou sem numeração, negrito ou dois-pontos) e, quando não há títulos, pelas fórmulas do próprio texto (“É o relatório. Decido.”, “Ante o exposto…”). Negrito, itálico, listas e citações do Agaia são mantidos, o fecho (local, data e assinatura) vai para o campo próprio e vale a mesma formatação das demais minutas.</li>
                         <li>Edição direta da minuta, sem apertar “Editar”: na tela do resultado, clique no texto do Relatório, da Fundamentação ou do Dispositivo e escreva, apague ou acrescente no próprio lugar. O texto é salvo sozinho (alguns instantes depois de parar de digitar e ao sair do campo), a minuta e o histórico (uma única versão “Edição direta”) são atualizados, e “Esc” ou um clique fora volta à visão formatada. Selecionar texto continua só selecionando. O botão “Editar” segue disponível para ajustar título, partes e cabeçalho.</li>
                         <li>Chat de ajuste fino (“Editar com o chat Gemini”): agora abre dentro da própria tela, logo abaixo da minuta, em vez de uma janelinha flutuante por cima do texto; ao abrir, a tela rola até ele e o cursor já fica no campo de mensagem. “Recolher” só esconde o painel e a conversa é mantida.</li>

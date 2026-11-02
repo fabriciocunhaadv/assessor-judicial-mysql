@@ -612,6 +612,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
         auditCpc: resultData.auditCpc,
         favorableJurisprudence: resultData.favorableJurisprudence,
         anticipatedDefenses: resultData.anticipatedDefenses,
+        pontosParaConferir: Array.isArray(resultData.pontosParaConferir) ? resultData.pontosParaConferir : [],
         kitProcuracao: resultData.kitProcuracao,
         kitDeclaracaoPobreza: resultData.kitDeclaracaoPobreza,
         createdAt: Date.now(),
@@ -1691,6 +1692,21 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                       </div>
                     )}
 
+                    {/* Aviso de revisão pelo advogado (sempre visível) + pontos a conferir/preencher antes de protocolar */}
+                    <div data-testid="aviso-revisao-peca" className="bg-amber-950/60 border-b border-amber-500/30 px-3 sm:px-6 py-2.5 shrink-0">
+                      <p className="text-xs text-amber-200 leading-snug">
+                        <strong>⚠ Revise antes de protocolar.</strong> Minuta gerada por inteligência artificial: confira os fatos, os prazos, as citações e a jurisprudência. A responsabilidade pela peça é do advogado.
+                      </p>
+                      {(currentRecord.pontosParaConferir || []).length > 0 && (
+                        <details className="mt-1.5" open>
+                          <summary className="text-[11px] font-bold text-amber-300 cursor-pointer">Pontos para conferir antes de protocolar ({(currentRecord.pontosParaConferir || []).length})</summary>
+                          <ul className="mt-1 space-y-1 list-disc list-inside text-[11px] text-amber-100/90">
+                            {(currentRecord.pontosParaConferir || []).map((pt, i) => <li key={i} data-testid="ponto-conferir">{pt}</li>)}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+
                     {/* Texto Formatado da Petição Inicial */}
                     <div className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-8">
                       <div className="max-w-4xl mx-auto bg-slate-900 border border-slate-800 shadow-2xl rounded-2xl p-4 sm:p-7 md:p-10 min-h-full">
@@ -1967,7 +1983,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mt-1">
-                        Varredura de risco contra despacho de emenda à inicial ou indeferimento. Peça pronta para protocolo seguro.
+                        Conferência de apoio contra emenda à inicial ou indeferimento (feita pela IA e conferida pelo servidor no que é objetivo). Não substitui a revisão do advogado: confira fatos, prazos, citações e jurisprudência antes de protocolar.
                       </p>
                     </div>
                   </div>

@@ -1161,6 +1161,7 @@ export interface InitialPetitionRecord {
   auditCpc?: InitialPetitionChecklistAudit;
   favorableJurisprudence?: InitialPetitionJurisprudenceItem[];
   anticipatedDefenses?: string[];
+  pontosParaConferir?: string[]; // o que o advogado precisa conferir ou preencher antes de protocolar (alertas do servidor + da IA)
   kitProcuracao?: string;
   kitDeclaracaoPobreza?: string;
 

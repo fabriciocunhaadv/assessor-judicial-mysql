@@ -380,6 +380,33 @@ Extraia todos os elementos fáticos, processuais e probatórios em JSON.`
 });
 
 // 2. ROTA DE REDAÇÃO INTEGRAL DA PEÇA FORENSE 360° (INICIAL, CONTESTAÇÃO/DEFESA, RÉPLICA, INCIDENTAL OU RECURSO)
+export const AVISO_REVISAO_PECA = "Minuta gerada por inteligência artificial: revise os fatos, os prazos, as citações e a jurisprudência antes de protocolar. A responsabilidade pela peça é do advogado.";
+
+/** Confere, no servidor, o que dá para checar objetivamente na peça e corrige a auditoria que a IA devolveu (a IA tende a se aprovar). Muda o objeto recebido. */
+export function conferirAuditoriaDaPeca(dados: any, ctx: { pieceType: string; processNumber?: string; tempestividadeInfo?: string; temArquivos: boolean; descFatos: string }): void {
+  const texto = String(dados?.fullPetitionMarkdown || "");
+  const au = dados.auditCpc && typeof dados.auditCpc === "object" ? dados.auditCpc : { status: "atencao", score: 0, items: [], criticalAlerts: [], safeForProtocol: false };
+  const itens: any[] = Array.isArray(au.items) ? au.items.filter((x: any) => x && typeof x === "object").map((x: any) => ({ ...x, isCompliant: x.isCompliant === true })) : [];
+  const alertas: string[] = (Array.isArray(au.criticalAlerts) ? au.criticalAlerts : []).map((x: any) => (typeof x === "string" ? x : String(x?.title || x?.description || ""))).filter(Boolean);
+  const pendentes: string[] = texto.match(/\[(?:PREENCHER|CONFERIR)[^\]]*\]/gi) || [];
+  if (pendentes.length) alertas.push(`A peça tem ${pendentes.length} campo(s) a preencher ou conferir antes de protocolar (ex.: ${[...new Set(pendentes)].slice(0, 4).join(" ")}).`);
+  const comPrazo = ["contestacao", "replica", "recurso", "incidental"].includes(ctx.pieceType);
+  const marcaItem = (rx: RegExp, det: string) => { const it = itens.find((x) => rx.test(String(x.label || "") + " " + String(x.requirement || ""))); if (it) { it.isCompliant = false; it.details = det; } };
+  if (comPrazo && !String(ctx.tempestividadeInfo || "").trim()) { alertas.push("A data de citação ou intimação e o prazo não foram informados: a tempestividade precisa ser conferida por você."); marcaItem(/tempestiv/i, "Data de citação/intimação não informada: o prazo não foi conferido."); }
+  if (ctx.pieceType !== "inicial" && !String(ctx.processNumber || "").trim()) alertas.push("O número dos autos não foi informado.");
+  if (texto.trim().length < 1500) alertas.push("A peça saiu curta para o tipo: confira se está completa.");
+  if (!ctx.temArquivos && ctx.descFatos.trim().length < 200) alertas.push("Poucas informações e nenhum documento anexado: a peça pode estar genérica.");
+  const unicos = [...new Set(alertas)];
+  let score = Number.isFinite(Number(au.score)) ? Math.max(0, Math.min(100, Math.round(Number(au.score)))) : 0;
+  const naoConformes = itens.filter((x) => !x.isCompliant).length;
+  if ((unicos.length || naoConformes) && score > 89) score = 89;
+  const seguro = unicos.length === 0 && naoConformes === 0 && score >= 90;
+  dados.auditCpc = { ...au, items: itens, criticalAlerts: unicos, score, safeForProtocol: seguro, status: seguro ? "aprovado" : score >= 70 ? "atencao" : "risco" };
+  delete dados.auditCpc._regras;
+  const extra = Array.isArray(dados.pontosParaConferir) ? dados.pontosParaConferir.map((x: any) => String(x)).filter(Boolean) : [];
+  dados.pontosParaConferir = [...new Set([...unicos, ...extra])];
+}
+
 petitionRouter.post("/generate-full-petition", async (req, res) => {
   let userApiKey: string | undefined;
   try {
@@ -409,6 +436,12 @@ petitionRouter.post("/generate-full-petition", async (req, res) => {
       cabinetTesesText,
       knowledgePdfs
     } = req.body;
+
+    const descFatos: string = typeof caseDescription === "string" ? caseDescription : "";
+    const temArquivos = [processFiles, clientFiles, pdfFiles].some((x) => Array.isArray(x) && x.length > 0);
+    if (!descFatos.trim() && !temArquivos) {
+      return res.status(400).json({ error: "Descreva os fatos do caso ou anexe os autos/provas para redigir a peça." });
+    }
 
     const ai = getGeminiClient(userApiKey);
 
@@ -449,7 +482,7 @@ POSTURA: 100% FAVORÁVEL AO AUTOR. ESTA PEÇA DEVE SER EXTREMAMENTE ROBUSTA, ARG
     let systemInstruction = `Você é o "Redator Forense 360°" — um motor de Inteligência Artificial de elite EXCLUSIVO para a Advocacia Contenciosa e ESPECIALISTA DE ALTA PERFORMANCE (Senior Partner) em todas as áreas do direito.
 Você NÃO age como juiz, assessor de gabinete ou auditor imparcial.
 SUA POSTURA É 100% COMBATIVA, PERSUASIVA, EXAUSTIVAMENTE TÉCNICA E PARCIAL EM DEFESA DO SEU CLIENTE (${clientRole === "reu" ? "RÉU" : "AUTOR"}).
-SUA MISSÃO É REDIGIR UMA PEÇA ROBUSTA, LONGA, DENSA E ESTRATÉGICA. NUNCA ENTREGUE UM RESUMO OU UMA PEÇA SIMPLES. Explore TODOS OS PONTOS FÁTICOS E JURÍDICOS POSSÍVEIS. Crie tópicos bem divididos, desenvolva a argumentação com profundidade (doutrina, analogia, princípios constitucionais), cite os fatos com precisão cirúrgica sem inventar absolutamente nada. Onde houver comandos extras do usuário (PROMPT PERSONALIZADO), você DEVE aplicá-los com a MÁXIMA ESPECIALIDADE, esgotando a tese solicitada com excelência jurídica.
+SUA MISSÃO É REDIGIR UMA PEÇA COMPLETA, TÉCNICA E ESTRATÉGICA, com profundidade proporcional ao caso: enfrente, um a um, TODOS os fatos, pedidos, preliminares e pontos controvertidos que constem dos materiais, com argumentação desenvolvida (fundamentos legais, princípios, analogia e a legislação e a jurisprudência fornecidas). Extensão não é qualidade: é PROIBIDO encher a peça com repetição, generalidades ou teses que não se apliquem aos fatos. NÃO cite doutrina (nomes de autores, obras, páginas) nem transcreva trechos de livros, acórdãos ou ementas que não estejam nos materiais fornecidos, na pesquisa de jurisprudência ou no texto oficial da legislação entregue: dispositivos legais e princípios podem ser citados; "segundo a doutrina de fulano" sem fonte fornecida, não. Dado que falte (CPF, endereço, data, valor, nome da parte, número de documento) NÃO se inventa: escreva [PREENCHER: o que falta] no lugar. Prazos e datas: reproduza só o que foi informado; se faltar a data de citação ou de intimação, escreva [CONFERIR O PRAZO] e não calcule. Onde houver comandos extras do usuário (PROMPT PERSONALIZADO), aplique-os com a máxima técnica, SEM afirmar fatos que não estejam provados.
 
 DIRETRIZES DA PEÇA ATUAL:
 ${pieceGuidelines}
@@ -498,48 +531,50 @@ Retorne rigorosamente no seguinte schema JSON:
     }
   ],
   "auditCpc": {
-    "status": "aprovado",
-    "score": 98,
-    "safeForProtocol": true,
-    "criticalAlerts": [],
+    "_regras": "AUDITE COM CRÍTICA. Os valores abaixo são só o FORMATO e começam em 'não conforme': marque isCompliant=true somente quando a peça e os dados informados realmente mostrarem o cumprimento; a nota (score) reflete o que falta; use safeForProtocol=true apenas se NÃO houver nenhum [PREENCHER]/[CONFERIR] e nenhum alerta. Não dê aprovação por padrão.",
+    "status": "aprovado, atencao ou risco",
+    "score": 0,
+    "safeForProtocol": false,
+    "criticalAlerts": ["cada falha, dado que falta ou risco para protocolar"],
     "items": [
       {
         "id": "item_1",
         "label": "Juízo e Endereçamento",
         "requirement": "Art. 319, I ou Art. 335 CPC",
-        "isCompliant": true,
-        "details": "Adequado aos autos e competência."
+        "isCompliant": false,
+        "details": "Diga objetivamente o que a peça cumpre ou o que falta (sem frases-padrão)."
       },
       {
         "id": "item_2",
         "label": "Qualificação e Habilitação",
         "requirement": "Art. 77, V c/c Art. 287 CPC",
-        "isCompliant": true,
-        "details": "Qualificação completa e requerimento de juntada de procuração."
+        "isCompliant": false,
+        "details": "Diga objetivamente o que a peça cumpre ou o que falta (sem frases-padrão)."
       },
       {
         "id": "item_3",
         "label": "Tempestividade",
         "requirement": "Art. 219 e Art. 335 CPC",
-        "isCompliant": true,
-        "details": "Comprovada observância do prazo processual em dias úteis."
+        "isCompliant": false,
+        "details": "Diga objetivamente o que a peça cumpre ou o que falta (sem frases-padrão)."
       },
       {
         "id": "item_4",
         "label": "Impugnação Específica / Pedidos Certos",
         "requirement": "Art. 341 ou Art. 322 CPC",
-        "isCompliant": true,
-        "details": "Refutação detalhada de cada ponto controverso sem preclusão."
+        "isCompliant": false,
+        "details": "Diga objetivamente o que a peça cumpre ou o que falta (sem frases-padrão)."
       },
       {
         "id": "item_5",
         "label": "Provas e Documentos",
         "requirement": "Art. 320 ou Art. 434 CPC",
-        "isCompliant": true,
-        "details": "Juntada tempestiva das provas documentais do cliente."
+        "isCompliant": false,
+        "details": "Diga objetivamente o que a peça cumpre ou o que falta (sem frases-padrão)."
       }
     ]
   },
+  "pontosParaConferir": ["lista objetiva do que o advogado precisa conferir ou preencher antes de protocolar (fatos, prazos, valores, citações, documentos)"],
   "kitProcuracao": "Texto pronto da Procuração Ad Judicia com poderes específicos para esta atuação...",
   "kitDeclaracaoPobreza": "Texto pronto da Declaração de Hipossuficiência Financeira..."
 }`;
@@ -561,7 +596,7 @@ DADOS DA ATUAÇÃO ADVOCATÍCIA:
 - Valor da Causa / Proveito: ${causeValue || "Conforme petição inicial ou estimativa"}
 
 DESCRIÇÃO DOS FATOS, PROVAS E CONTROVÉRSIA:
-${caseDescription}
+${descFatos}
 
 ${customPrompt && customPrompt.trim() !== "" ? `COMANDOS EXTRAS / PROMPT PERSONALIZADO DA ADVOGADA:
 ATENÇÃO IA: O usuário inseriu comandos específicos para a estratégia da causa.
@@ -571,7 +606,7 @@ NÃO FAÇA APENAS UMA MENÇÃO SUPERFICIAL. DESENVOLVA TESES COMPLETAS, ABORDAND
 ${customPrompt}
 """` : ""}
 
-A PEÇA FORENSE DEVE SER ESTRUTURADA DE FORMA PROFUNDA, COM MÚLTIPLAS PÁGINAS DE CONTEÚDO (LONG-FORM). ESCREVA PARÁGRAFOS DENSOS, CITE DOUTRINA, CITE JURISPRUDÊNCIA, REBATA CADA ARGUMENTO COM EXAUSTÃO. ENTREGUE UMA VERDADEIRA TESE DE ESPECIALISTA. NUNCA ENTREGUE UM ESBOÇO SIMPLES OU RESUMO!
+A PEÇA DEVE SER COMPLETA E APROFUNDADA NO QUE O CASO EXIGE, SEM ENCHIMENTO: desenvolva cada ponto relevante em parágrafos densos e encadeados, rebata cada argumento adverso com os documentos e a lei, e feche com pedidos certos e determinados. Não cite doutrina nem jurisprudência que não tenha sido fornecida ou pesquisada; use [PREENCHER: ...] e [CONFERIR: ...] para o que faltar, e liste em "pontosParaConferir" tudo o que o advogado precisa conferir ou preencher antes de protocolar. Faça a AUDITORIA de forma crítica e honesta (veja as regras no schema).
 VOCÊ DEVE RESPONDER ESTRITAMENTE EM UM FORMATO JSON VÁLIDO. NÃO RETORNE TEXTO PURO. NAO USE FORMATACAO COM CRASE SE FOR QUEBRAR A RESPOSTA. O ARQUIVO DEVE SER EXATAMENTE O JSON SOLICITADO NO SCHEMA. O campo fullPetitionMarkdown deve conter o texto formatado rigorosamente. Redija a peça forense completa, primorosa e combativa em Markdown, e preencha todos os campos do JSON (inclusive precedentes vinculantes pró-cliente, auditoria de conformidade processual, matriz de impugnação do art. 341 se defesa, e minutas de procuração e declaração).`;
 
     const contentsParts: any[] = [];
@@ -607,7 +642,7 @@ VOCÊ DEVE RESPONDER ESTRITAMENTE EM UM FORMATO JSON VÁLIDO. NÃO RETORNE TEXTO
     let groundingInfo: GroundingResult = { text: "", links: [], queries: [] };
     try {
       // Extrair termos jurídicos substanciais, ignorando dados de qualificação
-      let cleanCoreTheme = caseDescription
+      let cleanCoreTheme = descFatos
         .replace(/EXCELENT[ÍI]SSIMO[\s\S]*?VARA/i, "")
         .replace(/[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}/g, "")
         .replace(/\b(brasileiro|casado|solteiro|inscrito no CPF|portador do RG|residente e domiciliado)\b/gi, "")
@@ -727,6 +762,9 @@ ${groundingInfo.links.map(l => `- [${l.title}](${l.url})`).join("\n")}`
       });
     }
 
+    // A auditoria da IA não é aval: o servidor confere o que dá para conferir objetivamente e nunca deixa o app dizer "seguro para protocolar" sem isso.
+    try { conferirAuditoriaDaPeca(parsedData, { pieceType, processNumber, tempestividadeInfo, temArquivos, descFatos }); } catch (e) { console.warn("Conferência objetiva da peça falhou (segue com a auditoria da IA):", e); }
+
     let citacoesCorrigidas = 0;
     try { citacoesCorrigidas = corrigirCitacoesDaMinuta(parsedData, autosTxt); } catch { /* a correção nunca derruba a peça */ }      // página global/arquivo errado -> o que o carimbo prova
 
@@ -738,6 +776,7 @@ ${groundingInfo.links.map(l => `- [${l.title}](${l.url})`).join("\n")}`
       usage: (response as any).usageMetadata,
       modelUsed: (response as any).modelVersion,
       citacoesCorrigidas,
+      avisoRevisao: AVISO_REVISAO_PECA,
       groundingSearch: {
         linksCount: groundingInfo.links.length,
         queries: groundingInfo.queries
