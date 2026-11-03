@@ -460,8 +460,14 @@ export function extractJudicialMetadataFromText(text: string): JudicialExtracted
       pendingMatterDescription = "Fase postulatória inicial. Questão pendente: Despacho de Recebimento, Citação do Réu e Designação de Audiência de Conciliação (art. 334 do CPC).";
     }
   } else if (hasSaneamentoPendente && !hasSentencaProferida) {
+    if (/juizado\s+especial|jec(?:rim)?\b|jefp/i.test(text)) {
+      // No Juizado não há decisão de saneamento e organização (art. 357 do CPC): verifica-se se há pedido de prova; sem pedido, a sentença é o ato cabível.
+      suggestedActType = "decisao";
+      pendingMatterDescription = "Juizado Especial, contestação/impugnação apresentadas. Questão pendente: verificar se há pedido de prova (perícia, testemunhas, documentos). Sem pedido de prova, o processo está maduro para sentença; havendo, decisão objetiva designando instrução. Não há decisão de saneamento e organização nos Juizados.";
+    } else {
     suggestedActType = "decisao";
     pendingMatterDescription = "Processo na fase de saneamento. Questão pendente: Decisão de Saneamento e Organização (art. 357 do CPC).";
+    }
   } else if (hasSentencaProferida && hasCumprimentoSentenca) {
     suggestedActType = "decisao";
     pendingMatterDescription = "Processo na fase executiva (Cumprimento de Sentença). Questão pendente: Decisão interlocutória de atos executivos.";
