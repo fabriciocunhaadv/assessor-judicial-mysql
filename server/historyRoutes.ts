@@ -1,6 +1,7 @@
 // API do HISTÓRICO em MySQL (substitui as coleções history e history_index do Firestore).
 // Login próprio (server/authRoutes.ts): o navegador manda a sessão (Authorization: Bearer) e o servidor confere no banco.
 // Credenciais do banco SÓ em variáveis de ambiente (MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE).
+import { PERIODO_GOIANAO, resumirGoianao } from "../src/utils/goianao";
 import express from "express";
 import mysql from "mysql2/promise";
 import { autenticarSessao, mensagemDeErro } from "./authRoutes";
@@ -121,6 +122,13 @@ historyRouter.get("/", rota(async (req, res, u) => {
 }));
 
 /** Assinatura barata da lista (quantidade + última alteração): o navegador só baixa a lista de novo quando ela muda. */
+/** Prêmio TJGO de Produtividade (Goianão): resumo, no período avaliado, do que o gabinete produziu pelo Studio (inclui as minutas do Agaia). Só números e a lista do que falta classificar. */
+historyRouter.get("/goianao/resumo", rota(async (req, res, u) => {
+  const unit = unidadeDe(req);
+  const [rows] = await banco().query<any[]>("SELECT data FROM history WHERE tenant=? AND unit_id=? AND date BETWEEN ? AND ?", [u.tenant, unit, PERIODO_GOIANAO.inicio - 90 * 86400_000, PERIODO_GOIANAO.fim]);
+  const atos = rows.map((r) => { try { return JSON.parse(r.data); } catch { return null; } }).filter(Boolean);
+  res.json({ ok: true, unit, ...resumirGoianao(atos) });
+}));
 historyRouter.get("/assinatura", rota(async (req, res, u) => {
   const criador = String(req.query.criador || "");
   const c = condicaoAutor(criador, String(req.query.email || ""), u);      // "minhas": ids do usuário (inclusive os antigos) ou o mesmo e-mail de autor
