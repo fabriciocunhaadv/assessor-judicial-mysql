@@ -66,7 +66,7 @@ const referencias = (l: OutraLei) => {
   const ano2 = String(l.ano).slice(-2);
   return new RegExp(`(?<![\\d.])${num}\\s*(?:\\/\\s*(?:${l.ano}|${ano2})|-\\s*${l.ano}|,\\s*de\\s+(?:\\d{1,2}[º°]?\\s+de\\s+)?[a-zç]+\\s+de\\s+${l.ano})(?!\\d)`, "gi");
 };
-const ARTIGO_APOS = /^\s*[,;(]?\s*(?:c\/c\s*)?(?:em\s+seu\s+|no\s+|nos\s+)?art(?:igo)?s?\.?\s*(\d{1,4}(?:\s*-\s*[A-Z])?)/i;
+const ARTIGO_APOS = /^\s*[,;(]?\s*(?:c\/c\s*)?(?:em\s+seu\s+|no\s+|nos\s+)?art(?:igo)?s?\.?\s*(\d{1,4}(?:-[A-Z](?![A-Za-zÀ-ú]))?)/i;
 /** Diz se a menção é de lei estadual ou municipal olhando só a mesma oração (até a vírgula/ponto): "Lei Estadual nº 123/2020", "Lei 123/2020 do Município de X". */
 const esferaDoContexto = (t: string, ini: number, fim: number): Esfera | null => {
   const antes = t.slice(Math.max(0, ini - 40), ini).split(/[,;.\n]/).pop() || "", depois = (t.slice(fim, fim + 60).split(/[,;.\n]/)[0]) || "";

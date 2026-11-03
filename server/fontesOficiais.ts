@@ -100,7 +100,7 @@ export function extrairArtigos(linhas: string[], opcoes: { notaLivre?: boolean }
       if (b >= a && b - a <= 400) for (let i = a; i <= b; i++) artigos[String(i)] = { t: linha.slice(0, 300), ...(MARCA_VETADO.test(linha) ? { v: 1 } : { r: 1 }), n: (MARCA_REVOGADO.exec(linha) || MARCA_VETADO.exec(linha) || [""])[0].slice(0, 160) };
       atual = null; continue;
     }
-    const m = /^Art\.?\s*(\d{1,4}(?:\.\d{3})?)\s*(?:[º°o](?![a-zà-ú])|\.)?\s*(?:-\s*([A-Z]{1,2})\b)?/.exec(linha);
+    const m = /^Art\.?\s*(\d{1,4}(?:\.\d{3})?)\s*(?:[º°o](?![a-zà-ú])|\.)?\s*(?:-([A-Z]{1,2})(?![A-Za-zÀ-ú])(?!\s+[a-zà-ú]))?/.exec(linha);
     if (m) {
       const k = chaveArtigo(m[1], m[2]);
       const rev = MARCA_REVOGADO.exec(linha), vet = MARCA_VETADO.exec(linha);

@@ -85,7 +85,7 @@ const tipoDe = (r: string): TipoAto => { const x = r.toLowerCase().replace(/\s+/
 const ehLocal = (t: string, fim: number) => /^[^.;\n]{0,45}?\b(?:do|da)\s+(?:Munic[íi]pio|Estado)\b/i.test(t.slice(fim, fim + 70));
 
 export interface ExtracaoCitacoes { citacoes: Citacao[]; locais: string[] }
-const ARTIGO_APOS = /^\s*[,;(]?\s*(?:c\/c\s*)?(?:em\s+seu\s+|no\s+|nos\s+)?art(?:igo)?s?\.?\s*(\d{1,4}(?:\s*-\s*[A-Z])?)/i;
+const ARTIGO_APOS = /^\s*[,;(]?\s*(?:c\/c\s*)?(?:em\s+seu\s+|no\s+|nos\s+)?art(?:igo)?s?\.?\s*(\d{1,4}(?:-[A-Z](?![A-Za-zÀ-ú]))?)/i;
 
 /** Acha "art. 489 do CPC", "arts. 389 e 406 do CC", "art. 6º da Lei 8.987/95", "Lei 8.987/95, art. 6º"... A lei pode ser qualquer lei federal; leis municipais e estaduais são listadas à parte (o texto delas não é consultado). */
 export function extrairTudo(texto: string, max = 10): ExtracaoCitacoes {
@@ -101,7 +101,7 @@ export function extrairTudo(texto: string, max = 10): ExtracaoCitacoes {
   };
   let lm: RegExpExecArray | null;
   const rl = new RegExp(LOCAL_RE.source, "gi"); while ((lm = rl.exec(t)) && locais.size < 6) locais.add(lm[0].replace(/\s+/g, " ").trim().slice(0, 110));
-  const re = /\bart(?:igo)?s?\.?\s*(\d{1,4}(?:\s*-\s*[A-Z])?)\s*[º°o]?((?:\s*(?:,|e|a|ao|à)\s*\d{1,4}(?:\s*-\s*[A-Z])?\s*[º°o]?){0,3})/gi;
+  const re = /\bart(?:igo)?s?\.?\s*(\d{1,4}(?:-[A-Z](?![A-Za-zÀ-ú]))?)\s*[º°o]?((?:\s*(?:,|e|a|ao|à)\s*\d{1,4}(?:\s*-\s*[A-Z])?\s*[º°o]?){0,3})/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(t))) {
     const ini = m.index + m[0].length, janela = t.slice(ini, ini + 90);
@@ -166,7 +166,8 @@ export interface TextoArtigo { texto: string; revogado: boolean }
 /** Pega o artigo (caput, parágrafos e incisos) até o início do próximo artigo. */
 export function trechoDoArtigo(linhas: string[], artigo: string, limite = 2200): TextoArtigo | null {
   const m = /^(\d{1,4})(?:-([A-Z]))?$/.exec(artigo.toUpperCase()); if (!m) return null;
-  const sufixo = m[2] ? `\\s*-\\s*${m[2]}` : "(?!\\s*-\\s*[A-Z])";
+  // sufixo de artigo ("52-A"): hífen COLADO ao número e letra isolada. "Art. 85 - A gratificação..." / "Art. 85- A ..." é travessão + texto, não artigo 85-A.
+  const sufixo = m[2] ? `-${m[2]}(?![A-Za-zÀ-ú])` : "(?!-[A-Z]{1,2}(?![A-Za-zÀ-ú])(?!\\s+[a-zà-ú]))";
   const ini = new RegExp(`^Art\\.?\\s*${m[1]}\\s*[º°o]?${sufixo}(?![\\d])`, "i");
   const i = linhas.findIndex((l) => ini.test(l));
   if (i < 0) return null;
