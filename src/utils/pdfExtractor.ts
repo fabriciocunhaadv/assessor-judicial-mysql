@@ -184,6 +184,16 @@ export async function extractTextFromPdf(
       if (erroLeitura) { for (let r = i; r <= numPages; r++) paginasNaoLidas.push(r); break; }
       // libera a memória do leitor de tempos em tempos (arquivos de centenas de MB enchiam o navegador e a leitura parava na mesma página)
       if (idx > 0 && idx % 100 === 0) { try { await pdf.cleanup(); } catch { /* sem limpeza */ } }
+      // a cada 300 páginas fecha o leitor (e seu worker) e abre de novo: é a única forma de devolver de verdade ao sistema a memória que a pdf.js retém
+      if (idx > 0 && idx % 300 === 0 && numPages > 600) {
+        try {
+          const antigo = pdf;
+          const novo = await loadWithTimeout(pdfjsLib.getDocument(fonte(true, true)).promise, 60000);
+          pdf = novo;
+          try { await antigo.destroy(); } catch { /* já liberado */ }
+          await cederAoNavegador();
+        } catch { /* continua com o leitor atual */ }
+      }
       // PDF com dezenas de milhares de páginas "fantasma": depois de 3.000 vazias seguidas, o resto é dado como sem texto sem abrir uma a uma
       if (numPages > 20000 && vaziasSeguidas >= 3000) { for (let r = i; r <= numPages; r++) paginasSemTexto.push(r); break; }
 
