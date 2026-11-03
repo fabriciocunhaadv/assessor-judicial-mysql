@@ -15,7 +15,6 @@ const t = trechoDoArtigo(r, "57");
 ok(!!t && /^Art\. 57º/.test(t.texto) && !/Art\. 58º/.test(t.texto), "trechoDoArtigo acha o art. 57 e para antes do 58");
 const rev = trechoDoArtigo(r, "201");
 ok(!!rev && rev.revogado, "art. 201 reconhecido como revogado");
-process.exit(falhas ? 1 : 0);
 
 // Emenda à Lei Orgânica em PDF: "Art. 1º. - A ..." (ponto e travessão) e artigo entre aspas ("Art. 52-A.") abrem linha própria
 {
@@ -24,3 +23,5 @@ process.exit(falhas ? 1 : 0);
   if (n !== 3) { console.error("FALHOU emenda com aspas/travessão:", l); process.exit(1); }
   console.log("ok: emenda com aspas e travessão (3 artigos)");
 }
+
+process.exit(falhas ? 1 : 0);
