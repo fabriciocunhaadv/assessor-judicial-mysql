@@ -47,10 +47,19 @@ O campo "relatorio" DEVE começar, já na primeira frase, assim: "Trata-se de [n
 4. Esta abertura vale mesmo que o prompt do gabinete sugira outra forma de iniciar o relatório. Se faltar o nome de uma parte nos autos, escreva "[informar parte]" em vez de inventar.`;
 
 // Dispositivo escrito para a ESCRIVANIA cumprir sem interpretação (pedido do magistrado: "o óbvio deve ser dito sempre"). Entra nas instruções de todas as minutas (Etapa 1, Etapa 2 e Turbo).
+const REGRA_TESES_TEXTO_PADRAO = `
+
+[TESES COM TEXTO-PADRÃO PARA O DISPOSITIVO — CUMPRIMENTO LITERAL, COM VERIFICAÇÃO]
+Quando uma tese do Caderno disser "colocar/inserir/incluir a seguinte informação/redação/determinação no dispositivo" (ou fórmula equivalente) e trouxer um texto entre aspas ou em maiúsculas (ex.: "DETERMINO, ainda, ..."), proceda assim:
+1. VERIFIQUE a condição da tese (ex.: "caso verifique nos cálculos da Contadoria deduções previdenciárias"), examinando os documentos do processo (cálculos, planilhas, certidões) e anotando internamente onde a condição aparece (Mov./Arq./Pág.).
+2. Se a condição OCORRE, o texto-padrão da tese DEVE constar do dispositivo, COPIADO LITERALMENTE (apenas completando os nomes, valores e números do caso), como item próprio e numerado. É proibido substituí-lo por outro comando diferente (por exemplo, mandar a escrivania emitir guias ou intimar a parte para recolher) ou resumi-lo; comandos operacionais adicionais podem existir, mas ao lado do texto-padrão, nunca no lugar dele. Só deixe de usá-lo se a própria tese for incompatível com o caso, e então explique o motivo em uma frase na fundamentação.
+3. Se a condição NÃO ocorre, não inclua o texto-padrão.
+4. Antes de entregar, confira item a item as teses desse tipo: cada uma cuja condição ocorreu tem o seu texto no dispositivo? Se não, refaça.`;
+
 const REGRA_DISPOSITIVO_CARTORIO = `
 
 [DISPOSITIVO OPERACIONAL PARA A ESCRIVANIA — OBRIGATÓRIO EM TODA MINUTA]
-O campo "dispositivo" deve ser escrito para ser CUMPRIDO pela escrivania/cartório sem qualquer interpretação. Isso NÃO altera a tese, a conclusão nem o estilo da minuta: só a forma de expor os comandos.
+O campo "dispositivo" deve ser escrito para ser CUMPRIDO pela escrivania/cartório sem qualquer interpretação. Isso NÃO altera a tese, a conclusão nem o estilo da minuta: só a forma de expor os comandos. Os textos-padrão que o Caderno de Teses manda colocar no dispositivo entram LITERALMENTE como itens próprios e prevalecem sobre qualquer exemplo de redação abaixo.
 1. Itens numerados (1., 2., 3. ...), UMA providência por item, com verbo no imperativo: "Intime-se", "Expeça-se", "Certifique-se", "Oficie-se", "Libere-se", "Proceda-se", "Cumpra-se", "Arquive-se".
 2. Cada item deve dizer, quando for o caso: QUEM pratica o ato (escrivania, oficial de justiça, parte, banco, outro juízo); O QUÊ exatamente; sobre QUAL OBJETO (nome completo da parte, valores em R$, conta/ativo, número do processo ou da movimentação/arquivo/página que serve de base); EM QUE PRAZO (dias úteis ou corridos e contados de quando); e POR QUAL MEIO (SISBAJUD, RENAJUD, Projudi, alvará eletrônico, ofício, mandado, carta precatória).
 3. DIGA O ÓBVIO, sempre: o que parece evidente para o juiz precisa constar. Exemplos: após juntada de planilha ou cálculo, determinar expressamente o desbloqueio e a liberação do valor excedente, indicando o valor bloqueado, o valor a liberar e o remanescente; expedir alvará da quantia devida em favor de quem, no valor de R$ X, para qual conta; EXPEDIR CARTA PRECATÓRIA sempre que o ato tiver de ser cumprido em outra comarca, inclusive de outro Estado, informando comarca/UF; certificar nos autos o cumprimento, o decurso de prazo e a ausência de manifestação ("com certidão"); indicar a forma de intimação (pelo sistema, pessoal, por carta, por oficial de justiça) e o destinatário.
@@ -229,7 +238,7 @@ function blocoCadernoDeTesesTurbo(cabinetTesesText: any, isTesesEnabled: any): s
 DIRETRIZ MANDATÓRIA DE APLICAÇÃO DAS TESES DO GABINETE (vale sobre qualquer modelo pré-moldado de ato):
 1. TESES CONDICIONAIS (ex.: suspeição/impedimento do magistrado quando determinado advogado, procurador ou parte atua no processo): ANTES de redigir, examine procurações, substabelecimentos, petições, contestações e assinaturas de TODAS as peças para ver se a condição está REALMENTE presente (confira nome e inscrição OAB). Se estiver presente, aplique a tese com rigor absoluto: o ato deve ser o que a tese manda (ex.: declarar a suspeição por motivo de foro íntimo, art. 145, § 1º, do CPC, e determinar a remessa/redistribuição), e NÃO uma decisão de mérito. Se NÃO estiver presente, é PROIBIDO aplicar a tese; siga o exame regular da lide.
 2. TESES MATERIAIS E PROCESSUAIS (extinção pelo pagamento, dano moral, juros, honorários, custas, gratuidade, alvarás etc.): sempre que o processo tratar da matéria, aplique os parâmetros e comandos da tese na fundamentação e no dispositivo. É proibido decidir de forma contrária ou dissonante das teses cadastradas.
-3. O tipo de ato, a questão pendente, o relatório, a fundamentação e o dispositivo devem refletir a aplicação das teses ao caso concreto.\n`;
+3. O tipo de ato, a questão pendente, o relatório, a fundamentação e o dispositivo devem refletir a aplicação das teses ao caso concreto.${REGRA_TESES_TEXTO_PADRAO}\n`;
 }
 /** Base de Conhecimento do gabinete (documentos ativos) para o Turbo; limitada para o Turbo continuar rápido. */
 function blocoBaseConhecimentoTurbo(knowledgePdfs: any): string {
@@ -4833,6 +4842,7 @@ DIRETRIZ MANDATÓRIA E SOBERANA DE APLICAÇÃO DE TODAS AS TESES NORMATIVAS NA E
 
 3. EFICÁCIA INTEGRAL NO TIPO DE ATO E NO DISPOSITIVO:
   * O tipo de ato ('actType'), a questão pendente ('pendingMatter'), o relatório ('relatorio'), a fundamentação ('fundamentacao') e o dispositivo ('dispositivo') devem espelhar fielmente a aplicação de todas as teses do gabinete ao caso concreto.
+${REGRA_TESES_TEXTO_PADRAO}
 `;
 }
 
@@ -5407,6 +5417,7 @@ ${activeTeses && typeof activeTeses === "string" && activeTeses.trim().length > 
 """
 ${activeTeses.trim()}
 """
+${REGRA_TESES_TEXTO_PADRAO}
 DIRETRIZ MANDATÓRIA DE SOBERANIA DAS TESES DO MAGISTRADO:
 - Observe com rigor estrito as teses do magistrado em todos os PDFs e textos analisados.
 - Se houver diretriz de suspeição por foro íntimo de magistrado em razão de advogado(a), OAB ou parte específica no Caderno de Teses, e for efetivamente constatada a atuação desse(a) profissional ou parte nos autos, NÃO PROFIRA SENTENÇA DE MÉRITO: o ato judicial a ser gerado deve ser DECISÃO DECLARATÓRIA DE SUSPEIÇÃO POR FORO ÍNTIMO (art. 145, § 1º, do CPC), com determinação expressa de remessa dos autos ao substituto legal! Caso aquele(a) profissional ou parte indicada na tese NÃO atue no processo, prossiga com a deliberação regular do feito sem declarar suspeição.
