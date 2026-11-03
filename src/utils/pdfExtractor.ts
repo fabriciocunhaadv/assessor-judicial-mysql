@@ -1,7 +1,7 @@
 import * as pdfjsLib from "pdfjs-dist";
 // @ts-ignore
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { cleanJudicialPdfText } from "./judicialTextCleaner";
+import { cleanJudicialPdfText, limparEmPartes } from "./judicialTextCleaner";
 import { getApiHeaders } from "./apiKeyManager";
 import { textoOcultoDeDocumento, blocoTextoOculto } from "./pdfTextoOculto";
 
@@ -113,7 +113,7 @@ const cederAoNavegador = (): Promise<void> => new Promise((ok) => {
 });
 
 /** Acima disto o PDF não é carregado inteiro na memória: o leitor busca só os trechos de que precisa (arquivos de centenas de MB derrubavam a aba). */
-export const limiteMemoriaPdf = (): number => (Number((globalThis as any).__PDF_LIMITE_MB) || 120) * 1024 * 1024;
+export const limiteMemoriaPdf = (): number => (Number((globalThis as any).__PDF_LIMITE_MB) || 64) * 1024 * 1024;
 
 export async function extractTextFromPdf(
   file: File,
@@ -178,6 +178,7 @@ export async function extractTextFromPdf(
     const paginasNaoLidas: number[] = [];
 
     let vaziasSeguidas = 0, falhasSeguidas = 0, erroLeitura = "";
+    let ultimaCessao = Date.now();
     for (let idx = 0; idx < pagesToRead.length; idx++) {
       const i = pagesToRead[idx];
       if (erroLeitura) { for (let r = i; r <= numPages; r++) paginasNaoLidas.push(r); break; }
@@ -186,8 +187,9 @@ export async function extractTextFromPdf(
       // PDF com dezenas de milhares de páginas "fantasma": depois de 3.000 vazias seguidas, o resto é dado como sem texto sem abrir uma a uma
       if (numPages > 20000 && vaziasSeguidas >= 3000) { for (let r = i; r <= numPages; r++) paginasSemTexto.push(r); break; }
 
-      // Yield event loop every 5 pages to keep UI fluid and responsive
-      if (idx % 5 === 0) {
+      // Cede o controle ao navegador a cada 5 páginas OU quando já passaram 40 ms desde a última cessão (páginas pesadas não seguram a tela)
+      if (idx % 5 === 0 || Date.now() - ultimaCessao > 40) {
+        ultimaCessao = Date.now();
         await cederAoNavegador();
         if (onProgress) {
           onProgress(idx + 1, pagesToRead.length);
@@ -450,7 +452,7 @@ export async function extractTextFromPdf(
 
     // Join all pages seamlessly without artificial page break headers
     const rawJoinedText = pageParagraphs.join("\n\n");
-    const cleanedText = cleanJudicialPdfText(rawJoinedText) + ocultoTexto;
+    const cleanedText = (await limparEmPartes(rawJoinedText, cederAoNavegador)) + ocultoTexto;
 
     return {
       text: cleanedText,

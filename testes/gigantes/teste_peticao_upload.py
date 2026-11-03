@@ -48,6 +48,7 @@ def main():
             open("/tmp/claude-0/work/mob/corrompido.pdf", "wb").write(b"%PDF-1.4\n" + b"lixo sem estrutura " * 2000)
             pg.locator("input[type=file]").nth(1).set_input_files("/tmp/claude-0/work/mob/corrompido.pdf")
             pg.wait_for_function("document.body.innerText.includes('corrompido.pdf') && !document.querySelector('[data-testid=lendo-provas]')", timeout=60000)
+            assert not pg.locator("#tab-btn-modelos").count() and "Biblioteca" not in pg.inner_text("body"), "a aba Modelos foi removida"
             assert not erros, erros
             pg.screenshot(path="/tmp/claude-0/work/mob/peticao_upload.png"); b.close()
         print("OK")

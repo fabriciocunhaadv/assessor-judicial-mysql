@@ -268,3 +268,19 @@ export function filterInnocuousCertificates(rawText: string): string {
   return filtered.replace(/\n{3,}/g, "\n\n").trim();
 }
 
+
+
+/** Limpeza final do texto em PARTES de ~100 páginas, devolvendo o controle à tela entre elas (`ceder`). A limpeza é toda por página (nenhuma regra depende de outra página),
+ *  então o resultado é igual ao de limpar o texto inteiro de uma vez, mas sem o bloqueio de segundos e sem o pico de memória (cada regra copiava o texto inteiro: autos de
+ *  milhares de páginas travavam a aba). Textos pequenos são limpos direto. */
+export async function limparEmPartes(bruto: string, ceder: () => Promise<void> = () => Promise.resolve(), paginasPorParte = 100): Promise<string> {
+  if (!bruto || bruto.length < 600000) return cleanJudicialPdfText(bruto);
+  const paginas = bruto.split(/\n\n(?=\[Página \d+ de \d+)/);
+  if (paginas.length < 2 * paginasPorParte) return cleanJudicialPdfText(bruto);
+  const saida: string[] = [];
+  for (let i = 0; i < paginas.length; i += paginasPorParte) {
+    saida.push(cleanJudicialPdfText(paginas.slice(i, i + paginasPorParte).join("\n\n")));
+    await ceder();
+  }
+  return saida.filter(Boolean).join("\n\n");
+}

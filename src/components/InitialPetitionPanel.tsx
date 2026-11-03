@@ -16,7 +16,6 @@ import {
   History,
   Scale,
   ShieldCheck,
-  BookOpen,
   Plus,
   Trash2,
   CheckCircle2,
@@ -49,14 +48,11 @@ import {
   saveInitialPetitionRecord,
   getInitialPetitionsHistory,
   deleteInitialPetitionRecord,
-  getRepetitiveTemplates,
-  DEFAULT_REPETITIVE_TEMPLATES
 } from "../utils/advogadoPeticaoDb";
 import {
   InitialPetitionRecord,
   InitialPetitionChecklistAudit,
-  InitialPetitionJurisprudenceItem,
-  InitialPetitionRepetitiveTemplate
+  InitialPetitionJurisprudenceItem
 } from "../types";
 
 export interface InitialPetitionPanelProps {
@@ -88,7 +84,7 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
   currentUserEmail = "superadmin@advocacia.jus.br"
 }) => {
   // Abas do Painel Independente
-  const [activeTab, setActiveTab] = useState<"editor" | "historico" | "modelos" | "impugnacao" | "auditoria" | "jurisprudencia">("editor");
+  const [activeTab, setActiveTab] = useState<"editor" | "historico" | "impugnacao" | "auditoria" | "jurisprudencia">("editor");
 
   // No mobile, alternar visualização entre formulário ("form") e peça gerada ("viewer") na aba editor
   const [mobileEditorView, setMobileEditorView] = useState<"form" | "viewer">("form");
@@ -113,7 +109,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
   const [wantsUrgency, setWantsUrgency] = useState(true);
   const [wantsGratuity, setWantsGratuity] = useState(true);
   const [hasConciliationOption, setHasConciliationOption] = useState(false);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
   // Rascunho automático: os campos de texto do formulário ficam guardados neste navegador (por usuário) e voltam se a janela for fechada sem querer. Os arquivos anexados não entram (são grandes).
   const chaveRascunho = `assessor_peticao_rascunho_v1_${String(currentUserEmail || "").toLowerCase()}`;
@@ -162,9 +157,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Biblioteca de Casos Repetitivos
-  const [templatesList, setTemplatesList] = useState<InitialPetitionRepetitiveTemplate[]>(DEFAULT_REPETITIVE_TEMPLATES);
-
   // Google Search Grounding e Pesquisa de Jurisprudência
   const [isSearchingGrounding, setIsSearchingGrounding] = useState(false);
   const [groundingSearchQuery, setGroundingSearchQuery] = useState("");
@@ -201,7 +193,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
   useEffect(() => {
     if (isOpen) {
       loadHistory();
-      loadTemplates();
     }
   }, [isOpen]);
 
@@ -214,15 +205,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
       console.error(e);
     } finally {
       setIsLoadingHistory(false);
-    }
-  };
-
-  const loadTemplates = async () => {
-    try {
-      const list = await getRepetitiveTemplates();
-      setTemplatesList(list);
-    } catch (e) {
-      console.warn("Using default repetitive templates:", e);
     }
   };
 
@@ -306,7 +288,13 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
       const file = files[n], id = ids[n];
       setEmLeitura((p) => p.map((x) => (x.id === id ? { ...x, fila: false } : x)));
       try {
-        const arq = await lerArquivoDaPeticao(file, (atual, total) => setEmLeitura((p) => p.map((x) => (x.id === id ? { ...x, atual, total } : x))));
+        let ultimaAtualizacao = 0; // a tela é atualizada no máximo a cada 250 ms (milhares de páginas por minuto não podem refazer o painel inteiro a cada página)
+        const arq = await lerArquivoDaPeticao(file, (atual, total) => {
+          const agora = Date.now();
+          if (atual < total && agora - ultimaAtualizacao < 250) return;
+          ultimaAtualizacao = agora;
+          setEmLeitura((p) => p.map((x) => (x.id === id ? { ...x, atual, total } : x)));
+        });
         prontos.push(arq);
         if (destino === "autos") setProcessFiles((prev) => [...prev, arq]); else setClientFiles((prev) => [...prev, arq]);
         setAttachedFiles((prev) => [...prev, arq]);
@@ -397,7 +385,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
     setWantsUrgency(true);
     setWantsGratuity(true);
     setHasConciliationOption(false);
-    setSelectedTemplateId("");
     setProcessFiles([]);
     setClientFiles([]);
     setAttachedFiles([]);
@@ -508,18 +495,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
     }
   };
 
-  // 2. APLICAR MODELO DE CASO REPETITIVO
-  const handleApplyTemplate = (template: InitialPetitionRepetitiveTemplate) => {
-    setSelectedTemplateId(template.id);
-    setLawArea(template.category);
-    setTargetCourt(template.targetCourtDefault);
-    setWantsUrgency(template.suggestedUrgency);
-    setCaseDescription(template.defaultClientFactualSkeleton);
-    setActiveTab("editor");
-    setMobileEditorView("form");
-    toast.success(`Esqueleto de '${template.title}' aplicado! Preencha as lacunas entre colchetes.`);
-  };
-
   // 3. GERAR PEÇA FORENSE 360° COMPLETA (INICIAL OU DEFESA)
   const handleGeneratePetition = async () => {
     if (!caseDescription.trim() && attachedFiles.length === 0 && processFiles.length === 0 && clientFiles.length === 0) {
@@ -566,7 +541,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
           pdfFiles: paraEnvio(attachedFiles),
           coberturaLeitura: cob.cobertura,
           paginasImagens: cob.imagens,
-          repetitiveTemplateId: selectedTemplateId,
           knowledgePdfs: activeKnowledgeDocs,
           cabinetTesesText: activeTesesText
         })
@@ -934,18 +908,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
               }`}
             >
               <FileText className="w-3.5 h-3.5" /> Redator
-            </button>
-
-            <button
-              id="tab-btn-modelos"
-              onClick={() => setActiveTab("modelos")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
-                activeTab === "modelos"
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" /> Modelos
             </button>
 
             <button
@@ -1537,13 +1499,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                         ? "Versão Fática da Defesa & Pontos a Rebater"
                         : "Narrativa Fática dos Acontecimentos"}
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("modelos")}
-                      className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1"
-                    >
-                      <BookOpen className="w-3 h-3" /> Usar Esqueleto Fático
-                    </button>
                   </div>
                   <textarea
                     id="textarea-case-description"
@@ -1796,12 +1751,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                       Anexe comprovantes, extratos ou relatos do cliente. A IA efetuará a triagem probatória imediata e gerará a Petição Inicial completa com jurisprudência do tribunal selecionado e auditoria preventiva CPC.
                     </p>
                     <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => setActiveTab("modelos")}
-                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-2"
-                      >
-                        <BookOpen className="w-4 h-4 text-indigo-400" /> Explorar Biblioteca Fática
-                      </button>
                       {historyList.length > 0 && (
                         <button
                           onClick={() => setActiveTab("historico")}
@@ -1815,86 +1764,6 @@ export const InitialPetitionPanel: React.FC<InitialPetitionPanelProps> = ({
                 )}
               </section>
             </>
-          )}
-
-          {/* ========================================================================= */}
-          {/* ABA 2: BIBLIOTECA FÁTICA DE CASOS REPETITIVOS (PONTO 2.6) */}
-          {/* ========================================================================= */}
-          {activeTab === "modelos" && (
-            <div id="repetitive-templates-tab" className="flex-1 p-3 sm:p-6 md:p-8 overflow-y-auto bg-slate-950">
-              <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-indigo-400" /> Biblioteca de Fatos & Ações Repetitivas
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Esqueletos fáticos consolidados para demandas de massa da advocacia. Aplique com 1 clique para carregar os fatos-padrão, precedentes aplicáveis e rol de documentos exigidos.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                  {templatesList.map((tpl) => (
-                    <div
-                      key={tpl.id}
-                      className="bg-slate-900 border border-slate-800 hover:border-indigo-500/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition shadow-lg group"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                            {tpl.category}
-                          </span>
-                          <span className="text-[11px] text-slate-400 font-mono">
-                            Tribunal Padrão: {tpl.targetCourtDefault}
-                          </span>
-                        </div>
-
-                        <h3 className="text-sm font-bold text-slate-200 group-hover:text-indigo-300 transition">
-                          {tpl.title}
-                        </h3>
-                        <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-                          {tpl.shortDesc}
-                        </p>
-
-                        <div className="mt-4 space-y-2">
-                          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">
-                            Teses & Precedentes Pró-Autor Incluídos:
-                          </span>
-                          <ul className="space-y-1">
-                            {tpl.keyClaims.slice(0, 3).map((claim, cIdx) => (
-                              <li key={cIdx} className="text-[11px] text-slate-300 flex items-start gap-1.5">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                                <span>{claim}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        <div className="mt-3 p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
-                          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block mb-1">
-                            Provas Recomendadas:
-                          </span>
-                          <p className="text-[11px] text-slate-400 leading-tight">
-                            {tpl.recommendedProves.join(" • ")}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
-                        <span className="text-[11px] sm:text-xs text-indigo-400 font-medium flex items-center gap-1">
-                          {tpl.suggestedUrgency ? "⚡ Requer Liminar" : "Rito Ordinário/Juizado"}
-                        </span>
-                        <button
-                          onClick={() => handleApplyTemplate(tpl)}
-                          className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition flex items-center gap-1.5 shrink-0"
-                        >
-                          Carregar <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
           )}
 
           {/* ========================================================================= */}
