@@ -34,6 +34,7 @@ import { REGRA_ESTRUTURA_POR_ATO } from './src/utils/estruturaDoAto';
 import { REGRA_COBERTURA_DOS_AUTOS } from './src/utils/coberturaDosAutos';
 import { dividirParaMapa, normalizarMapa, blocoDoMapa, resumirMovimentacoes, REGRA_MAPA_DO_PROCESSO, precisaDeMapa } from './src/utils/mapaDoProcesso';
 import { detectarDescumprimento, REGRA_DESCUMPRIMENTO_DETERMINACAO, blocoDescumprimentoDetectado } from './src/utils/descumprimentoDeDeterminacao';
+import { extrairEnunciadosFonaje } from './src/utils/enunciadosFonaje';
 import { REGRAS_MECANICA_JUDICIAL, REGRAS_FIDELIDADE_AUTOS, conferenciasMecanica } from './src/utils/mecanicaJudicial';
 import { corrigirCitacoesDaMinuta, citacoesInexistentes } from './src/utils/localizacaoAutos';
 // Abertura padrão do relatório de TODA minuta (pedido do magistrado). Vale para qualquer área e ato; entra nas etapas 1 e 2 e no Turbo.
@@ -674,6 +675,27 @@ app.post("/api/parse-precedents-pdf", async (req: any, res) => {
         const { pdfText, fileName } = req.body;
         if (!pdfText || typeof pdfText !== "string" || pdfText.trim().length < 20) {
             return res.status(400).json({ error: "Texto do documento insuficiente para indexação." });
+        }
+
+        // Enunciados do FONAJE (formato fixo "ENUNCIADO N – texto"): lidos por REGRA, sem IA (não erra o número, não inventa texto, não gasta cota)
+        const enunciadosFonaje = extrairEnunciadosFonaje(pdfText, String(fileName || ""));
+        if (enunciadosFonaje.length >= 3) {
+            for (const [k, v] of jobsPrecedentes) if (Date.now() - v.criadoEm > 3 * 3600_000) jobsPrecedentes.delete(k);
+            const jobF: JobPrecedentes = { id: `prec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, arquivo: String(fileName || "Enunciados FONAJE"), status: "rodando", total: 1, feitos: 0, adicionados: 0, jaExistiam: 0, erros: [], criadoEm: Date.now() };
+            jobsPrecedentes.set(jobF.id, jobF);
+            const anexadoPorF = req.usuarioSessao?.email || "";
+            res.json({ success: true, jobId: jobF.id, total: 1 });
+            (async () => {
+                const current = await loadServerCustomPrecedents();
+                const ids = new Set(current.map((c: any) => c.id));
+                const novos = enunciadosFonaje.filter((e) => !ids.has(e.id)).map((e) => ({ ...e, sourceFile: jobF.arquivo, importedAt: new Date().toISOString(), origem: "anexo_pdf", anexadoPor: anexadoPorF }));
+                jobF.jaExistiam = enunciadosFonaje.length - novos.length;
+                if (novos.length) await gravarPrecedentes(novos as any);
+                jobF.adicionados = novos.length; jobF.feitos = 1; jobF.status = "concluido";
+                const cancel = enunciadosFonaje.filter((e) => e.situacao !== "vigente").length;
+                jobF.mensagem = novos.length ? `${novos.length} enunciado(s) do FONAJE (${enunciadosFonaje[0].ramo}) lidos do documento e gravados${cancel ? `, sendo ${cancel} cancelado(s) ou substituído(s) (guardados, mas não aplicados nas minutas)` : ""}.${jobF.jaExistiam ? ` ${jobF.jaExistiam} já constavam na base.` : ""}` : `Estes enunciados do FONAJE já constam na base (${jobF.jaExistiam}).`;
+            })().catch((e) => { jobF.status = "erro"; jobF.mensagem = String(e?.message || e).slice(0, 300); });
+            return;
         }
 
         // Blocos amplos de ~120.000 caracteres (167 páginas em 4 a 5 blocos)

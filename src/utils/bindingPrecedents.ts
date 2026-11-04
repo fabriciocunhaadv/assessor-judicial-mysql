@@ -1,7 +1,7 @@
 export interface BindingPrecedent {
   id: string;
-  tribunal: "STF" | "STJ" | "TNU" | "TJGO";
-  type: "sumula" | "sumula_vinculante" | "tese_repetitivo" | "tese_repercussao_geral" | "tese_tnu" | "informativo_tjgo" | "sumula_tjgo" | "enunciado_turma_recursal_go";
+  tribunal: "STF" | "STJ" | "TNU" | "TJGO" | "FONAJE";
+  type: "sumula" | "sumula_vinculante" | "tese_repetitivo" | "tese_repercussao_geral" | "tese_tnu" | "informativo_tjgo" | "sumula_tjgo" | "enunciado_turma_recursal_go" | "enunciado_fonaje";
   number: string;
   title: string;
   statement: string;
@@ -526,7 +526,7 @@ export function getAllBindingPrecedents(): BindingPrecedent[] {
   return combined;
 }
 
-export function searchBindingPrecedents(query: string, filterTribunal?: "ALL" | "STF" | "STJ" | "TNU" | "TJGO" | "CUSTOM"): BindingPrecedent[] {
+export function searchBindingPrecedents(query: string, filterTribunal?: "ALL" | "STF" | "STJ" | "TNU" | "TJGO" | "FONAJE" | "CUSTOM"): BindingPrecedent[] {
   const q = (query || "").trim().toLowerCase();
   const allList = getAllBindingPrecedents();
   
@@ -566,6 +566,7 @@ export function matchApplicableBindingPrecedents(contextText: string, extra: Bin
   const allList = [...extra, ...getAllBindingPrecedents().filter((p) => !extra.some((e) => e.id === p.id))];
 
   for (const precedent of allList) {
+    if ((precedent as any).situacao && (precedent as any).situacao !== "vigente") continue;      // enunciado cancelado ou substituído não é aplicado
     let score = 0;
 
     // Direct number or theme match

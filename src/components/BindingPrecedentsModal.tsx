@@ -51,7 +51,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
   isSuperAdmin = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedTribunal, setSelectedTribunal] = useState<"ALL" | "STF" | "STJ" | "TNU" | "TJGO" | "CUSTOM">("ALL");
+  const [selectedTribunal, setSelectedTribunal] = useState<"ALL" | "STF" | "STJ" | "TNU" | "TJGO" | "FONAJE" | "CUSTOM">("ALL");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isGroundingActive, setIsGroundingActive] = useState<boolean>(() => getIsGroundingEnabled());
@@ -244,6 +244,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
       STF: allCombinedPrecedents.filter(p => p.tribunal === "STF").length,
       STJ: allCombinedPrecedents.filter(p => p.tribunal === "STJ").length,
       TNU: allCombinedPrecedents.filter(p => p.tribunal === "TNU").length,
+      FONAJE: allCombinedPrecedents.filter(p => p.tribunal === "FONAJE").length,
       CUSTOM: allCombinedPrecedents.filter(p => (p as any).sourceFile || p.id.startsWith("custom-")).length,
     };
   }, [allCombinedPrecedents]);
@@ -472,7 +473,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
               <input type="checkbox" checked={soConferidos} onChange={(e) => { setSoConferidos(e.target.checked); setCurrentPage(1); }} /> Só conferidos
             </label>
             <Filter className="w-3.5 h-3.5 text-slate-400 mr-0.5 shrink-0" />
-            {(["ALL", "TJGO", "STF", "STJ", "TNU", "CUSTOM"] as const).map((trib) => (
+            {(["ALL", "TJGO", "STF", "STJ", "TNU", "FONAJE", "CUSTOM"] as const).map((trib) => (
               <button
                 key={trib}
                 onClick={() => setSelectedTribunal(trib)}
