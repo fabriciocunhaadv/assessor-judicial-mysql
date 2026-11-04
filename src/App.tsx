@@ -46,6 +46,8 @@ import { UnitManagerModal } from "./components/UnitManagerModal";
 import { BindingPrecedentsModal } from "./components/BindingPrecedentsModal";
 import { XRayModal } from "./components/XRayModal";
 import { GoianaoPanel } from "./components/GoianaoPanel";
+import { AvisoVencimentoFixo } from "./components/AvisoVencimentoFixo";
+import { resumirValidade } from "./utils/retencaoRegras";
 import { SystemBroadcastBanner } from "./components/SystemBroadcastBanner";
 import { MinuteAuditorModal } from "./components/MinuteAuditorModal";
 import { ApiKeyBanner } from "./components/ApiKeyBanner";
@@ -285,6 +287,8 @@ export default function App() {
   const [isCreditsModalOpen, setIsCreditsModalOpen] = useState<boolean>(false);
   const [isXRayModalOpen, setIsXRayModalOpen] = useState<boolean>(false);
   const [isGoianaoOpen, setIsGoianaoOpen] = useState<boolean>(false);
+  const [vencendoToken, setVencendoToken] = useState<number>(0);
+  const verMinutasVencendo = () => { setVencendoToken((n) => n + 1); setIsHistoryModalOpen(true); };
   const [isTesesModalOpen, setIsTesesModalOpen] = useState<boolean>(false);
   const [initialParadigmDraft, setInitialParadigmDraft] = useState<{
     text: string;
@@ -465,7 +469,11 @@ export default function App() {
   }, [atosDoUsuario, atosDosProcessos]);
   // avisa (uma vez por dia) das minutas do usuário que estão perto de vencer no Histórico
   const cfgRetencao = useConfigRetencao();
-  useEffect(() => { if (user?.uid && historyList.length) avisarVencimentos(historyList, user.uid); }, [historyList, user?.uid, cfgRetencao.ativa, cfgRetencao.ativadaEm]);
+  useEffect(() => { if (user?.uid && historyList.length) avisarVencimentos(historyList, user.uid, verMinutasVencendo); }, [historyList, user?.uid, cfgRetencao.ativa, cfgRetencao.ativadaEm]);
+  // aviso fixo (minutas do próprio usuário que vencem em até 1 dia); recalcula a cada 10 minutos
+  const [relogioVencimento, setRelogioVencimento] = useState(0);
+  useEffect(() => { const t = setInterval(() => setRelogioVencimento((n) => n + 1), 600_000); return () => clearInterval(t); }, []);
+  const qtdVenceAte1 = useMemo(() => (cfgRetencao.ativa && user?.uid ? resumirValidade(historyList.filter((a: any) => a.createdBy === user.uid), cfgRetencao).ate1 : 0), [historyList, user?.uid, cfgRetencao, relogioVencimento]);
 
   // Detected process dossier for active input (finds all previously authored acts for this process)
   const activeProcessDossier = useMemo(() => {
@@ -2877,6 +2885,7 @@ export default function App() {
         onGoHome={handleClearAllProcess}
         onLoadAnalysis={handleLoadAnalysis}
         onDeleteAnalysis={handleAnalysisDeletedFromHistory}
+        abrirVencendo={vencendoToken}
       />
 
       <GoianaoPanel isOpen={isGoianaoOpen} onClose={() => setIsGoianaoOpen(false)} unitId={activeUnit?.id || "montes_claros"} />
@@ -3005,6 +3014,7 @@ export default function App() {
         isOpen={isUserModalOpen}
         onClose={() => setIsUserModalOpen(false)}
       />
+      <AvisoVencimentoFixo qtd={qtdVenceAte1} onVer={verMinutasVencendo} acimaDeCadastros={Boolean(isSuperAdmin)} />
       {isSuperAdmin && <AprovacaoUsuarios />}
       <TrocarSenha aberto={trocarSenhaAberta} onFechar={() => setTrocarSenhaAberta(false)} />
       {(userProfile as any)?.mustChangePassword && <TrocaSenhaObrigatoria />}

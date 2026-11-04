@@ -1,6 +1,7 @@
 // RETENÇÃO DO HISTÓRICO (parte que fala com o banco): lê e grava a configuração (settings/retencao_historico) e apaga os atos vencidos.
 // A exclusão roda no navegador de quem abre o sistema: cada usuário apaga as próprias minutas vencidas e o super admin apaga todas (é o que as regras do banco permitem).
 import { collection, deleteDoc, doc, getDoc, getDocs, limit, query, setDoc, where } from '../lib/docstore';
+import React from "react";
 import toast from "react-hot-toast";
 import { db, auth } from "../lib/firebase";
 import { deleteHistoryFromDb, ehDonoDoAto, ehSuperAdminHistorico, garantirIndiceHistorico, indiceHistoricoPath } from "../lib/firestoreUtils";
@@ -61,7 +62,7 @@ export function iniciarRetencao(): void {
 }
 
 /** Aviso (no máximo um por dia e por fase) das minutas do próprio usuário que estão perto de vencer. */
-export function avisarVencimentos(lista: Array<{ date?: any; createdBy?: string }>, uid: string | undefined | null): void {
+export function avisarVencimentos(lista: Array<{ date?: any; createdBy?: string }>, uid: string | undefined | null, aoVer?: () => void): void {
   try {
     const cfg = configRetencaoAtual(); if (!cfg.ativa || !uid) return;
     const minhas = lista.filter((a) => a.createdBy === uid);      // só as minutas do próprio usuário (o super admin não recebe aviso das dos outros)
@@ -69,7 +70,10 @@ export function avisarVencimentos(lista: Array<{ date?: any; createdBy?: string 
     const hoje = new Date().toISOString().slice(0, 10);
     const jaAvisou = (fase: string) => { try { return localStorage.getItem(`retencao_aviso_${uid}_${hoje}_${fase}`) === "1"; } catch { return false; } };
     const marcar = (fase: string) => { try { localStorage.setItem(`retencao_aviso_${uid}_${hoje}_${fase}`, "1"); } catch { /* sem armazenamento */ } };
-    if (r.ate1 > 0 && !jaAvisou("1")) { marcar("1"); toast.error(`${r.ate1} minuta(s) expiram em menos de 24 horas e serão apagadas do Histórico. Baixe (DOCX ou PDF) o que quiser guardar.`, { duration: 15000 }); }
-    else if (r.ate3 > 0 && !jaAvisou("3")) { marcar("3"); toast(`${r.ate3} minuta(s) expiram em até 3 dias e serão apagadas do Histórico. Baixe o que quiser guardar.`, { duration: 12000, icon: "⏳" }); }
+    const comBotao = (texto: string) => (t: { id: string }) => React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6, maxWidth: 340, background: "#fff", color: "#12263f", padding: "10px 12px", borderRadius: 10, boxShadow: "0 4px 16px #0004", border: "1px solid #e0b36b", fontSize: 13 } },
+      React.createElement("span", null, texto),
+      aoVer ? React.createElement("button", { "data-testid": "toast-ver-vencendo", onClick: () => { toast.dismiss(t.id); aoVer(); }, style: { alignSelf: "flex-start", background: "#0b3d7a", color: "#fff", border: 0, borderRadius: 8, padding: "5px 10px", fontWeight: 700, fontSize: 12, cursor: "pointer" } }, "Ver essas minutas no Histórico") : null);
+    if (r.ate1 > 0 && !jaAvisou("1")) { marcar("1"); toast.custom(comBotao(`${r.ate1} minuta(s) expiram em menos de 24 horas e serão apagadas do Histórico. Baixe (DOCX ou PDF) o que quiser guardar.`) as any, { duration: 15000 }); }
+    else if (r.ate3 > 0 && !jaAvisou("3")) { marcar("3"); toast.custom(comBotao(`⏳ ${r.ate3} minuta(s) expiram em até 3 dias e serão apagadas do Histórico. Baixe o que quiser guardar.`) as any, { duration: 12000 }); }
   } catch { /* o aviso nunca derruba o sistema */ }
 }

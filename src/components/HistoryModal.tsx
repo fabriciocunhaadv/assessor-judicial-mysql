@@ -1,6 +1,7 @@
 import { estadoIndiceHistorico, EstadoIndiceHistorico } from "../lib/firestoreUtils";
 import toast from "react-hot-toast";
 import { AvisoRetencao, EtiquetaValidade } from "./EtiquetaValidade";
+import { configRetencaoAtual, situacaoValidade } from "../utils/retencaoRegras";
 import { BancoOrigem } from "./BancoOrigem";
 import { ehDonoDoSistema } from "../utils/donoDoSistema";
 import React, { useState, useEffect, useRef } from "react";
@@ -69,6 +70,8 @@ interface HistoryModalProps {
   onLoadAnalysis: (analysis: SavedAnalysis) => void;
   onGoHome?: () => void;
   onDeleteAnalysis?: (deletedId: string, processNumber?: string) => void;
+  /** muda (1, 2, 3...) cada vez que alguém pede para ver as minutas que estão vencendo: o Histórico abre já filtrado nelas */
+  abrirVencendo?: number;
 }
 
 const toSafeString = (val: any, fallback: string = ""): string => {
@@ -141,6 +144,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   onLoadAnalysis,
   onGoHome,
   onDeleteAnalysis,
+  abrirVencendo = 0,
 }) => {
   const { allowedUnits, isAdmin, isJudge, isSuperAdmin, activeUnit, userProfile: perfilAuth } = useAuth();
   const verBanco = ehDonoDoSistema(perfilAuth);      // selo e faixa de origem do banco: só o dono do sistema
@@ -164,6 +168,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const [unidadeLote, setUnidadeLote] = useState<{ ids: string[]; processos: string[]; descricao: string } | null>(null);      // Super Admin: mudar a comarca/unidade de vários itens
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [apagandoLote, setApagandoLote] = useState<{ feitos: number; total: number } | null>(null);
+  const [vencendoFilter, setVencendoFilter] = useState<boolean>(false);      // só as minutas perto de ser apagadas (em até 3 dias) ou já vencidas
   const [lancFilter, setLancFilter] = useState<"todos" | "pendentes" | "lancados">("pendentes");      // o que interessa no dia a dia: o que ainda falta lançar
   const [recemMarcados, setRecemMarcados] = useState<Set<string>>(new Set()); // atos que acabei de marcar: ficam à vista até trocar o filtro, para não "sumirem" na hora do clique
   const [isLoading, setIsLoading] = useState(false);
@@ -460,6 +465,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     }
   };
   const qtdLancados = history.filter((it) => it && it.id && !isCorruptedHistoryItem(it) && it.lancadoProjudi).length;
+  const qtdVencendo = history.filter((it: any) => it && it.id && !isCorruptedHistoryItem(it) && (scopeFilter !== "meus" || !currentUid || it.createdBy === currentUid || ehIdAntigoHistorico(it.createdBy)) && (() => { const f = situacaoValidade(it.date, configRetencaoAtual()).fase; return f === "aviso1" || f === "aviso3" || f === "vencido"; })()).length;
   const qtdPendentes = history.filter((it) => it && it.id && !isCorruptedHistoryItem(it) && !it.lancadoProjudi).length;
   const formatarLancado = (t?: number | null) => (t ? `${new Date(t).toLocaleDateString()} ${new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "");
 
@@ -469,6 +475,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     [autoresVistos],
   );
 
+  useEffect(() => { if (isOpen && abrirVencendo > 0) { setVencendoFilter(true); setScopeFilter("meus"); setSearchTerm(""); setCurrentPage(1); } }, [abrirVencendo, isOpen]);
+  const ehVencendo = (item: any) => { const f = situacaoValidade(item?.date, configRetencaoAtual()).fase; return f === "aviso1" || f === "aviso3" || f === "vencido"; };
   // Filtragem dos registros
   const filteredHistory = history.filter((item) => {
     if (!item || !item.id || isCorruptedHistoryItem(item)) return false;
@@ -483,8 +491,11 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
 
     if (!matchesTerm) return false;
 
+    if (vencendoFilter) { if (!ehVencendo(item)) return false; }
+    else {
     if (lancFilter === "pendentes" && item.lancadoProjudi && !recemMarcados.has(item.id)) return false;
     if (lancFilter === "lancados" && !item.lancadoProjudi && !recemMarcados.has(item.id)) return false;
+    }
 
     if (scopeFilter === "meus") {
       // minhas = id atual, ids do sistema antigo vinculados pelo Super Admin ou o mesmo e-mail de autor
@@ -636,9 +647,11 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
           {/* Projudi: o filtro mais usado fica sempre à vista */}
           <div className="flex items-center gap-1 overflow-x-auto scrollbar-none text-xs" data-testid="filtro-lancamento">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-slate-500" />Projudi:</span>
+            <button data-testid="filtro-vencendo" onClick={() => { setVencendoFilter((v) => !v); setCurrentPage(1); }} title="Minutas que serão apagadas do Histórico em até 3 dias"
+              className={`px-2 py-0.5 rounded-md font-bold text-[11px] transition cursor-pointer whitespace-nowrap shrink-0 ${vencendoFilter ? "bg-red-600 text-white shadow-xs" : "bg-red-50 text-red-700 hover:bg-red-100"}`}>⏳ Vencendo ({qtdVencendo})</button>
             {([["pendentes", `A lançar (${qtdPendentes})`], ["lancados", `Lançados (${qtdLancados})`], ["todos", "Todos"]] as const).map(([id, label]) => (
-              <button key={id} onClick={() => { setLancFilter(id); setRecemMarcados(new Set()); setCurrentPage(1); }}
-                className={`px-2 py-0.5 rounded-md font-bold text-[11px] transition cursor-pointer whitespace-nowrap shrink-0 ${lancFilter === id ? (id === "lancados" ? "bg-emerald-600 text-white shadow-xs" : "bg-indigo-600 text-white shadow-xs") : "bg-slate-100 hover:bg-slate-200 text-slate-700"}`}>
+              <button key={id} onClick={() => { setLancFilter(id); setVencendoFilter(false); setRecemMarcados(new Set()); setCurrentPage(1); }}
+                className={`px-2 py-0.5 rounded-md font-bold text-[11px] transition cursor-pointer whitespace-nowrap shrink-0 ${!vencendoFilter && lancFilter === id ? (id === "lancados" ? "bg-emerald-600 text-white shadow-xs" : "bg-indigo-600 text-white shadow-xs") : "bg-slate-100 hover:bg-slate-200 text-slate-700"}`}>
                 {label}
               </button>
             ))}
