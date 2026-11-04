@@ -34,6 +34,7 @@ import { REGRA_ESTRUTURA_POR_ATO } from './src/utils/estruturaDoAto';
 import { REGRA_COBERTURA_DOS_AUTOS } from './src/utils/coberturaDosAutos';
 import { dividirParaMapa, normalizarMapa, blocoDoMapa, resumirMovimentacoes, REGRA_MAPA_DO_PROCESSO, precisaDeMapa } from './src/utils/mapaDoProcesso';
 import { detectarDescumprimento, REGRA_DESCUMPRIMENTO_DETERMINACAO, blocoDescumprimentoDetectado } from './src/utils/descumprimentoDeDeterminacao';
+import { gravarNormaDeTexto } from './server/outrasLeis';
 import { extrairEnunciadosFonaje } from './src/utils/enunciadosFonaje';
 import { REGRAS_MECANICA_JUDICIAL, REGRAS_FIDELIDADE_AUTOS, conferenciasMecanica } from './src/utils/mecanicaJudicial';
 import { corrigirCitacoesDaMinuta, citacoesInexistentes } from './src/utils/localizacaoAutos';
@@ -696,6 +697,15 @@ app.post("/api/parse-precedents-pdf", async (req: any, res) => {
                 jobF.mensagem = novos.length ? `${novos.length} enunciado(s) do FONAJE (${enunciadosFonaje[0].ramo}) lidos do documento e gravados${cancel ? `, sendo ${cancel} cancelado(s) ou substituído(s) (guardados, mas não aplicados nas minutas)` : ""}.${jobF.jaExistiam ? ` ${jobF.jaExistiam} já constavam na base.` : ""}` : `Estes enunciados do FONAJE já constam na base (${jobF.jaExistiam}).`;
             })().catch((e) => { jobF.status = "erro"; jobF.mensagem = String(e?.message || e).slice(0, 300); });
             return;
+        }
+
+        // Lei, decreto, resolução, portaria, provimento, código...: não é jurisprudência. Vai para a base de normas ("Outras leis"), onde os artigos são conferidos nas minutas.
+        const norma = await gravarNormaDeTexto(pdfText, String(fileName || "")).catch(() => ({ reconhecida: false } as any));
+        if (norma.reconhecida) {
+            const jobN: JobPrecedentes = { id: `prec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, arquivo: String(fileName || "Norma"), status: norma.motivo ? "erro" : "concluido", total: 1, feitos: 1, adicionados: norma.motivo ? 0 : 1, jaExistiam: 0, erros: [], criadoEm: Date.now(),
+                mensagem: norma.motivo || `Reconheci uma norma: ${norma.rotulo} (${norma.artigos} artigos). Guardei na base de normas (Central de fontes oficiais › Outras leis), e os artigos citados nas minutas passam a ser conferidos nela.` };
+            jobsPrecedentes.set(jobN.id, jobN);
+            return res.json({ success: true, jobId: jobN.id, total: 1 });
         }
 
         // Blocos amplos de ~120.000 caracteres (167 páginas em 4 a 5 blocos)

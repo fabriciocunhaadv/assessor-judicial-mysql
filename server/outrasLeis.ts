@@ -16,6 +16,26 @@ export interface OutraLei { id: string; esfera: Esfera; ente: string; tipo: stri
 const txt = (v: any, max: number) => String(v ?? "").trim().slice(0, max);
 const ESFERAS: Esfera[] = ["estadual", "municipal", "federal", "outra"];
 const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+/** Reconhece, no texto de um PDF anexado, uma NORMA (lei, decreto, resolução, portaria, provimento, código...) e a guarda nesta base. Usado pela tela de súmulas/teses: anexar uma Resolução do CNJ, por exemplo, não falha mais por "não ter tese".
+ *  Devolve `reconhecida: false` quando não parece norma (segue como jurisprudência) e `motivo` quando parece norma mas faltam número/ano (aí se envia pela aba "Outras leis"). */
+export async function gravarNormaDeTexto(texto: string, nomeArquivo = ""): Promise<{ reconhecida: boolean; rotulo?: string; artigos?: number; motivo?: string }> {
+  const linhas = separarDispositivos(String(texto || "").split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean));
+  const artigos = contarArtigos(linhas);
+  const cabeca = linhas.slice(0, 40).join(" ");
+  if (artigos < 5 || !/\b(LEI|DECRETO|RESOLU[ÇC][ÃA]O|PORTARIA|PROVIMENTO|EMENDA|C[ÓO]DIGO|ESTATUTO|REGIMENTO|INSTRU[ÇC][ÃA]O NORMATIVA|ENUNCIADO)\b/.test(cabeca.toUpperCase())) return { reconhecida: false };
+  const sug = sugerirDados(linhas);
+  const nacional = /CONSELHO NACIONAL DE JUSTI[ÇC]A|CONSELHO DA JUSTI[ÇC]A FEDERAL|SUPREMO TRIBUNAL|SUPERIOR TRIBUNAL|TRIBUNAL SUPERIOR/i.test(cabeca);
+  const ente = sug.ente || (/CONSELHO NACIONAL DE JUSTI[ÇC]A/i.test(cabeca) ? "CNJ" : /CONSELHO DA JUSTI[ÇC]A FEDERAL/i.test(cabeca) ? "CJF" : "");
+  const esfera: Esfera = sug.esfera === "outra" && nacional ? "federal" : sug.esfera;
+  const ano = Number(sug.ano);
+  if (!sug.numero || !(ano >= 1900 && ano <= 2100)) return { reconhecida: true, artigos, motivo: `Parece uma norma (${artigos} artigos), mas não consegui ler o número e o ano no começo do texto. Envie pela aba “Outras leis” da Central de fontes oficiais, onde você informa esfera, número e ano.` };
+  if ((esfera === "estadual" || esfera === "municipal") && !ente) return { reconhecida: true, artigos, motivo: `Parece uma norma ${esfera} (${artigos} artigos), mas não identifiquei o ${esfera === "estadual" ? "estado" : "município"}. Envie pela aba “Outras leis” da Central de fontes oficiais.` };
+  const lei: OutraLei = { id: "", esfera, ente, tipo: sug.tipo || "lei", numero: sug.numero.replace(/[^\d.]/g, ""), ano, titulo: txt(nomeArquivo, 200), salvoEm: Date.now(), artigos, gz: gzipSync(Buffer.from(linhas.join("\n"), "utf-8")).toString("base64") };
+  lei.id = idDaLei(lei);
+  await gravarOutraLei(lei);
+  return { reconhecida: true, rotulo: rotuloDaLei(lei), artigos };
+}
+
 export const rotuloDaLei = (l: Pick<OutraLei, "esfera" | "tipo" | "numero" | "ano" | "ente">) => `${l.tipo ? l.tipo.charAt(0).toUpperCase() + l.tipo.slice(1) : "Lei"}${l.esfera === "estadual" ? " Estadual" : l.esfera === "municipal" ? " Municipal" : ""} nº ${l.numero}/${l.ano}${l.ente ? ` (${l.ente})` : ""}`;
 
 /** Texto enviado → linhas. HTML (ou arquivo em UTF-16/windows-1252) passa pela leitura do Planalto; texto puro vira uma linha por parágrafo. */
@@ -29,7 +49,7 @@ export function linhasDoEnvio(buf: Buffer, formato: string): string[] {
   if (formato === "texto" || !/<(p|div|br|html|body|table)\b/i.test(texto)) return separarDispositivos(texto.split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean));
   return htmlParaLinhas(texto);
 }
-const contarArtigos = (linhas: string[]) => linhas.filter((l) => /^Art\.?\s*\d/i.test(l)).length;
+export const contarArtigos = (linhas: string[]) => linhas.filter((l) => /^Art\.?\s*\d/i.test(l)).length;
 
 /** Sugere os dados da lei pelo começo do texto ("LEI Nº 21.792, DE 5 DE JULHO DE 2023", "ESTADO DE GOIÁS"...). O Super Admin confere antes de salvar. */
 export function sugerirDados(linhas: string[]): { esfera: Esfera; ente: string; tipo: string; numero: string; ano: string } {
