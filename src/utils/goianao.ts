@@ -53,13 +53,13 @@ export function classificarAto(ato: any): AtoClassificado {
 export interface ResumoGoianao {
   periodo: { inicio: number; fim: number }; totalAtos: number; lancados: number;
   porOrigem: Record<string, number>; porTipo: Record<string, number>; porCategoria: Record<string, number>; porMes: Record<string, { atos: number; julgamentos: number }>;
-  processosComJulgamento: number; julgamentosEstimados: number; semClassificacao: { processo: string; titulo: string; origem: string }[];
+  processosComJulgamento: number; processosHomologatorios: number; julgamentosEstimados: number; semClassificacao: { processo: string; titulo: string; origem: string }[];
 }
 /** Resume os atos do período. "processosComJulgamento" conta cada processo uma vez (o edital só considera o primeiro julgamento ou baixa do processo). */
 export function resumirGoianao(atos: any[], periodo = PERIODO_GOIANAO): ResumoGoianao {
   const inc = (o: Record<string, number>, k: string) => { o[k] = (o[k] || 0) + 1; };
-  const R: ResumoGoianao = { periodo, totalAtos: 0, lancados: 0, porOrigem: {}, porTipo: {}, porCategoria: {}, porMes: {}, processosComJulgamento: 0, julgamentosEstimados: 0, semClassificacao: [] };
-  const processos = new Set<string>();
+  const R: ResumoGoianao = { periodo, totalAtos: 0, lancados: 0, porOrigem: {}, porTipo: {}, porCategoria: {}, porMes: {}, processosComJulgamento: 0, processosHomologatorios: 0, julgamentosEstimados: 0, semClassificacao: [] };
+  const primeiro = new Map<string, { data: number; hom: boolean }>();      // o edital só conta o PRIMEIRO julgamento de cada processo; processos criminais ficam fora do índice de homologatórias
   for (const a of atos) {
     const c = classificarAto(a);
     if (!c.data || c.data < periodo.inicio || c.data > periodo.fim) continue;
@@ -68,9 +68,9 @@ export function resumirGoianao(atos: any[], periodo = PERIODO_GOIANAO): ResumoGo
     const mes = (R.porMes[c.mes] ||= { atos: 0, julgamentos: 0 }); mes.atos++;
     if (c.contaComoJulgamento) {
       mes.julgamentos++; if (c.estimado) R.julgamentosEstimados++;
-      const chave = c.processo.replace(/\D/g, "") || c.id; if (!processos.has(chave)) processos.add(chave);
+      if (a?.promptCategory !== "criminal") { const chave = c.processo.replace(/\D/g, "") || c.id; const ant = primeiro.get(chave); if (!ant || c.data < ant.data) primeiro.set(chave, { data: c.data, hom: c.categoria === "homologatorio" }); }
     } else if (c.tipoAto === "sentenca" && c.categoria === "semMovimento" && R.semClassificacao.length < 50) R.semClassificacao.push({ processo: c.processo, titulo: c.titulo, origem: c.origem });
   }
-  R.processosComJulgamento = processos.size;
+  R.processosComJulgamento = primeiro.size; R.processosHomologatorios = [...primeiro.values()].filter((x) => x.hom).length;
   return R;
 }
