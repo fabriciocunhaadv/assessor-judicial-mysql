@@ -1,0 +1,10 @@
+import { ehErroEsperado } from "../../src/utils/erroEsperado";
+let f = 0; const ok = (c: boolean, m: string) => { console.log((c ? "ok: " : "FALHOU: ") + m); if (!c) f++; };
+ok(ehErroEsperado("/api/db/docs/escrever", 404, '{"erro":"documento não existe: gabinetes/gab_x/error_events/be13bc9a"}'), "404 do próprio monitor (error_events) é esperado");
+ok(!ehErroEsperado("/api/db/docs/escrever", 404, '{"erro":"documento não existe: gabinetes/gab_x/history/abc"}'), "404 de outro documento continua sendo erro");
+ok(ehErroEsperado("/api/generate-minute", 200, '{"isError":true,"error":"Autos grandes para a chave gratuita: a leitura segue em segundo plano.","codigo":"AUTOS_GRANDES_SEGUNDO_PLANO"}'), "aviso de autos grandes é esperado");
+ok(!ehErroEsperado("/api/generate-minute", 500, '{"error":"falha ao chamar o modelo"}'), "falha real da análise continua sendo erro");
+ok(ehErroEsperado("/api/fontes/outras", 400, '{"erro":"informe a esfera, o número e o ano da lei"}'), "formulário de lei incompleto é esperado");
+ok(ehErroEsperado("/api/fontes/outras", 400, '{"erro":"informe o município (ex.: Goiânia)"}'), "falta o município: esperado");
+ok(!ehErroEsperado("/api/fontes/outras", 500, '{"erro":"não consegui gravar a lei"}'), "falha de gravação da lei (500) continua sendo erro");
+process.exit(f ? 1 : 0);

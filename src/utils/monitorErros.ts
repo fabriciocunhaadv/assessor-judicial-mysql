@@ -50,6 +50,7 @@ const MODULOS: Record<string, string> = {
 };
 const IGNORAR = ["/api/progresso", "/api/native-key-info", "/api/custom-precedents", "/api/test-api-key", "/api/telemetry", "/api/monitor/diagnosticar"];
 const VERSAO = "web";
+import { ehErroEsperado } from "./erroEsperado";
 
 /** Tira do texto o que identifica pessoas, processos ou chaves. */
 export function mascarar(t: unknown, max = 400): string {
@@ -119,10 +120,10 @@ export function instalarMonitorDeErros() {
       const resp = await original(input, init);
       try {
         if (!resp.ok) {
-          resp.clone().text().then((t) => { let m = t; try { const j = JSON.parse(t); m = j?.error || j?.message || t; } catch { /* texto puro */ } void registrarErro({ origem: "api", modulo, status: resp.status, mensagem: `${caminho}: ${m}` }); }, () => {});
+          resp.clone().text().then((t) => { let m = t; try { const j = JSON.parse(t); m = j?.error || j?.message || t; } catch { /* texto puro */ } if (!ehErroEsperado(caminho, resp.status, t)) void registrarErro({ origem: "api", modulo, status: resp.status, mensagem: `${caminho}: ${m}` }); }, () => {});
         } else {
           // a resposta pode vir com status 200 e o erro dentro do corpo (pulso de vida): erro é um JSON pequeno com isError
-          resp.clone().text().then((t) => { if (t.length < 6000 && /"isError"\s*:\s*true/.test(t)) { let m = t; try { m = JSON.parse(t.trim())?.error || t; } catch { /* texto */ } void registrarErro({ origem: "api", modulo, status: 200, mensagem: `${caminho}: ${m}` }); } }, () => {});
+          resp.clone().text().then((t) => { if (t.length < 6000 && /"isError"\s*:\s*true/.test(t) && !ehErroEsperado(caminho, 200, t)) { let m = t; try { m = JSON.parse(t.trim())?.error || t; } catch { /* texto */ } void registrarErro({ origem: "api", modulo, status: 200, mensagem: `${caminho}: ${m}` }); } }, () => {});
         }
       } catch { /* leitura opcional */ }
       return resp;
