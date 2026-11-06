@@ -2,6 +2,7 @@ import { estadoIndiceHistorico, EstadoIndiceHistorico } from "../lib/firestoreUt
 import toast from "react-hot-toast";
 import { AvisoRetencao, EtiquetaValidade } from "./EtiquetaValidade";
 import { configRetencaoAtual, situacaoValidade } from "../utils/retencaoRegras";
+import { idsDoMesmoProcesso } from "../utils/lancadoProcesso";
 import { BancoOrigem } from "./BancoOrigem";
 import { ehDonoDoSistema } from "../utils/donoDoSistema";
 import React, { useState, useEffect, useRef } from "react";
@@ -451,19 +452,23 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Controle de lançamento no Projudi: o assessor marca os atos que já lançou, para não perder a sequência
+  // Controle de lançamento no Projudi: o assessor marca o PROCESSO que já lançou. A marcação vale para TODAS as minutas do processo (a mais recente, as antigas, quantas houver),
+  // para o processo não aparecer ao mesmo tempo em "A lançar" e em "Lançados". O mesmo vale para desfazer.
   const alternarLancado = async (ato: SavedAnalysis, e?: React.MouseEvent) => {
     e?.stopPropagation();
     const quando = ato.lancadoProjudi ? null : Date.now();
-    setRecemMarcados((prev) => new Set(prev).add(ato.id));
-    setHistory((prev) => prev.map((it) => (it.id === ato.id ? { ...it, lancadoProjudi: quando } : it)));
+    const ids = idsDoMesmoProcesso(history, ato);
+    setRecemMarcados((prev) => { const n = new Set(prev); ids.forEach((i) => n.add(i)); return n; });
+    setHistory((prev) => prev.map((it) => (ids.includes(it.id) ? { ...it, lancadoProjudi: quando } : it)));
     try {
-      await marcarLancadoProjudi(ato.id, quando);
-      showFeedback(quando ? `Processo ${ato.processNumber} marcado como LANÇADO no Projudi (agora está em "Lançados").` : `Marcação de lançamento removida (${ato.processNumber}).`);
+      await Promise.all(ids.map((id) => marcarLancadoProjudi(id, quando)));
+      const q = ids.length > 1 ? ` (${ids.length} minutas)` : "";
+      showFeedback(quando ? `Processo ${ato.processNumber} marcado como LANÇADO no Projudi${q}: agora está em "Lançados".` : `Marcação de lançamento removida (${ato.processNumber}${q}).`);
     } catch {
       showFeedback("Não consegui gravar a marcação agora; tente de novo.");
     }
   };
+
   const qtdLancados = history.filter((it) => it && it.id && !isCorruptedHistoryItem(it) && it.lancadoProjudi).length;
   const qtdVencendo = history.filter((it: any) => it && it.id && !isCorruptedHistoryItem(it) && (scopeFilter !== "meus" || !currentUid || it.createdBy === currentUid || ehIdAntigoHistorico(it.createdBy)) && (() => { const f = situacaoValidade(it.date, configRetencaoAtual()).fase; return f === "aviso1" || f === "aviso3" || f === "vencido"; })()).length;
   const qtdPendentes = history.filter((it) => it && it.id && !isCorruptedHistoryItem(it) && !it.lancadoProjudi).length;
