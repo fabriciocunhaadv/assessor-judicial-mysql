@@ -45,7 +45,6 @@ import { UserManagerModal } from "./components/UserManagerModal";
 import { UnitManagerModal } from "./components/UnitManagerModal";
 import { BindingPrecedentsModal } from "./components/BindingPrecedentsModal";
 import { XRayModal } from "./components/XRayModal";
-import { GoianaoPanel } from "./components/GoianaoPanel";
 import { AvisoVencimentoFixo } from "./components/AvisoVencimentoFixo";
 import { resumirValidade } from "./utils/retencaoRegras";
 import { SystemBroadcastBanner } from "./components/SystemBroadcastBanner";
@@ -286,7 +285,6 @@ export default function App() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
   const [isCreditsModalOpen, setIsCreditsModalOpen] = useState<boolean>(false);
   const [isXRayModalOpen, setIsXRayModalOpen] = useState<boolean>(false);
-  const [isGoianaoOpen, setIsGoianaoOpen] = useState<boolean>(false);
   const [vencendoToken, setVencendoToken] = useState<number>(0);
   const verMinutasVencendo = () => { setVencendoToken((n) => n + 1); setIsHistoryModalOpen(true); };
   const [isTesesModalOpen, setIsTesesModalOpen] = useState<boolean>(false);
@@ -2174,7 +2172,6 @@ export default function App() {
         onOpenMinuteAuditor={() => abrirModuloPrincipal("lupa")}
         onOpenPresentation={() => setIsPresentationOpen(true)}
         onOpenXRay={() => setIsXRayModalOpen(true)}
-        onOpenGoianao={() => setIsGoianaoOpen(true)}
         onOpenHistory={() => setIsHistoryModalOpen(true)}
         onOpenTeses={() => setIsTesesModalOpen(true)}
         onOpenBindingPrecedents={() => setIsBindingPrecedentsModalOpen(true)}
@@ -2888,7 +2885,6 @@ export default function App() {
         abrirVencendo={vencendoToken}
       />
 
-      <GoianaoPanel isOpen={isGoianaoOpen} onClose={() => setIsGoianaoOpen(false)} unitId={activeUnit?.id || "montes_claros"} />
       <XRayModal
         isOpen={isXRayModalOpen}
         onClose={() => setIsXRayModalOpen(false)}

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import {
-  Home, ShieldCheck, UserCheck, Activity, Trophy, History, Scale,
+  Home, ShieldCheck, UserCheck, Activity, History, Scale,
   Sparkles, BookOpen, ClipboardList, Calendar, Gavel, SlidersHorizontal,
   ChevronLeft, ChevronRight, Bot, KeyRound
 } from "lucide-react";
@@ -12,7 +12,6 @@ interface SidebarProps {
   onOpenMinuteAuditor?: () => void;
   onOpenPresentation?: () => void;
   onOpenXRay?: () => void;
-  onOpenGoianao?: () => void;
   onOpenHistory?: () => void;
   onOpenTeses?: () => void;
   onOpenBindingPrecedents?: () => void;
@@ -28,7 +27,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  onGoHome, onOpenMinuteAuditor, onOpenPresentation, onOpenXRay, onOpenGoianao, onOpenHistory,
+  onGoHome, onOpenMinuteAuditor, onOpenPresentation, onOpenXRay, onOpenHistory,
   onOpenTeses, onOpenBindingPrecedents, onOpenLegislativeLookup, onOpenProjudiGuide,
   onOpenCalendar, onOpenHearingWorkbench, onOpenPromptManager, onOpenChangePassword,
   tesesCount = 0, isJudge, isSuperAdmin
@@ -113,18 +112,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <Activity className="w-4 h-4 text-blue-500" />
               {!isCollapsed && <span>Raio-X da Lotação</span>}
-            </button>
-          )}
-
-          {onOpenGoianao && (
-            <button
-              onClick={onOpenGoianao}
-              className={`flex items-center gap-2.5 px-3 h-10 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs transition cursor-pointer ${isCollapsed ? 'justify-center' : ''}`}
-              title="Prêmio Goianão 2027"
-              data-testid="abrir-goianao"
-            >
-              <Trophy className="w-4 h-4 text-amber-500" />
-              {!isCollapsed && <span>Prêmio Goianão</span>}
             </button>
           )}
 

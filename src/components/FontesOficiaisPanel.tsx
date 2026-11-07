@@ -11,6 +11,8 @@ interface ItemEnvio { chave: string; arquivo: File; nome: string; estado: "envia
 const chamarSimples = async (url: string) => { const r = await fetch(url, { headers: getApiHeaders() }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || j.erro || `erro ${r.status}`); return j; };
 const nomeArquivo = (l: Lei) => l.url.split("/").pop() || "";
 const pronta = (l: Lei) => !!l.baixadoEm;
+/** O Planalto recusa o acesso do servidor (página de “Acesso Negado”): não é falha da lei, e a cópia enviada à mão continua valendo. */
+const bloqueioDoPlanalto = (l: Lei) => !!l.erro && /bloque|acesso negado/i.test(l.erro);
 const btn = "px-3 py-1.5 rounded-full text-xs font-bold cursor-pointer disabled:opacity-50";
 
 /** Só Super Admin: central das fontes oficiais. Envio de várias leis salvas do Planalto de uma vez (arrastando ou escolhendo), andamento das 29 leis, envio por lei e testes de acesso. */
@@ -32,12 +34,12 @@ export const FontesOficiaisPanel: React.FC = () => {
 
   const contagem = useMemo(() => {
     const ls = leis || [];
-    return { total: ls.length, prontas: ls.filter(pronta).length, erro: ls.filter((l) => !!l.erro).length, pendentes: ls.filter((l) => !pronta(l)).length };
+    return { total: ls.length, prontas: ls.filter(pronta).length, erro: ls.filter((l) => !!l.erro && !bloqueioDoPlanalto(l)).length, pendentes: ls.filter((l) => !pronta(l)).length };
   }, [leis]);
   const visiveis = useMemo(() => (leis || []).filter((l) => {
     if (filtro === "pendentes" && pronta(l)) return false;
     if (filtro === "prontas" && !pronta(l)) return false;
-    if (filtro === "erro" && !l.erro) return false;
+    if (filtro === "erro" && (!l.erro || bloqueioDoPlanalto(l))) return false;
     const q = busca.trim().toLowerCase();
     return !q || `${l.nome} ${nomeArquivo(l)}`.toLowerCase().includes(q);
   }), [leis, filtro, busca]);
@@ -181,7 +183,7 @@ export const FontesOficiaisPanel: React.FC = () => {
                   <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar lei ou nome do arquivo" className="flex-1 min-w-[180px] border border-slate-300 rounded-lg px-2 py-1 bg-white" />
                   <button className={`${btn} bg-white border border-slate-300 text-[#673de6]`} onClick={() => leis && copiar(leis.filter((l) => !pronta(l)), "endereço(s) das pendentes")}>Copiar endereços das pendentes</button>
                   <button className={`${btn} bg-white border border-slate-300 text-[#673de6]`} onClick={() => leis && copiar(leis, "endereço(s)")}>Copiar todos</button>
-                  <button disabled={!!atualizando || !!lote || !leis} onClick={atualizarTodas} className={`${btn} bg-white border border-slate-300 text-slate-600`} title="Tenta baixar direto do site do Planalto (não funciona se o servidor estiver bloqueado)">{lote ? `Atualizando ${lote.feitas}/${lote.total}...` : "Atualizar todas pelo site"}</button>
+                  <button disabled={!!atualizando || !!lote || !leis || !!(leis || []).some(bloqueioDoPlanalto)} onClick={atualizarTodas} className={`${btn} bg-white border border-slate-300 text-slate-600`} title={(leis || []).some(bloqueioDoPlanalto) ? "O Planalto está bloqueando o servidor: envie os arquivos salvos no seu navegador. (O botão “Atualizar pelo site” de cada lei continua disponível para testar de novo.)" : "Tenta baixar direto do site do Planalto (não funciona se o servidor estiver bloqueado)"}>{lote ? `Atualizando ${lote.feitas}/${lote.total}...` : (leis || []).some(bloqueioDoPlanalto) ? "Atualizar todas pelo site (bloqueado pelo Planalto)" : "Atualizar todas pelo site"}</button>
                 </div>
 
                 {!leis && <p className="text-slate-500">Carregando a lista de leis...</p>}
@@ -196,7 +198,9 @@ export const FontesOficiaisPanel: React.FC = () => {
                         </div>
                         <div className="min-w-[190px] text-[11px]">
                           {pronta(l) ? <span className="text-emerald-700">✅ {l.total} artigos · {l.revogados} revogados · {l.vetados} vetados<br />{new Date(l.baixadoEm!).toLocaleDateString("pt-BR")}</span> : <span className="text-slate-500">⏳ pendente</span>}
-                          {l.erro && <span className="text-red-700 block">Falha: {l.erro}</span>}
+                          {l.erro && (bloqueioDoPlanalto(l)
+                            ? <span className="text-amber-700 block" data-testid="aviso-bloqueio-planalto">{pronta(l) ? "A cópia acima continua em uso. " : ""}O Planalto bloqueou a atualização automática pelo site. {pronta(l) ? "Reenvie o arquivo se a lei mudou." : "Envie o arquivo salvo no seu navegador."}</span>
+                            : <span className="text-red-700 block">Falha: {l.erro}</span>)}
                         </div>
                         <div className="flex items-center gap-1.5">
                           {pronta(l) && <BotaoVerLei caminho={`/api/fontes/leis/${encodeURIComponent(l.id)}/texto`} titulo={`Ver o texto guardado: ${l.nome}`} />}
