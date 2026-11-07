@@ -68,14 +68,16 @@ class Gerente {
     try { instalarObservadorPistaNormal(); } catch (e) { console.warn("[Gigantes] observador da pista normal indisponível:", e); }
     if (this.carregado) return;
     this.carregado = true;
+    const interrompidos: JobGig[] = [];
     try {
       for (const j of await listarJobs()) {
-        // o que estava em andamento quando a página foi fechada fica pausado, para você retomar
-        if (["ocr", "lendo", "fundindo", "redigindo", "preparando", "na_fila"].includes(j.status)) { j.status = j.status === "preparando" ? "erro" : "pausado"; j.etapa = j.status === "erro" ? "Interrompido durante a leitura dos PDFs: envie os arquivos de novo." : "Interrompido: clique em Retomar para continuar do ponto em que parou."; await salvarJob(j); }
+        // o que estava em andamento quando a página foi fechada/atualizada é retomado sozinho (sem o usuário clicar)
+        if (["ocr", "lendo", "fundindo", "redigindo", "preparando", "na_fila"].includes(j.status)) { j.status = j.status === "preparando" ? "erro" : "pausado"; j.etapa = j.status === "erro" ? "Interrompido durante a leitura dos PDFs: envie os arquivos de novo." : "Retomando sozinho do ponto em que parou…"; await salvarJob(j); if (j.status === "pausado") interrompidos.push(j); }
         this.jobs.set(j.id, j);
       }
     } catch (e) { console.warn("[Gigantes] banco local indisponível:", e); }
     this.avisar();
+    for (const j of interrompidos.sort((a, b) => a.criadoEm - b.criadoEm)) { try { await this.retomar(j.id); } catch (e) { console.warn("[Gigantes] não consegui retomar sozinho:", e); } }      // na ordem em que foram criados; a fila própria cuida de um por vez
   }
 
   /** Cria o trabalho e devolve na hora; a leitura dos PDFs e o processamento seguem em segundo plano. */

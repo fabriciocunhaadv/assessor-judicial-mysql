@@ -59,6 +59,10 @@ def main():
             pg.reload(); pg.wait_for_timeout(1500); pg.evaluate("window.gerente.carregar()"); pg.wait_for_timeout(500)
             e = estado(pg); print("depois de recarregar a página:", e); assert e and e["status"] == "pausado" and e["feitas"] == feitas
             pg.evaluate("window.gerente.retomar(window.gerente.lista()[0].id)")
+            # 3) ATUALIZAÇÃO NO MEIO DO TRABALHO: recarregar com o processo andando -> ele retoma SOZINHO, sem clicar em Retomar
+            esperar_estado(pg, lambda e: e["status"] == "lendo" and e["feitas"] > feitas)
+            pg.reload(); pg.wait_for_timeout(1500); pg.evaluate("window.gerente.carregar()")
+            e = esperar_estado(pg, lambda e: e["status"] in ("lendo", "na_fila", "fundindo", "redigindo", "concluido"), 60); print("retomou sozinho após recarregar:", e)
             e = esperar_estado(pg, lambda e: e["status"] in ("concluido", "erro"), 600); print("final:", e)
             assert e["status"] == "concluido", e
             fichas = len([x for x in log_() if x.get("p") == "ficha"]); print("fichas geradas no total:", fichas, "de", e["total"], "lotes")
