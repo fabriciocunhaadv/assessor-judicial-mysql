@@ -3257,7 +3257,7 @@ async function generateWithFallbackAndRetry(options) {
                             delete activeConfig.responseSchema;
                         }
                         falhasDemanda++;
-                        const maxTentativas = isTimeout ? 1 : Math.min(2, keyPool.length);      // 503 é do modelo: no máximo 2 chaves por modelo; tempo esgotado = fila do modelo parada no Google: outra chave cai na mesma fila e custa mais um tempo limite inteiro
+                        const maxTentativas = Math.min(2, keyPool.length);      // 503 é do modelo: no máximo 2 chaves por modelo
                         if (falhasDemanda < maxTentativas && kIdx < keyPool.length - 1) {
                             console.log(`[Assessor Judicial - 503/Fila Failover] Tentando mais uma chave (${kIdx + 2}/${keyPool.length}) no mesmo modelo...`);
                             await new Promise(r => setTimeout(r, 500));
