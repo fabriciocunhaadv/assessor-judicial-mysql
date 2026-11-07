@@ -2,6 +2,7 @@
 // se a página for atualizada ou fechada, o mapa retoma da parte em que parou, e um mapa já pronto do mesmo texto é reaproveitado.
 import { getApiHeaders } from "./apiKeyManager";
 import type { MapaProcesso } from "./mapaDoProcesso";
+import { registrarOperacao } from "./monitorOperacao";
 
 export interface TarefaMapa {
   id: string;                      // resumo (hash) do texto dos autos
@@ -122,6 +123,7 @@ class GerenteMapas {
   private async executar(t: TarefaMapa): Promise<MapaPronto | null> {
     const autos = t.texto || "";
     const parou = () => this.cancelar.has(t.id);
+    const inicio = Date.now();
     try {
       const plano = await this.chamar({ modo: "plano", processText: autos }, 60_000);
       t.partesTotal = Number(plano.total) || 0; t.movs = Number(plano.movs) || 0; t.ultima = Number(plano.ultima) || 0;
@@ -156,9 +158,11 @@ class GerenteMapas {
       t.mapa = r.mapa; t.bloco = r.bloco; t.numeroProcesso = t.numeroProcesso || r.mapa.numeroProcesso || numero || undefined;
       t.status = "concluido"; t.etapa = `Mapa pronto (${t.movs} movimentações, até a Mov. ${t.ultima}).`; t.texto = undefined; t.partes = {};
       await this.gravar(t);
+      void registrarOperacao({ modulo: "mapa", processo: t.numeroProcesso, resultado: "ok", duracaoMs: Date.now() - inicio });
       return { mapa: t.mapa, bloco: t.bloco };
     } catch (e: any) {
       t.status = "erro"; t.erro = String(e?.message || e).slice(0, 400); t.etapa = "Não consegui concluir o mapa (as partes já lidas ficaram guardadas)."; await this.gravar(t);
+      void registrarOperacao({ modulo: "mapa", processo: t.numeroProcesso, resultado: "erro", erro: `${t.erro} [partes lidas ${t.partesFeitas}/${t.partesTotal}, falhas ${t.partesFalhas}]`, duracaoMs: Date.now() - inicio });
       return null;
     }
   }

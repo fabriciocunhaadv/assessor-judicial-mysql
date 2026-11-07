@@ -1,4 +1,5 @@
-import { salvarPendente, lerPendente, limparPendente, consultarResultado, lerCorpo, lerPendenteModulo, limparPendenteModulo, ativosNestaPagina, type ModuloPendente } from "./utils/analisePendente";
+import { guardarRequisicao, reenviarRequisicao } from "./utils/reenvioPendente";
+import { salvarPendente, lerPendente, limparPendente, consultarResultado, lerCorpo, lerPendenteModulo, limparPendenteModulo, salvarPendenteModulo, ativosNestaPagina, type ModuloPendente } from "./utils/analisePendente";
 import { saveAudit as salvarAuditoria } from "./utils/auditDb";
 import { AvisoNovaVersao } from "./components/AvisoNovaVersao";
 import { unirFontes } from "./utils/fontesConsultadas";
@@ -1233,6 +1234,7 @@ export default function App() {
       setProgId(novoProg);
       pendenteAtualRef.current = novoProg; conexaoPerdidaRef.current = false;
       salvarPendente({ progId: novoProg, tipo: "analise", iniciadoEm: Date.now(), uid: user?.uid, promptTitle: activePrompt.title, promptId: activePrompt.id, promptCategory: activePrompt.category, promptScope: activePrompt.scope, unitId: activeUnit?.id, unitName: activeUnit?.name, processNumber, contexto: effectiveText ? "" : `[PDFs anexados: ${effectivePdfFiles.map((p) => p.name).join(", ")}]` });
+      await guardarRequisicao(novoProg, "/api/generate-minute", requestPayload);
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           response = await fetch("/api/generate-minute", {
@@ -1634,7 +1636,11 @@ export default function App() {
         let r: any = null; try { r = await consultarResultado(pend.progId); } catch { r = null; }
         if (!r) { await esperar(5000); continue; }      // sem conexão ainda: tenta de novo
         if (parar.v) return;
-        if (r.desconhecido) { toast("A análise anterior não foi encontrada no servidor (ele pode ter sido reiniciado). Inicie de novo.", { id: tid, icon: "ℹ️", duration: 9000 }); limparPendente(pend.progId); return; }
+        if (r.desconhecido) {
+          const novo = await reenviarRequisicao(pend.progId);      // o servidor perdeu o resultado (reiniciou): envia de novo o pedido guardado no navegador
+          if (novo) { pend.progId = novo; pend.iniciadoEm = Date.now(); salvarPendente(pend); toast.loading(<AvisoRetomada texto="O servidor foi reiniciado: refazendo a análise sozinho…" aoParar={aoParar} />, { id: tid }); void registrarOperacao({ modulo: "retomada", processo: pend.processNumber, resultado: "ok", erro: "análise reenviada após reinício do servidor" }); await esperar(5000); continue; }
+          toast("A análise anterior não foi encontrada no servidor (ele pode ter sido reiniciado) e o pedido não estava guardado. Inicie de novo.", { id: tid, icon: "ℹ️", duration: 9000 }); limparPendente(pend.progId); return;
+        }
         if (r.pronto) {
           limparPendente(pend.progId);
           let raw: any; try { raw = lerCorpo(r.body || ""); } catch { raw = null; }
@@ -1690,7 +1696,11 @@ export default function App() {
         let r: any = null; try { r = await consultarResultado(pend.progId); } catch { r = null; }
         if (!r) { await esperar(5000); continue; }
         if (parar.v) return;
-        if (r.desconhecido) { toast(`A execução anterior d${tipo === "turbo" ? "o Turbo" : "a Lupa"} não foi encontrada no servidor (ele pode ter sido reiniciado). Rode de novo.`, { id: tid, icon: "ℹ️", duration: 9000 }); limparPendenteModulo(tipo, pend.progId); return; }
+        if (r.desconhecido) {
+          const novo = await reenviarRequisicao(pend.progId);
+          if (novo) { pend.progId = novo; pend.iniciadoEm = Date.now(); salvarPendenteModulo(tipo, pend); toast.loading(<AvisoRetomada texto={`O servidor foi reiniciado: refazendo ${nome} sozinho…`} aoParar={aoParar} />, { id: tid }); void registrarOperacao({ modulo: "retomada", processo: pend.processNumber, resultado: "ok", erro: `${tipo} reenviado após reinício do servidor` }); await esperar(5000); continue; }
+          toast(`A execução anterior d${tipo === "turbo" ? "o Turbo" : "a Lupa"} não foi encontrada no servidor (ele pode ter sido reiniciado) e o pedido não estava guardado. Rode de novo.`, { id: tid, icon: "ℹ️", duration: 9000 }); limparPendenteModulo(tipo, pend.progId); return;
+        }
         if (r.pronto) {
           limparPendenteModulo(tipo, pend.progId);
           let raw: any; try { raw = lerCorpo(r.body || ""); } catch { raw = null; }
@@ -2130,6 +2140,7 @@ export default function App() {
         },
       };
 
+      await guardarRequisicao(progStage2, "/api/generate-minute", JSON.stringify(payload));
       const res = await fetch("/api/generate-minute", {
         method: "POST",
         headers: getApiHeaders({ "x-progresso-id": progStage2 }),

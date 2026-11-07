@@ -1,6 +1,7 @@
 // fetch que SOBREVIVE à queda de conexão: se a rede cair (ou o navegador do celular congelar a página) depois de o servidor já ter recebido o pedido, em vez de falhar busca o resultado
 // na caixa de resultados do servidor e devolve uma resposta normal. Quem chama continua com o mesmo código de sempre.
 import { consultarResultado, ativosNestaPagina } from "./analisePendente";
+import { guardarRequisicao, apagarRequisicao } from "./reenvioPendente";
 
 const novoId = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `r-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -23,7 +24,8 @@ export interface OpcoesRecuperavel { esperaMaxMs?: number; aoSalvarMarcador?: (p
 export async function fetchRecuperavel(url: string, init: RequestInit & { headers?: Record<string, string> } = {}, opcoes: OpcoesRecuperavel = {}): Promise<Response> {
   const headers = { ...(init.headers || {}) } as Record<string, string>;
   const progId = headers["x-progresso-id"] || novoId(); headers["x-progresso-id"] = progId;
-  opcoes.aoSalvarMarcador?.(progId); ativosNestaPagina.add(progId);
+  opcoes.aoSalvarMarcador?.(progId); ativosNestaPagina.add(progId); await guardarRequisicao(progId, url, init.body);
+  let terminou = false;
   try {
     const r = await fetch(url, { ...init, headers });
     const texto = await r.text();      // lê tudo aqui: se a conexão cair no meio da leitura, também cai no plano B
@@ -31,11 +33,12 @@ export async function fetchRecuperavel(url: string, init: RequestInit & { header
       const rec = await esperarResultado(progId, opcoes.esperaMaxMs ?? 12 * 60_000);
       if (rec) return new Response(rec.body, { status: rec.status >= 200 && rec.status <= 599 ? rec.status : 200, headers: { "Content-Type": "application/json" } });
     }
+    terminou = true;
     return new Response(texto, { status: r.status, statusText: r.statusText, headers: { "Content-Type": r.headers.get("Content-Type") || "application/json" } });
   } catch (e: any) {
     if (e?.name === "AbortError" || (init.signal as AbortSignal | undefined)?.aborted) throw e;      // cancelado de propósito (ou limite de tempo): não recupera
     const rec = await esperarResultado(progId, opcoes.esperaMaxMs ?? 12 * 60_000);
     if (!rec) throw e;
     return new Response(rec.body, { status: rec.status >= 200 && rec.status <= 599 ? rec.status : 200, headers: { "Content-Type": "application/json" } });
-  } finally { ativosNestaPagina.delete(progId); }
+  } finally { ativosNestaPagina.delete(progId); if (terminou) void apagarRequisicao(progId); }
 }

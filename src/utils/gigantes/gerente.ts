@@ -389,6 +389,7 @@ class Gerente {
     } catch (e: any) {
       if (e?.message === "__parar__") return this.encerrarPorSinal(job);
       job.status = "erro"; job.erro = e?.message || String(e); job.etapa = "Parou por erro. Clique em Retomar para continuar do ponto em que parou."; await this.gravar(job);
+      void registrarOperacao({ modulo: "gigante", unitId: job.config?.unitId, unitName: job.config?.unitName, promptTitle: job.config?.promptTitle, promptCategory: job.config?.promptCategory, processo: job.config?.processNumber, resultado: "erro", erro: `${job.erro} [etapa: ${job.etapa}]` });
     } finally {
       this.rodando.delete(id); this.sinais.delete(id);
     }

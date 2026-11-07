@@ -1,6 +1,7 @@
 // ANÁLISE PENDENTE: o navegador do celular costuma fechar a página quando o usuário sai para outro aplicativo. A análise continua no servidor; aqui fica o marcador (no próprio aparelho)
 // que permite buscar o resultado de volta quando a página reabre, em vez de refazer tudo.
 import { getApiHeaders } from "./apiKeyManager";
+import { apagarRequisicao } from "./reenvioPendente";
 
 export interface AnalisePendente {
   progId: string; tipo: "analise" | "etapa2"; iniciadoEm: number; uid?: string;
@@ -17,7 +18,7 @@ export function lerPendente(): AnalisePendente | null {
     return p;
   } catch { return null; }
 }
-export function limparPendente(progId?: string): void { try { const p = JSON.parse(localStorage.getItem(CHAVE) || "null"); if (!progId || !p || p.progId === progId) localStorage.removeItem(CHAVE); } catch { /* ignora */ } }
+export function limparPendente(progId?: string): void { try { const p = JSON.parse(localStorage.getItem(CHAVE) || "null"); if (!progId || !p || p.progId === progId) { localStorage.removeItem(CHAVE); void apagarRequisicao(progId || p?.progId); } } catch { /* ignora */ } }
 
 export interface RespostaResultado { pronto: boolean; status?: number; body?: string; andamento?: { texto?: string; pct?: number | null; decorridoSeg?: number }; desconhecido?: boolean }
 export async function consultarResultado(progId: string): Promise<RespostaResultado> {
@@ -40,7 +41,7 @@ export function salvarPendenteModulo(m: ModuloPendente, d: PendenteModulo): void
 export function lerPendenteModulo(m: ModuloPendente): PendenteModulo | null {
   try { const p = JSON.parse(localStorage.getItem(chaveModulo(m)) || "null"); if (!p?.progId || Date.now() - Number(p.iniciadoEm || 0) > VALIDADE_MS) { if (p) localStorage.removeItem(chaveModulo(m)); return null; } return p; } catch { return null; }
 }
-export function limparPendenteModulo(m: ModuloPendente, progId?: string): void { try { const p = JSON.parse(localStorage.getItem(chaveModulo(m)) || "null"); if (!progId || !p || p.progId === progId) localStorage.removeItem(chaveModulo(m)); } catch { /* ignora */ } }
+export function limparPendenteModulo(m: ModuloPendente, progId?: string): void { try { const p = JSON.parse(localStorage.getItem(chaveModulo(m)) || "null"); if (!progId || !p || p.progId === progId) { localStorage.removeItem(chaveModulo(m)); void apagarRequisicao(progId || p?.progId); } } catch { /* ignora */ } }
 
 /** Pedidos de módulos que ESTA página ainda está esperando: a recuperação automática não mexe neles (a própria tela já vai receber o resultado). */
 export const ativosNestaPagina = new Set<string>();

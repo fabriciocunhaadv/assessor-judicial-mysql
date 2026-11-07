@@ -8,7 +8,7 @@ import { OperacaoRegistrada, listarOperacoes, agruparAlertas, pedidoDeCorrecaoOp
 const quando = (t: number) => (t ? new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
 const ROTULO_RESULTADO: Record<string, string> = { ok: "OK", erro: "Erro", segundo_plano: "Segundo plano", nao_gravado: "Não gravado" };
 const COR_RESULTADO: Record<string, string> = { ok: "text-emerald-300", erro: "text-rose-300", segundo_plano: "text-amber-300", nao_gravado: "text-rose-300" };
-const ROTULO_MODULO: Record<string, string> = { normal: "Análise normal", turbo: "Turbo", gigante: "Gigante" };
+const ROTULO_MODULO: Record<string, string> = { normal: "Análise normal", turbo: "Turbo", gigante: "Gigante", mapa: "Mapa do processo", retomada: "Retomada" };
 
 export function MonitorOperacaoPanel() {
   const [ops, setOps] = useState<OperacaoRegistrada[]>([]);
