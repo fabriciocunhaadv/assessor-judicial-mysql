@@ -284,6 +284,7 @@ const tirarPendenteDoDisco = (id: string) => idbFazer("readwrite", (l) => { l.de
 const lerPendentesDoDisco = async (): Promise<SavedAnalysis[]> => ((await idbFazer<any[]>("readonly", (l) => l.getAll())) || []).map((x) => x?.ato).filter((x) => x && x.id);
 
 const pendentesHistorico = new Map<string, SavedAnalysis>();      // atos que ainda não foram para a nuvem (só enquanto a aba estiver aberta)
+export const historicoTemPendencia = (): number => pendentesHistorico.size;      // atos ainda não gravados na nuvem (usado para não atualizar a página no meio)
 const comPrazoHistorico = <T,>(p: Promise<T>, ms: number): Promise<T> => new Promise((ok, falha) => {
   const t = setTimeout(() => falha(new Error("tempo esgotado ao gravar na nuvem (conexão lenta ou sem rede)")), ms);
   p.then((v) => { clearTimeout(t); ok(v); }, (e) => { clearTimeout(t); falha(e); });
