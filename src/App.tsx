@@ -932,15 +932,17 @@ export default function App() {
   const ehPassageiro = (m: string | null) => !!m && /alta demanda|503|Overloaded|cota|Quota|Rate Limit|interrompida momentaneamente|demorou mais que o esperado/i.test(m);
   const erroPassageiro = ehPassageiro(errorMessage);
   // silencioso = esteira da extensão: o trabalho entra na fila "Gigantes" e a extensão o acompanha por lá (mesmo protocolo dos processos gigantes)
+  const motivoEnvioRef = useRef<string>("");      // por que o envio ao segundo plano NÃO deu certo (vai para o Monitor de Operação, inclusive na esteira, onde o aviso é silencioso)
   const enviarSegundoPlano = async (silencioso = false, naoCabia = false): Promise<boolean> => {
+    motivoEnvioRef.current = "";
     const pdfsOk = inputMode === "pdf" ? pdfFiles : [];
     const texto = inputMode !== "pdf" ? processText.trim() : "";
-    if (pdfsOk.length === 0 && !texto) { if (!silencioso) toast("Não há PDF nem texto no painel para enviar ao segundo plano.", { icon: "⚠️" }); return false; }
+    if (pdfsOk.length === 0 && !texto) { motivoEnvioRef.current = "painel sem PDF nem texto dos autos"; if (!silencioso) toast("Não há PDF nem texto no painel para enviar ao segundo plano.", { icon: "⚠️" }); return false; }
     const cfg = montarConfigGigante();
     try {
       if (pdfsOk.length > 0) await gerenteGigantes.iniciarComTextos(pdfsOk.map((p) => ({ nome: p.name, texto: p.extractedText || "", pageCount: p.pageCount || 0, semTexto: p.paginasSemTexto, naoLidas: p.paginasNaoLidas, arquivo: () => arquivoDoPdf(p) })), cfg);
       else await gerenteGigantes.iniciarComTextos([{ nome: cfg.processNumber && !/extrair/i.test(cfg.processNumber) ? `Autos ${cfg.processNumber}` : "Autos (texto colado)", texto, pageCount: Math.max(1, Math.ceil(texto.length / 3500)) }], cfg);
-    } catch (e: any) { if (!silencioso) toast(`Não foi possível enviar ao segundo plano: ${e?.message || e}`, { icon: "⚠️" }); return false; }
+    } catch (e: any) { motivoEnvioRef.current = `erro ao iniciar a leitura em lotes: ${String(e?.message || e).slice(0, 160)}`; if (!silencioso) toast(`Não foi possível enviar ao segundo plano: ${e?.message || e}`, { icon: "⚠️" }); return false; }
     setErrorMessage(null);
     if (pdfsOk.length > 0) handleClearPdfs(); else setProcessText("");
     window.dispatchEvent(new CustomEvent("gigantes:abrir"));
@@ -1514,7 +1516,7 @@ export default function App() {
         // esteira da extensão: falha passageira (503/cota) não trava a fila; vai para o segundo plano e a extensão segue para o próximo
         let automatico503 = false; try { automatico503 = document.documentElement.dataset.assessorAuto === "1"; } catch { /* sem dataset */ }
         if (automatico503 && ehPassageiro(errorMsg) && await enviarSegundoPlano(true)) { void registrarOperacao({ ...dadosOp(), processo: processNumber, resultado: "segundo_plano", erro: errorMsg }); return; }
-        void registrarOperacao({ ...dadosOp(), processo: processNumber, resultado: "erro", erro: errorMsg });
+        void registrarOperacao({ ...dadosOp(), processo: processNumber, resultado: "erro", erro: errorMsg + (motivoEnvioRef.current ? ` [não foi para o segundo plano: ${motivoEnvioRef.current}]` : "") });
 
         setErrorMessage(errorMsg);
         

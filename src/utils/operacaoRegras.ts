@@ -32,7 +32,9 @@ export function detectarAnomalias(e: { unitName: string; promptTitle: string; pr
   if (e.origem === "esteira" && e.promptEhPadraoDaLista)
     out.push({ codigo: "esteira_prompt_padrao", gravidade: "atencao", texto: `A esteira rodou com “${e.promptTitle}”, que é o primeiro prompt da lista (o padrão do Studio): se a extensão não escolheu o prompt da serventia, a análise saiu com o prompt errado.` });
   if (e.resultado === "nao_gravado") out.push({ codigo: "nao_gravado_no_historico", gravidade: "alta", texto: "A minuta foi gerada mas NÃO foi gravada no Histórico." });
-  if (e.resultado === "segundo_plano" && e.modulo === "turbo") out.push({ codigo: "turbo_foi_para_segundo_plano", gravidade: "atencao", texto: "O Turbo falhou e o processo foi para o segundo plano (análise normal)." });
+  // autos grandes demais para a chave gratuita vão direto para a leitura em lotes: é o fluxo normal, não falha do Turbo
+  if (e.resultado === "segundo_plano" && e.modulo === "turbo" && !/autos grandes|AUTOS_GRANDES|ENTRADA_GRANDE|ACIMA_DO_LIMITE/i.test(e.erro || ""))
+    out.push({ codigo: "turbo_foi_para_segundo_plano", gravidade: "atencao", texto: `O Turbo não terminou e o processo foi para o segundo plano (análise normal). Motivo: ${e.erro || "sem detalhe"}.` });
   if (e.resultado === "erro") out.push({ codigo: "falha_na_operacao", gravidade: "atencao", texto: `Falha na operação: ${e.erro || "sem detalhe"}.` });
   return out;
 }

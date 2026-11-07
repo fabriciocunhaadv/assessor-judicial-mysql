@@ -1,0 +1,10 @@
+import { detectarAnomalias } from "../../src/utils/operacaoRegras";
+let f = 0; const ok = (c: boolean, m: string) => { console.log((c ? "ok: " : "FALHOU: ") + m); if (!c) f++; };
+const base = { unitName: "Montes Claros / Vara Única", promptTitle: "Outros Área Judicial - Família e Sucessões", promptCategory: "familia", promptEhPadraoDaLista: false, origem: "manual", resultado: "segundo_plano" as const, modulo: "turbo" };
+const codigos = (erro: string) => detectarAnomalias({ ...base, erro }).map((a) => a.codigo);
+ok(!codigos("Autos grandes para a chave gratuita: a leitura segue em segundo plano.").includes("turbo_foi_para_segundo_plano"), "autos grandes: fluxo normal, sem alerta");
+ok(!codigos("AUTOS_GRANDES_SEGUNDO_PLANO").includes("turbo_foi_para_segundo_plano"), "código de autos grandes: sem alerta");
+const a = detectarAnomalias({ ...base, erro: "The user aborted a request. (AbortError)" }).find((x) => x.codigo === "turbo_foi_para_segundo_plano");
+ok(!!a && /Motivo: The user aborted/.test(a.texto), "falha real: alerta com o motivo → " + a?.texto);
+ok(!!detectarAnomalias({ ...base, erro: "" }).find((x) => /sem detalhe/.test(x.texto)), "sem motivo: diz 'sem detalhe'");
+process.exit(f ? 1 : 0);

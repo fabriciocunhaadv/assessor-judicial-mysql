@@ -146,10 +146,11 @@ export async function listaDeGabinetes(): Promise<string[]> {
 
 export async function listarErros(): Promise<ErroMonitorado[]> {
   const out: ErroMonitorado[] = [];
+  const vistos = new Set<string>();      // o mesmo gabinete com dois nomes: o mesmo registro vinha duas vezes
   for (const tid of await listaDeGabinetes()) {
     try {
       const snapErros = await getDocs(collection(db, "gabinetes", tid, "error_events")); medirLeitura("erros_lista", snapErros.docs);
-      snapErros.docs.forEach((d) => { const v: any = d.data(); out.push({ ...v, id: d.id, tenantId: tid, situacao: v.situacao || "novo", usuarios: v.usuarios || [], contagem: v.contagem || 1 }); });
+      snapErros.docs.forEach((d) => { if (vistos.has(d.id)) return; vistos.add(d.id); const v: any = d.data(); out.push({ ...v, id: d.id, tenantId: tid, situacao: v.situacao || "novo", usuarios: v.usuarios || [], contagem: v.contagem || 1 }); });
     } catch { /* gabinete sem registros ou sem acesso */ }
   }
   return out.sort((a, b) => b.ultimaEm - a.ultimaEm);

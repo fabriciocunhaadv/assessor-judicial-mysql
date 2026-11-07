@@ -53,8 +53,9 @@ export async function registrarOperacao(op: { modulo: ModuloOperacao; origem?: "
 
 export async function listarOperacoes(limite = 600): Promise<OperacaoRegistrada[]> {
   const out: OperacaoRegistrada[] = [];
+  const vistos = new Set<string>();      // "gabinete_default" e "gab_rafael_machado" são o mesmo gabinete no servidor: o mesmo evento vinha duas vezes
   for (const tid of await listaDeGabinetes()) {
-    try { const snapOps = await getDocs(collection(db, "gabinetes", tid, "ops_events")); medirLeitura("ops_eventos", snapOps.docs); snapOps.docs.forEach((d) => { const v: any = d.data(); out.push({ ...v, id: d.id, tenantId: tid, anomalias: v.anomalias || [] }); }); } catch { /* gabinete sem registros ou sem acesso */ }
+    try { const snapOps = await getDocs(collection(db, "gabinetes", tid, "ops_events")); medirLeitura("ops_eventos", snapOps.docs); snapOps.docs.forEach((d) => { if (vistos.has(d.id)) return; vistos.add(d.id); const v: any = d.data(); out.push({ ...v, id: d.id, tenantId: tid, anomalias: v.anomalias || [] }); }); } catch { /* gabinete sem registros ou sem acesso */ }
   }
   return out.sort((a, b) => b.ts - a.ts).slice(0, limite);
 }
