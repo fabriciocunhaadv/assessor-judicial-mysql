@@ -3201,7 +3201,9 @@ async function generateWithFallbackAndRetry(options) {
                     console.log(`[Assessor Judicial] Ciclo ${cycle}/${maxPipelineCycles} | Chave ${kIdx + 1}/${keyPool.length} (${maskedKey}) | Modelo ${modelName} -> ${statusReason}`);
                     { const resultadoIA = isTimeout ? "timeout" : isQuotaError ? "429" : errMsg.includes("503") || errMsg.includes("high demand") || isDemandOverloaded ? "503" : isAuthError ? "auth" : "outro";
                       contarIA(resultadoIA);
-                      registrarSaude({ tipo: "ia", modulo: String(modelName), severidade: resultadoIA === "auth" ? "erro" : "aviso", mensagem: `${statusReason} (modelo ${modelName})`, detalhe: { ciclo: cycle, chave: kIdx + 1, de: keyPool.length, tokensEstimados: estTokensChamada } }); }
+                      // resfriamento de modelo e troca de chave (429, 503, tempo esgotado) são o funcionamento NORMAL da esteira: só entram na métrica da hora, nunca como erro/aviso.
+                      // Só uma chave recusada de vez (inválida/sem permissão) vira aviso, porque exige ação de quem cadastrou a chave.
+                      if (resultadoIA === "auth") registrarSaude({ tipo: "ia", modulo: String(modelName), severidade: "aviso", mensagem: `Chave recusada pelo Google (${statusReason}) no modelo ${modelName}`, detalhe: { chave: kIdx + 1, de: keyPool.length } }); }
 
                     if (isModelUnavailable) {
                         break; // Modelo indisponível na API: passa ao próximo modelo da esteira para todas as chaves
@@ -3284,6 +3286,8 @@ async function generateWithFallbackAndRetry(options) {
     }
 
     const lastErrMsg = lastError?.message || "";
+    // a esteira inteira falhou e a pessoa ficou sem resultado: este SIM é um problema (um único evento, não um por tentativa)
+    registrarSaude({ tipo: "ia", modulo: "esteira", severidade: "erro", mensagem: `Esteira de IA esgotada sem resultado: ${/429|RESOURCE_EXHAUSTED|Quota/i.test(lastErrMsg) ? "cota do Google" : /503|high demand|UNAVAILABLE|TIMEOUT|timeout/i.test(lastErrMsg) ? "alta demanda ou fila do Google" : "falha da IA"}`, detalhe: { chaves: keyPool.length, modelos: modelsToTry.length, ciclos: maxPipelineCycles } });
     const isDemand = lastErrMsg.includes("503") || lastErrMsg.includes("high demand") || lastErrMsg.includes("UNAVAILABLE") || lastErrMsg.includes("GOOGLE_QUEUE_TIMEOUT") || lastErrMsg.includes("timeout");
     if (isDemand) {
         throw new Error(`Os servidores de IA do Google estão enfrentando alta demanda e retenção em fila (Erro 503 / Timeout de Fila). O sistema percorreu ${maxPipelineCycles} ciclos completos na esteira de modelos contingenciais sem travar. Por favor, aguarde alguns instantes e clique em 'Tentar Novamente'.`);

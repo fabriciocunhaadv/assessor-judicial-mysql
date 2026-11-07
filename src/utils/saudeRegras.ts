@@ -70,7 +70,7 @@ export function gerarAlertas(eventos: EventoSaudeBase[], agora = Date.now()): Al
   const banco = m15.filter((e) => e.tipo === "banco" && e.severidade === "erro").length;
   if (banco >= 1) out.push({ codigo: "banco", gravidade: "alta", texto: `${banco} falha(s) do banco de dados nos últimos 15 minutos.` });
   const ia = h1.filter((e) => e.tipo === "ia" && e.severidade !== "info").length;
-  if (ia >= 10) out.push({ codigo: "ia_recusas", gravidade: "atencao", texto: `A IA (Google) recusou ou demorou ${ia}x na última hora (cota 429, alta demanda 503 ou tempo esgotado).` });
+  if (ia >= 10) out.push({ codigo: "ia_recusas", gravidade: "atencao", texto: `A esteira de IA falhou de vez (sem resultado para o usuário) ou teve chave recusada ${ia}x na última hora.` });
   const sem = eventos.filter((e) => e.tipo === "extensao" && e.severidade === "erro" && e.ts >= agora - 3_600_000).length;
   if (sem >= 3) out.push({ codigo: "extensao_erros", gravidade: "atencao", texto: `A extensão reportou ${sem} erro(s) na última hora.` });
   return out;
