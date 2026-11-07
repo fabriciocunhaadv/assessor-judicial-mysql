@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { haVersaoNova, acompanharPedidos, acompanharAtividade, minutosParado } from "../utils/novaVersao";
 import { trabalhoEmAndamento } from "../utils/trabalhoEmAndamento";
+import { reportarSaude } from "../utils/saudeCliente";
 
 const MIN_PARADO_PARA_ATUALIZAR = 30;      // minutos sem mexer na tela
 
@@ -28,13 +29,14 @@ export function AvisoNovaVersao() {
   useEffect(() => {
     if (!nova) return;
     const t = setInterval(() => {
-      if (trabalhoEmAndamento().length) return;
+      const ocupado = trabalhoEmAndamento();
+      if (ocupado.length) { if (!esperando && minutosParado() >= MIN_PARADO_PARA_ATUALIZAR) reportarSaude({ tipo: "versao", modulo: "atualizacao", severidade: "info", mensagem: `Atualização automática adiada: ${ocupado.join(", ")}` }); return; }
       if (esperando || minutosParado() >= MIN_PARADO_PARA_ATUALIZAR) window.location.reload();
     }, esperando ? 5_000 : 60_000);
     return () => clearInterval(t);
   }, [nova, esperando]);
 
-  const atualizarAgora = () => { const w = trabalhoEmAndamento(); if (w.length) setAviso(w); else window.location.reload(); };
+  const atualizarAgora = () => { const w = trabalhoEmAndamento(); if (w.length) { setAviso(w); reportarSaude({ tipo: "versao", modulo: "atualizacao", severidade: "info", mensagem: `Atualização manual com trabalho em andamento: ${w.join(", ")}` }); } else window.location.reload(); };
 
   if (!nova || (Date.now() < dispensadaAte && !aviso)) return null;
   if (esperando) return (

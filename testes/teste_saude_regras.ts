@@ -1,0 +1,21 @@
+// Rodar: npx tsx testes/teste_saude_regras.ts
+import assert from "node:assert";
+import * as r from "../src/utils/saudeRegras";
+const AG = Date.UTC(2026, 10, 7, 12), D = 86_400_000;
+assert.equal(r.mascararTexto("falha 5381285-41.2025.8.09.0166 de a@b.com chave AIzaSyABCDEFGHIJKL"), "falha [processo] de [email] chave [chave]");
+assert.equal(r.normalizarParaAssinatura("HTTP 500 /api/x id 123 abcdef0123456789abcd"), "http # /api/x id # #id");
+assert.equal(r.nivelDeAviso(AG - 10 * D, AG), null);
+assert.equal(r.nivelDeAviso(AG - 23.5 * D, AG), 7);
+assert.equal(r.nivelDeAviso(AG - 27.5 * D, AG), 3);
+assert.equal(r.nivelDeAviso(AG - 29.5 * D, AG), 1);
+assert.deepEqual(r.contarExpiracoes([AG - 29.5 * D, AG - 27.5 * D, AG - 24 * D, AG - 1 * D], AG), { d7: 3, d3: 2, d1: 1 });
+const ev = (ts: number, tipo: string, sev: any, msg: string, email = "u@x") => ({ ts, tipo, modulo: "m", severidade: sev, assinatura: tipo + r.normalizarParaAssinatura(msg), mensagem: msg, email });
+const lista = [...Array(6)].map((_, i) => ev(AG - i * 60_000, "servidor", "erro", "boom " + i)), banco = ev(AG - 60_000, "banco", "erro", "ECONNRESET");
+const al = r.gerarAlertas([...lista, banco], AG).map((a) => a.codigo);
+assert.ok(al.includes("erro_repetido") && al.includes("banco"), String(al));
+assert.equal(r.semaforoDoTipo([...lista], "servidor", AG), "vermelho");
+assert.equal(r.semaforoDoTipo([ev(AG - 5 * 3_600_000, "ia", "erro", "x")], "ia", AG), "amarelo");
+assert.equal(r.semaforoDoTipo([], "ia", AG), "verde");
+const g = r.agruparEventos(lista, 3_600_000, AG); assert.equal(g.length, 1); assert.equal(g[0].total, 6); assert.equal(g[0].usuarios, 1);
+assert.ok(r.pedidoDeCorrecaoSaude(g).includes("espere minha autorização"));
+console.log("OK saude regras");

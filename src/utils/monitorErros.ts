@@ -48,7 +48,7 @@ const MODULOS: Record<string, string> = {
   "/api/extract-pdf-text": "leitura_pdf", "/api/generate-synopsis": "sinopse", "/api/parse-precedents-pdf": "precedentes", "/api/sync-precedents-weekly": "precedentes",
   "/api/scan-cabinet-theses": "teses", "/api/monitor/diagnosticar": "monitor", "/api/mapa-processo": "mapa_processo",
 };
-const IGNORAR = ["/api/progresso", "/api/native-key-info", "/api/custom-precedents", "/api/test-api-key", "/api/telemetry", "/api/monitor/diagnosticar"];
+const IGNORAR = ["/api/progresso", "/api/native-key-info", "/api/custom-precedents", "/api/test-api-key", "/api/telemetry", "/api/monitor/diagnosticar", "/api/saude/evento"];
 const VERSAO = "web";
 import { ehErroEsperado } from "./erroEsperado";
 

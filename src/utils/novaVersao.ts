@@ -24,7 +24,7 @@ export async function haVersaoNova(): Promise<boolean> {
 
 // pedidos ao servidor em andamento (análises, leituras...): enquanto houver algum, a página não se atualiza sozinha
 let emAndamento = 0, instalado = false;
-const IGNORAR = ["/api/progresso", "/api/native-key-info", "/api/custom-precedents", "/api/telemetry"];
+const IGNORAR = ["/api/progresso", "/api/native-key-info", "/api/custom-precedents", "/api/telemetry", "/api/saude/evento"];
 export function acompanharPedidos(): void {
   if (instalado || typeof window === "undefined" || typeof window.fetch !== "function") return;
   instalado = true;

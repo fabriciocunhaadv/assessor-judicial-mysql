@@ -1,4 +1,5 @@
 import { guardarRequisicao, reenviarRequisicao } from "./utils/reenvioPendente";
+import { reportarSaude, ligarPonteDaExtensao } from "./utils/saudeCliente";
 import { salvarPendente, lerPendente, limparPendente, consultarResultado, lerCorpo, lerPendenteModulo, limparPendenteModulo, salvarPendenteModulo, ativosNestaPagina, type ModuloPendente } from "./utils/analisePendente";
 import { saveAudit as salvarAuditoria } from "./utils/auditDb";
 import { AvisoNovaVersao } from "./components/AvisoNovaVersao";
@@ -1621,6 +1622,7 @@ export default function App() {
 
   ocupadoRef.current = isLoading || isProceedingToStage2;
   // Busca no servidor o resultado de uma análise que ficou pendente (página fechada pelo celular, conexão perdida...) e o mostra como se tivesse acabado de chegar.
+  useEffect(() => { ligarPonteDaExtensao(); }, []);
   const recuperarPendente = async (forcar = false) => {
     const pend = lerPendente();
     if (!pend || recuperandoRef.current || (!forcar && ocupadoRef.current)) return;
@@ -1638,7 +1640,7 @@ export default function App() {
         if (parar.v) return;
         if (r.desconhecido) {
           const novo = await reenviarRequisicao(pend.progId);      // o servidor perdeu o resultado (reiniciou): envia de novo o pedido guardado no navegador
-          if (novo) { pend.progId = novo; pend.iniciadoEm = Date.now(); salvarPendente(pend); toast.loading(<AvisoRetomada texto="O servidor foi reiniciado: refazendo a análise sozinho…" aoParar={aoParar} />, { id: tid }); void registrarOperacao({ modulo: "retomada", processo: pend.processNumber, resultado: "ok", erro: "análise reenviada após reinício do servidor" }); await esperar(5000); continue; }
+          if (novo) { pend.progId = novo; pend.iniciadoEm = Date.now(); salvarPendente(pend); toast.loading(<AvisoRetomada texto="O servidor foi reiniciado: refazendo a análise sozinho…" aoParar={aoParar} />, { id: tid }); reportarSaude({ tipo: "retomada", modulo: "analise", severidade: "info", mensagem: "Análise reenviada automaticamente após reinício do servidor" }, true); await esperar(5000); continue; }
           toast("A análise anterior não foi encontrada no servidor (ele pode ter sido reiniciado) e o pedido não estava guardado. Inicie de novo.", { id: tid, icon: "ℹ️", duration: 9000 }); limparPendente(pend.progId); return;
         }
         if (r.pronto) {
@@ -1698,7 +1700,7 @@ export default function App() {
         if (parar.v) return;
         if (r.desconhecido) {
           const novo = await reenviarRequisicao(pend.progId);
-          if (novo) { pend.progId = novo; pend.iniciadoEm = Date.now(); salvarPendenteModulo(tipo, pend); toast.loading(<AvisoRetomada texto={`O servidor foi reiniciado: refazendo ${nome} sozinho…`} aoParar={aoParar} />, { id: tid }); void registrarOperacao({ modulo: "retomada", processo: pend.processNumber, resultado: "ok", erro: `${tipo} reenviado após reinício do servidor` }); await esperar(5000); continue; }
+          if (novo) { pend.progId = novo; pend.iniciadoEm = Date.now(); salvarPendenteModulo(tipo, pend); toast.loading(<AvisoRetomada texto={`O servidor foi reiniciado: refazendo ${nome} sozinho…`} aoParar={aoParar} />, { id: tid }); reportarSaude({ tipo: "retomada", modulo: tipo, severidade: "info", mensagem: `${tipo === "turbo" ? "Turbo" : "Lupa"} reenviado automaticamente após reinício do servidor` }, true); await esperar(5000); continue; }
           toast(`A execução anterior d${tipo === "turbo" ? "o Turbo" : "a Lupa"} não foi encontrada no servidor (ele pode ter sido reiniciado) e o pedido não estava guardado. Rode de novo.`, { id: tid, icon: "ℹ️", duration: 9000 }); limparPendenteModulo(tipo, pend.progId); return;
         }
         if (r.pronto) {

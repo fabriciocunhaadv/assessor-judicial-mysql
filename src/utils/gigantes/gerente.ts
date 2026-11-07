@@ -6,6 +6,7 @@ import { getCabinetTeses } from "../tesesDb";
 import { getKnowledgeDocs } from "../knowledgeDb";
 import { saveToHistory } from "../historyDb";
 import { registrarOperacao } from "../monitorOperacao";
+import { reportarSaude } from "../saudeCliente";
 import type { SavedAnalysis } from "../historyDb";
 import { apagarJob, chavePagina, JobGig, lerJob, lerPaginas, listarJobs, PaginaGig, salvarJob, salvarPaginas } from "./db";
 import { classificarTodas } from "./triagem";
@@ -77,7 +78,7 @@ class Gerente {
       }
     } catch (e) { console.warn("[Gigantes] banco local indisponível:", e); }
     this.avisar();
-    for (const j of interrompidos.sort((a, b) => a.criadoEm - b.criadoEm)) { try { await this.retomar(j.id); } catch (e) { console.warn("[Gigantes] não consegui retomar sozinho:", e); } }      // na ordem em que foram criados; a fila própria cuida de um por vez
+    for (const j of interrompidos.sort((a, b) => a.criadoEm - b.criadoEm)) { try { await this.retomar(j.id); reportarSaude({ tipo: "retomada", modulo: "gigante", severidade: "info", mensagem: "Processo gigante retomado automaticamente após atualização ou recarga da página" }, true); } catch (e) { console.warn("[Gigantes] não consegui retomar sozinho:", e); } }      // na ordem em que foram criados; a fila própria cuida de um por vez
   }
 
   /** Cria o trabalho e devolve na hora; a leitura dos PDFs e o processamento seguem em segundo plano. */

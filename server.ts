@@ -11,6 +11,7 @@ import { authRouter, exigirSessao } from './server/authRoutes';
 import { contarUsoNoServidor } from './server/usoNoServidor';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
+import { saudeRouter, medirPedidos, iniciarSaudeDoSistema, registrarSaude, contarIA } from './server/saudeSistema';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
 import { fontesRouter, verificarCitacoes, avisoDispositivosRevogados, lerCopiaLocal } from './server/fontesOficiais';
 import { legislacaoAplicavelAoCaso, consultarLegislacao, diagnosticoLegislacao, testarLegislacao, definirLeitorLocal, definirProvedorOutrasLeis, pesquisarLegislacao } from './src/utils/legislacaoPlanalto';
@@ -260,6 +261,7 @@ const PORT = Number(process.env.PORTA_TESTE) || 3000;      // PORTA_TESTE só pa
 app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
+app.use("/api", medirPedidos);      // Saúde do sistema: mede tempo e status de cada pedido
 app.use("/api", exigirSessao);      // tudo em /api exige login (exceto /api/auth e a informação /api/native-key-info)
 app.use(["/api/advogado-peticao/auto-extract-evidence", "/api/advogado-peticao/generate-full-petition"], contarUsoNoServidor((req: any) => isRequestNativeAllowed(req)));      // consumo da Petição 360° contado no servidor
 app.use("/api/advogado-peticao", petitionRouter);
@@ -267,6 +269,7 @@ app.use("/api/db/history", historyRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/db/docs", docsRouter);
 app.use("/api/db/retencao", retencaoRouter);
+app.use("/api/saude", saudeRouter);      // Super Admin: painel Saúde do sistema; qualquer usuário logado só envia eventos (POST /evento)
 app.use("/api/utilizacao", utilizacaoRouter);      // Super Admin: quanto cada pessoa usou o sistema no período
 app.use("/api/fontes/outras", outrasLeisRouter);      // leis estaduais, municipais e outras normas enviadas pelo Super Admin
 app.use("/api/fontes", fontesRouter);
@@ -3131,6 +3134,7 @@ async function generateWithFallbackAndRetry(options) {
                     (response as any).usedKey = currentKey;
                     (response as any).usedModel = modelName;
                     registrarUso(currentKey, modelName, (response as any)?.usageMetadata?.totalTokenCount || estTokensChamada);
+                    contarIA("ok", (response as any)?.usageMetadata?.totalTokenCount || estTokensChamada);
                     falhasModelo.set(modelName, 0); modeloAte.delete(modelName);
                     (response as any).usedKeyIndex = kIdx;
                     (response as any).wasRotated = kIdx > 0;
@@ -3195,6 +3199,9 @@ async function generateWithFallbackAndRetry(options) {
                                          isModelUnavailable ? "Modelo indisponível" : "Tentativa transitória";
 
                     console.log(`[Assessor Judicial] Ciclo ${cycle}/${maxPipelineCycles} | Chave ${kIdx + 1}/${keyPool.length} (${maskedKey}) | Modelo ${modelName} -> ${statusReason}`);
+                    { const resultadoIA = isTimeout ? "timeout" : isQuotaError ? "429" : errMsg.includes("503") || errMsg.includes("high demand") || isDemandOverloaded ? "503" : isAuthError ? "auth" : "outro";
+                      contarIA(resultadoIA);
+                      registrarSaude({ tipo: "ia", modulo: String(modelName), severidade: resultadoIA === "auth" ? "erro" : "aviso", mensagem: `${statusReason} (modelo ${modelName})`, detalhe: { ciclo: cycle, chave: kIdx + 1, de: keyPool.length, tokensEstimados: estTokensChamada } }); }
 
                     if (isModelUnavailable) {
                         break; // Modelo indisponível na API: passa ao próximo modelo da esteira para todas as chaves
@@ -6833,7 +6840,7 @@ if (process.env.NODE_ENV !== "production") {
     }).then(vite => {
         app.use(vite.middlewares);
         const server = app.listen(PORT, "0.0.0.0", () => {
-            iniciarRetencaoNoServidor();
+            iniciarRetencaoNoServidor(); iniciarSaudeDoSistema();
             console.log("Server running on http://localhost:" + PORT);
         });
         server.setTimeout(600000);
@@ -6847,7 +6854,7 @@ if (process.env.NODE_ENV !== "production") {
         res.sendFile(path.join(distPath, 'index.html'));
     });
     const server = app.listen(PORT, "0.0.0.0", () => {
-        iniciarRetencaoNoServidor();
+        iniciarRetencaoNoServidor(); iniciarSaudeDoSistema();
         console.log("Server running on port " + PORT);
     });
     server.setTimeout(600000);

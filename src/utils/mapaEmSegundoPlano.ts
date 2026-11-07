@@ -3,6 +3,7 @@
 import { getApiHeaders } from "./apiKeyManager";
 import type { MapaProcesso } from "./mapaDoProcesso";
 import { registrarOperacao } from "./monitorOperacao";
+import { reportarSaude } from "./saudeCliente";
 
 export interface TarefaMapa {
   id: string;                      // resumo (hash) do texto dos autos
@@ -74,7 +75,7 @@ class GerenteMapas {
       } catch (e) { console.warn("[Mapa] banco local indisponível:", e); }
       this.avisar();
       if (typeof setInterval === "function") { const iv: any = setInterval(() => { void this.limparVencidas(); }, 10 * 60_000); iv?.unref?.(); }      // com a página aberta por muito tempo, a limpeza também acontece sozinha
-      for (const t of this.tarefas.values()) if (EM_ANDAMENTO.includes(t.status) && t.texto) void this.garantir(t.texto, { nome: t.nome, numeroProcesso: t.numeroProcesso }).catch(() => null);
+      for (const t of this.tarefas.values()) if (EM_ANDAMENTO.includes(t.status) && t.texto) { reportarSaude({ tipo: "retomada", modulo: "mapa", severidade: "info", mensagem: "Mapa do processo retomado automaticamente após atualização ou recarga da página" }, true); void this.garantir(t.texto, { nome: t.nome, numeroProcesso: t.numeroProcesso }).catch(() => null); }
     })();
   }
 
