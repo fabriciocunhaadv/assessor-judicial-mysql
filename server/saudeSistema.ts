@@ -69,8 +69,9 @@ export const medirPedidos: express.RequestHandler = (req, res, next) => {
     try {
       const ms = Date.now() - t0, caminho = String(req.originalUrl || req.url || ""); if (!caminho.startsWith("/api/") || /\/api\/(progresso|resultado)\//.test(caminho)) return;
       contarRota(caminho, res.statusCode, ms);
-      if (res.statusCode >= 500) registrarSaude({ tipo: "servidor", modulo: caminho.split("?")[0].replace(/\/[0-9a-f-]{16,}$/i, "/:id"), severidade: "erro", mensagem: `HTTP ${res.statusCode} em ${req.method} ${caminho.split("?")[0]}`, duracaoMs: ms });
-      else if (ms > 5 * 60_000) registrarSaude({ tipo: "servidor", modulo: caminho.split("?")[0], severidade: "aviso", mensagem: `Pedido muito demorado (${Math.round(ms / 1000)}s) em ${req.method} ${caminho.split("?")[0]}`, duracaoMs: ms });
+      const quem = (req as any).usuarioSessao as { email?: string; tenant?: string } | undefined;      // a sessão já está preenchida quando o pedido termina
+      if (res.statusCode >= 500) registrarSaude({ tipo: "servidor", modulo: caminho.split("?")[0].replace(/\/[0-9a-f-]{16,}$/i, "/:id"), severidade: "erro", mensagem: `HTTP ${res.statusCode} em ${req.method} ${caminho.split("?")[0]}`, duracaoMs: ms, email: quem?.email, tenant: quem?.tenant });
+      else if (ms > 5 * 60_000) registrarSaude({ tipo: "servidor", modulo: caminho.split("?")[0], severidade: "aviso", mensagem: `Pedido muito demorado (${Math.round(ms / 1000)}s) em ${req.method} ${caminho.split("?")[0]}`, duracaoMs: ms, email: quem?.email, tenant: quem?.tenant });
     } catch { /* ignora */ }
   });
   next();

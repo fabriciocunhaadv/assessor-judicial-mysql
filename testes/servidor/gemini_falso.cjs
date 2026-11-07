@@ -9,6 +9,8 @@ const resposta = (t, usage) => JSON.stringify({ candidates: [{ content: { role: 
 http.createServer((req, res) => {
   let corpo = ""; req.on("data", (c) => (corpo += c));
   req.on("end", () => {
+    // fila travada do Google (só em teste): GEMINI_FALSO_TRAVA="modelo1,modelo2" nunca responde para esses modelos
+    if (process.env.GEMINI_FALSO_TRAVA && process.env.GEMINI_FALSO_TRAVA.split(",").some((m) => String(req.url).includes("/models/" + m + ":"))) { if (process.env.GEMINI_FALSO_LOG) console.log("trava", req.url); return; }
     let j = {}; try { j = JSON.parse(corpo); } catch {}
     const sis = JSON.stringify(j.systemInstruction || j.config?.systemInstruction || "") + JSON.stringify(j.generationConfig || {});
     const tudo = corpo;
@@ -30,7 +32,7 @@ http.createServer((req, res) => {
         kitProcuracao: "Procuração.", kitDeclaracaoPobreza: "Declaração." };
       t = /\[\[FALSO-CERCA\]\]/.test(tudo) ? "```json\n" + JSON.stringify(pet) + "\n```" : JSON.stringify(pet);
     }
-    else if (/FICHA DOS AUTOS/.test(tudo) && /analista de autos judiciais/.test(tudo)) t = JSON.stringify(ficha);
+    else if ((/FICHA DOS AUTOS/.test(tudo) || /TRECHO DOS AUTOS:/.test(tudo)) && /analista de autos judiciais/.test(tudo)) t = JSON.stringify(ficha);
     else if (/Corregedor e Auditor/.test(tudo)) t = JSON.stringify(auditoria);
     else if (/SINOPSE|Sinopse/.test(tudo) && !/MINUTA SUBMETIDA/.test(tudo)) t = "Sinopse. ".repeat(60);
     else { const comMapa = (/COERÊNCIA COM O ESTADO ATUAL/.test(tudo) ? " COM-MAPA" : "") + (/CADERNO DE TESES E DIRETRIZES VINCULANTES/.test(tudo) ? " COM-TESES" : "") + (/TUANNY ALVES CARNEIRO/.test(tudo) ? " VIU-TESE-TUANNY" : "") + (/BASE DE CONHECIMENTO INTERNA: modelo-gabinete/.test(tudo) ? " COM-BASE" : ""); const mm = { ...minuta1, relatorio: minuta1.relatorio + comMapa }; t = JSON.stringify({ minute: mm, ...mm }); }
