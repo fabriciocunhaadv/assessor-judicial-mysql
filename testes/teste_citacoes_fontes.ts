@@ -1,0 +1,24 @@
+// Rodar: npx tsx testes/teste_citacoes_fontes.ts
+import assert from "node:assert";
+import { extrairCitacoes } from "../src/utils/citacoesFontes";
+const r = (t: string) => extrairCitacoes(t), rot = (t: string) => r(t).map((c) => c.rotulo);
+let c = r("nos termos da Lei Municipal nº 1.234/2015 do Município de Montes Claros de Goiás")[0];
+assert.deepEqual([c.tipo, c.esfera, c.numero, c.ano, c.ente], ["lei", "municipal", "1234", 2015, "Montes Claros de Goiás"]);
+c = r("conforme a Lei Estadual nº 21.792, de 5 de julho de 2023")[0]; assert.deepEqual([c.esfera, c.numero, c.ano], ["estadual", "21792", 2023]);
+c = r("a Lei do Estado de Goiás nº 14.241/2002")[0] ?? r("a Lei nº 14.241/2002 do Estado de Goiás")[0]; assert.deepEqual([c.esfera, c.ente], ["estadual", "Goiás"]);
+let l = r("a Lei nº 8.078/90 (CDC) e a Lei 14.905/2024"); assert.equal(l.length, 2); assert.deepEqual([l[0].numero, l[0].ano, l[0].esfera, l[1].numero, l[1].ano], ["8078", 1990, "indefinida", "14905", 2024]);
+c = r("Lei Complementar nº 123, de 14 de dezembro de 2006")[0]; assert.deepEqual([c.tipo, c.numero, c.ano], ["lei complementar", "123", 2006]);
+assert.equal(r("Decreto-Lei nº 3.689/1941")[0].tipo, "decreto-lei");
+assert.equal(r("Resolução nº 345/2020 do CNJ")[0].rotulo, "Resolução 345/2020");
+assert.deepEqual(rot("art. 5º da Constituição Federal e a Constituição do Estado de Goiás").sort(), ["Constituição Federal de 1988", "Constituição do Estado de Goiás"]);
+assert.deepEqual(rot("a Convenção sobre os Direitos da Criança e a Convenção Americana de Direitos Humanos, ratificadas").sort(), ["Convenção Americana de Direitos Humanos", "Convenção sobre os Direitos da Criança"]);
+assert.deepEqual(rot("Súmula 297 do STJ, Súmula Vinculante 25 e Súmula 54 do STJ; Tema 1.061 do STJ").sort(), ["Súmula 297 do STJ", "Súmula 54 do STJ", "Súmula Vinculante 25 do STF", "Tema 1061 do STJ"].sort());
+assert.deepEqual(rot("Tema 810/STF e Súmula nº 479 (STJ)").sort(), ["Súmula 479 do STJ", "Tema 810 do STF"]);
+assert.equal(rot("a Súmula 100 foi aplicada").length, 1, "sem tribunal: ainda registra, marcado como 'tribunal não informado'");
+assert.ok(rot("a Súmula 100 foi aplicada")[0].includes("tribunal não informado"));
+assert.deepEqual(r("em 2015 houve 1.234 pagamentos de lei"), [], "números soltos não são citação");
+assert.equal(r("Lei 8.078/90 e novamente a Lei nº 8.078/1990").length, 1, "mesma lei citada de dois jeitos = uma só");
+assert.equal(r("Lei nº 12/2020 e Lei nº 12/2020").length, 1);
+l = r("a Lei Municipal nº 1.234/2015 do Município de Montes Claros de Goiás, a Lei nº 14.905/2024 e a Lei Estadual nº 77.777/2020");
+assert.deepEqual(l.map((x) => [x.numero, x.esfera, x.ente]), [["1234", "municipal", "Montes Claros de Goiás"], ["14905", "indefinida", ""], ["77777", "estadual", ""]], "o município da primeira não vaza para as seguintes");
+console.log("OK citações de fontes"); 

@@ -152,30 +152,37 @@ outrasLeisRouter.post("/analisar", corpoBruto, (req: any, res) => {
   res.json({ sugestao: sugerirDados(linhas), artigos: contarArtigos(linhas), linhas: linhas.length, amostra: linhas.slice(0, 4).join(" | ").slice(0, 300) });
 });
 /** Grava a lei. Dados pelos parâmetros (esfera, ente, tipo, numero, ano, titulo); o corpo é o arquivo. */
+export interface DadosLei { esfera: string; ente: string; tipo: string; numero: string; ano: number; titulo?: string }
+/** Grava o arquivo de uma lei com os dados informados (usado pelo envio da aba "Outras leis" e pela lista de Fontes pendentes). Lança erro com `status` quando algo está errado. */
+export async function salvarArquivoComoLei(d: DadosLei, buf: Buffer, formato: string): Promise<{ lei?: any; redirecionada?: { id: string; nome: string; artigos?: number } }> {
+  const falha = (status: number, erro: string) => Object.assign(new Error(erro), { status });
+  const esfera = ESFERAS.includes(d.esfera as Esfera) ? (d.esfera as Esfera) : null, numero = txt(d.numero, 20).replace(/[^\d.]/g, ""), ano = Number(d.ano), ente = txt(d.ente, 80), tipo = txt(d.tipo, 40).toLowerCase() || "lei";
+  if (!esfera || !numero || !(ano >= 1900 && ano <= 2100)) throw falha(400, "informe a esfera, o número e o ano da lei");
+  if ((esfera === "estadual" || esfera === "municipal") && !ente) throw falha(400, esfera === "estadual" ? "informe o estado (ex.: Goiás)" : "informe o município (ex.: Goiânia)");
+  if (!Buffer.isBuffer(buf) || buf.length < 100) throw falha(400, "arquivo vazio ou pequeno demais");
+  // lei federal que já está na lista do Planalto: vai para lá (mesma leitura, cópia de reserva e contagem "N de 29 prontas")
+  const cat = leiDoCatalogo({ esfera, tipo, numero, ano });
+  if (cat && formato !== "texto") {
+    const r = await importarArquivoLei(`${cat.url.split("/").pop()}`, buf, cat.id);
+    if (!r.erro) return { redirecionada: { id: cat.id, nome: cat.nome, artigos: r.total } };
+  }
+  const linhas = linhasDoEnvio(buf, formato);
+  const artigos = contarArtigos(linhas);
+  if (artigos < 1) throw falha(400, "não reconheci nenhum artigo no arquivo (linhas começando com “Art. 1º”). Confira se é o texto da lei.");
+  const gz = gzipSync(Buffer.from(linhas.join("\n"), "utf-8")).toString("base64");
+  if (gz.length > 6_000_000) throw falha(413, "texto grande demais mesmo compactado");
+  const lei: OutraLei = { id: "", esfera, ente, tipo, numero, ano, titulo: txt(d.titulo, 200), salvoEm: Date.now(), artigos, gz };
+  lei.id = idDaLei(lei);
+  await gravarOutraLei(lei);
+  const { gz: _g, ...resumo } = lei;
+  return { lei: resumo };
+}
 outrasLeisRouter.post("/", corpoBruto, async (req: any, res) => {
   if (!soSuper(req, res)) return;
   try {
-    const q = req.query || {}, esfera = ESFERAS.includes(q.esfera) ? (q.esfera as Esfera) : null, numero = txt(q.numero, 20).replace(/[^\d.]/g, ""), ano = Number(q.ano), tipo = txt(q.tipo, 40).toLowerCase() || "lei", ente = txt(q.ente, 80);
-    if (!esfera || !numero || !(ano >= 1900 && ano <= 2100)) return void res.status(400).json({ erro: "informe a esfera, o número e o ano da lei" });
-    if ((esfera === "estadual" || esfera === "municipal") && !ente) return void res.status(400).json({ erro: esfera === "estadual" ? "informe o estado (ex.: Goiás)" : "informe o município (ex.: Goiânia)" });
-    if (!Buffer.isBuffer(req.body) || req.body.length < 100) return void res.status(400).json({ erro: "arquivo vazio ou pequeno demais" });
-    // lei federal que já está na lista do Planalto: vai para lá (mesma leitura, cópia de reserva e contagem "N de 29 prontas")
-    const cat = leiDoCatalogo({ esfera, tipo, numero, ano });
-    if (cat && String(req.headers["x-formato"] || "") !== "texto") {
-      const r = await importarArquivoLei(`${cat.url.split("/").pop()}`, req.body, cat.id);
-      if (!r.erro) return void res.json({ redirecionada: { id: cat.id, nome: cat.nome, artigos: r.total } });
-    }
-    const linhas = linhasDoEnvio(req.body, String(req.headers["x-formato"] || ""));
-    const artigos = contarArtigos(linhas);
-    if (artigos < 1) return void res.status(400).json({ erro: "não reconheci nenhum artigo no arquivo (linhas começando com “Art. 1º”). Confira se é o texto da lei." });
-    const gz = gzipSync(Buffer.from(linhas.join("\n"), "utf-8")).toString("base64");
-    if (gz.length > 6_000_000) return void res.status(413).json({ erro: "texto grande demais mesmo compactado" });
-    const lei: OutraLei = { id: "", esfera, ente, tipo, numero, ano, titulo: txt(q.titulo, 200), salvoEm: Date.now(), artigos, gz };
-    lei.id = idDaLei(lei);
-    await gravarOutraLei(lei);
-    const { gz: _g, ...resumo } = lei;
-    res.json({ lei: resumo });
-  } catch (e: any) { res.status(500).json({ erro: e?.message || "falha ao gravar" }); }
+    const q = req.query || {};
+    res.json(await salvarArquivoComoLei({ esfera: String(q.esfera || ""), ente: String(q.ente || ""), tipo: String(q.tipo || ""), numero: String(q.numero || ""), ano: Number(q.ano), titulo: String(q.titulo || "") }, req.body, String(req.headers["x-formato"] || "")));
+  } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.message || "falha ao gravar" }); }
 });
 /** Move uma lei já enviada aqui para a lista do Planalto (quando ela é uma das leis federais da lista). */
 /** Texto guardado de uma lei estadual/municipal/outra (visualização do Super Admin). Só leitura. */

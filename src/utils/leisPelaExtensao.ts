@@ -35,6 +35,7 @@ export function ligarEntregasDeLeis(aoEntrega: (e: EntregaLei) => Promise<void>,
   };
   const lerFim = () => {
     const el = document.documentElement, bruto = el.dataset.projudiLeisFim; if (!bruto) return;
+    try { if (JSON.parse(bruto)?.modo === "fonte") return; } catch { /* segue */ }      // o fim da busca de fontes pendentes é lido pela aba "Fontes pendentes"
     delete el.dataset.projudiLeisFim;
     try { const f = JSON.parse(bruto); cadeia = cadeia.then(() => aoFim(f)); } catch { /* fim inválido */ }
   };
@@ -46,4 +47,32 @@ export function ligarEntregasDeLeis(aoEntrega: (e: EntregaLei) => Promise<void>,
   window.addEventListener("projudi:teste-entrega", lerTeste);
   window.addEventListener("projudi:lei-entrega", lerEntrega); window.addEventListener("projudi:leis-fim", lerFim);
   return () => { window.removeEventListener("projudi:teste-entrega", lerTeste); window.removeEventListener("projudi:lei-entrega", lerEntrega); window.removeEventListener("projudi:leis-fim", lerFim); };
+}
+
+// ---------- fontes pendentes (leis que os autos citam e o Studio não tem): a extensão procura e devolve uma por vez ----------
+export interface ItemParaBuscar { id: string; rotulo: string; tipo: string; esfera: string; ente: string; numero: string; ano: number }
+export interface EntregaFonte { pedidoId: string; id: string; nome: string; contentType: string; url: string; bytes?: Uint8Array; erro?: string; tentativas?: string[] }
+/** A busca de fontes pendentes precisa da extensão 1.0.90 ou mais nova. */
+export const extensaoSabeBuscarFontes = (v = versaoDaExtensao()): boolean => { const p = v.split(".").map((x) => parseInt(x, 10) || 0); return p.length >= 3 && (p[0] > 1 || (p[0] === 1 && (p[1] > 0 || p[2] >= 90))); };
+export function pedirFontesPelaExtensao(itens: ItemParaBuscar[], fontesBusca: { id: string; nome: string; esfera: string; ente: string; url: string; ativa: boolean }[]): string {
+  const pedidoId = `fonte-${Date.now().toString(36)}`;
+  document.documentElement.dataset.projudiLeisPedido = JSON.stringify({ pedidoId, modo: "fonte", leis: itens, fontesBusca });
+  window.dispatchEvent(new Event("projudi:leis-pedido"));
+  return pedidoId;
+}
+/** Ouve as entregas da busca de fontes. Cada uma é lida do atributo na hora (liberando a próxima) e tratada em fila. Devolve a função que desliga. */
+export function ligarEntregasDeFontes(aoEntrega: (e: EntregaFonte) => Promise<void>, aoFim: (f: FimDaBusca) => void): () => void {
+  let cadeia: Promise<void> = Promise.resolve();
+  const lerEntrega = () => {
+    const el = document.documentElement, bruto = el.dataset.projudiFonteEntrega; if (!bruto) return;
+    delete el.dataset.projudiFonteEntrega;
+    try { const j = JSON.parse(bruto); const e: EntregaFonte = { pedidoId: String(j.pedidoId || ""), id: String(j.id || ""), nome: String(j.nome || ""), contentType: String(j.contentType || ""), url: String(j.url || ""), bytes: j.b64 ? b64ParaBytes(String(j.b64)) : undefined, erro: j.erro ? String(j.erro) : undefined, tentativas: Array.isArray(j.tentativas) ? j.tentativas.map(String) : undefined }; cadeia = cadeia.then(() => aoEntrega(e)).catch(() => {}); } catch { /* entrega inválida */ }
+  };
+  const lerFim = () => {
+    const el = document.documentElement, bruto = el.dataset.projudiLeisFim; if (!bruto) return;
+    try { const f = JSON.parse(bruto); if (f?.modo !== "fonte") return; delete el.dataset.projudiLeisFim; cadeia = cadeia.then(() => aoFim(f)); } catch { /* fim inválido */ }
+  };
+  window.addEventListener("projudi:fonte-entrega", lerEntrega); window.addEventListener("projudi:leis-fim", lerFim);
+  lerEntrega();      // algo que chegou enquanto a aba estava fechada
+  return () => { window.removeEventListener("projudi:fonte-entrega", lerEntrega); window.removeEventListener("projudi:leis-fim", lerFim); };
 }

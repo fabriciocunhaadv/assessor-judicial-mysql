@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getApiHeaders } from "../utils/apiKeyManager";
 import { OutrasLeisTab } from "./OutrasLeisTab";
+import { FontesPendentesTab } from "./FontesPendentesTab";
 import { BotaoVerLei } from "./VisualizadorLei";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
 import { extensaoSabeBuscarLeis, extensaoSabeTestarSites, versaoDaExtensao, pedirLeisPelaExtensao, ligarEntregasDeLeis, type EntregaLei, type FimDaBusca, type ResultadoSiteNavegador } from "../utils/leisPelaExtensao";
@@ -18,7 +19,7 @@ const btn = "px-3 py-1.5 rounded-full text-xs font-bold cursor-pointer disabled:
 
 /** Só Super Admin: central das fontes oficiais. Envio de várias leis salvas do Planalto de uma vez (arrastando ou escolhendo), andamento das 29 leis, envio por lei e testes de acesso. */
 export const FontesOficiaisPanel: React.FC = () => {
-  const [aberto, setAberto] = useState(false), [aba, setAba] = useState<"leis" | "outras" | "testes">("leis"), [erro, setErro] = useState("");
+  const [aberto, setAberto] = useState(false), [aba, setAba] = useState<"leis" | "outras" | "testes" | "pendentes">("leis"), [nPendentes, setNPendentes] = useState<number | null>(null), [erro, setErro] = useState("");
   const [leis, setLeis] = useState<Lei[] | null>(null), [atualizando, setAtualizando] = useState<string | null>(null), [lote, setLote] = useState<{ feitas: number; total: number } | null>(null);
   const [envios, setEnvios] = useState<ItemEnvio[]>([]), [arrastando, setArrastando] = useState(false);
   const [filtro, setFiltro] = useState<"todas" | "pendentes" | "prontas" | "erro">("todas"), [busca, setBusca] = useState("");
@@ -34,7 +35,7 @@ export const FontesOficiaisPanel: React.FC = () => {
     const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.erro || `erro ${r.status}`); return j;
   };
   const carregarLeis = async () => { try { setLeis((await chamar("/leis", "GET")).leis); } catch (e: any) { setErro(e.message); } };
-  useEffect(() => { void carregarLeis(); }, []);      // o contador "N de 29 prontas" aparece já na barra fechada
+  useEffect(() => { void carregarLeis(); fetch("/api/fontes/pendentes", { headers: getApiHeaders() }).then((r) => (r.ok ? r.json() : null)).then((j) => { if (j?.itens) setNPendentes(j.itens.filter((i: any) => i.status === "pendente").length); }).catch(() => {}); }, []);      // o contador "N de 29 prontas" aparece já na barra fechada
 
   const contagem = useMemo(() => {
     const ls = leis || [];
@@ -157,7 +158,7 @@ export const FontesOficiaisPanel: React.FC = () => {
   };
 
   const pct = contagem.total ? Math.round((contagem.prontas / contagem.total) * 100) : 0;
-  const aba_ = (id: "leis" | "outras" | "testes", rotulo: string) => (
+  const aba_ = (id: "leis" | "outras" | "testes" | "pendentes", rotulo: string) => (
     <button onClick={() => setAba(id)} className={`px-4 py-2 text-xs font-bold border-b-2 cursor-pointer ${aba === id ? "border-[#673de6] text-[#673de6]" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{rotulo}</button>
   );
 
@@ -186,7 +187,7 @@ export const FontesOficiaisPanel: React.FC = () => {
                 <div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-[#673de6] transition-all" style={{ width: `${pct}%` }} /></div>
                 <span className="text-xs font-bold whitespace-nowrap">{contagem.prontas} de {contagem.total} leis prontas</span>
               </div>
-              <div className="flex">{aba_("leis", "Leis do Planalto")}{aba_("outras", "Outras leis (estaduais e municipais)")}{aba_("testes", "Testes de acesso")}</div>
+              <div className="flex">{aba_("leis", "Leis do Planalto")}{aba_("outras", "Outras leis (estaduais e municipais)")}{aba_("pendentes", nPendentes ? `Fontes pendentes (${nPendentes})` : "Fontes pendentes")}{aba_("testes", "Testes de acesso")}</div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-xs text-slate-700">
@@ -264,6 +265,7 @@ export const FontesOficiaisPanel: React.FC = () => {
               </>)}
 
               {aba === "outras" && <OutrasLeisTab />}
+              {aba === "pendentes" && <FontesPendentesTab aoMudarContagem={setNPendentes} />}
 
               {aba === "testes" && (<>
                 <div className="space-y-1.5">

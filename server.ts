@@ -11,6 +11,7 @@ import { authRouter, exigirSessao } from './server/authRoutes';
 import { contarUsoNoServidor } from './server/usoNoServidor';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
+import { fontesPendentesRouter, detectoresDosMotores } from './server/fontesPendentes';
 import { saudeRouter, medirPedidos, iniciarSaudeDoSistema, registrarSaude, contarIA } from './server/saudeSistema';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
 import { fontesRouter, verificarCitacoes, avisoDispositivosRevogados, lerCopiaLocal } from './server/fontesOficiais';
@@ -271,6 +272,8 @@ app.use("/api/db/docs", docsRouter);
 app.use("/api/db/retencao", retencaoRouter);
 app.use("/api/saude", saudeRouter);      // Super Admin: painel Saúde do sistema; qualquer usuário logado só envia eventos (POST /evento)
 app.use("/api/utilizacao", utilizacaoRouter);      // Super Admin: quanto cada pessoa usou o sistema no período
+for (const [rota, , mw] of detectoresDosMotores) app.use(rota, mw);      // Fontes pendentes: todo motor alimenta a mesma lista do que foi citado e o Studio não tem
+app.use("/api/fontes/pendentes", fontesPendentesRouter);
 app.use("/api/fontes/outras", outrasLeisRouter);      // leis estaduais, municipais e outras normas enviadas pelo Super Admin
 app.use("/api/fontes", fontesRouter);
 definirLeitorLocal(lerCopiaLocal);
