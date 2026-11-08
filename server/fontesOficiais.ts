@@ -7,7 +7,7 @@ import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
 import { decodificarPagina } from "../src/utils/legislacaoPlanalto";
 import { gzipSync, gunzipSync } from "zlib";
-import { separarDispositivos } from "../src/utils/separarDispositivos";
+import { separarDispositivos, normalizarLinhaLei } from "../src/utils/separarDispositivos";
 
 export const fontesRouter = express.Router();
 const COL_LEI = "legislacao", COL_RESUMO = "legislacao_resumo", COL_TEXTO = "legislacao_texto";
@@ -70,7 +70,8 @@ export function htmlParaLinhas(html: string): string[] {
   const t = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<!--[\s\S]*?-->/g, " ").replace(/<\/?(p|div|tr|li|h[1-6]|table|center|blockquote|pre)\b[^>]*>|<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
   const linhas = he.decode(t).replace(/\u00a0/g, " ").split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
   // linha enorme com vários artigos colados: separa antes de cada "Art. N" que começa frase
-  return linhas.flatMap((l) => (l.length > 1500 ? l.split(/(?<=[.;:)\]])\s+(?=Art\.?\s*\d{1,4}(?:\.\d{3})?\s*(?:[º°o]|\.|-|\s))/) : [l]));
+  // "Art . 1º" (espaço antes do ponto, como na Lei do Cheque), "Artigo 1º" e invisíveis viram "Art. 1º"
+  return linhas.flatMap((l) => (l.length > 1500 ? l.split(/(?<=[.;:)\]])\s+(?=Art\.?\s*\d{1,4}(?:\.\d{3})?\s*(?:[º°o]|\.|-|\s))/) : [l])).map(normalizarLinhaLei).filter(Boolean);
 }
 
 export interface ArtigoLei { t: string; r?: 1; v?: 1; n?: string }

@@ -4716,7 +4716,7 @@ let groundingFalha = "";
 
 const isNativeAllowed = isRequestNativeAllowed(req);
 
-if (isGroundingEnabled) {
+if (isGroundingEnabled && executionStage !== 1) {      // na 1ª etapa o resultado não é usado (só a 2ª etapa o inclui na instrução): pesquisar lá era uma busca paga jogada fora
     try {
         console.log("[Assessor Judicial] Executando camada de Grounding Oficial ao Vivo (TJGO • STJ • STF)...");
         const briefFacts = combinedContextForPrecedents.slice(0, 1500);
@@ -6567,6 +6567,7 @@ parsed.groundingSources = liveGroundingSources;
 // Estado da pesquisa ao vivo, para a tela avisar quando ela foi ligada mas não trouxe fontes (antes falhava em silêncio)
 parsed.groundingStatus = !isGroundingEnabled ? "desligado" : groundingFalha ? "falhou" : (liveGroundingPrecedents ? (liveGroundingSources.length > 0 ? "ok" : "sem_fontes") : "sem_resultado");
 if (groundingFalha) parsed.groundingMensagem = groundingFalha;
+if (isGroundingEnabled) { const sUsuario = (req as any).usuarioSessao; registrarSaude({ tipo: "ia", modulo: "grounding", severidade: parsed.groundingStatus === "ok" ? "info" : "aviso", mensagem: `Pesquisa ao vivo (Grounding): ${parsed.groundingStatus}${parsed.groundingStatus === "ok" ? ` (${liveGroundingSources.length} fonte(s))` : ""}`, detalhe: { status: parsed.groundingStatus, fontes: liveGroundingSources.length, erro: groundingFalha || undefined }, email: sUsuario?.email, tenant: sUsuario?.tenant }); }      // painel Saúde: quantas pesquisas rodaram e quantas falharam
 if (liveGroundingSources && liveGroundingSources.length > 0 && parsed.auditAnalysis?.preAudit) {
     const curStatus = parsed.auditAnalysis.preAudit.precedentsStatus || "Precedentes validados";
     parsed.auditAnalysis.preAudit.precedentsStatus = `${curStatus} • ${liveGroundingSources.length} precedente(s) consultado(s) ao vivo via Grounding oficial (TJGO • STJ • STF).`;

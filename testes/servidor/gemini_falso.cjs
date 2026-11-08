@@ -7,11 +7,14 @@ const auditoria = { score: 82, summary: "Aprovada com ressalvas.", criticalAlert
 const minuta1 = { processNumber: "5129546-88.2025.8.09.0100", author: "Autor", defendant: "Réu", judicialUnit: "Vara Cível", pendingMatter: "sentença", actType: "SENTENÇA", relatorio: "Relatório. ".repeat(60), fundamentacao: "### 1. Tema\n\n" + "Fundamentação com Mov. 1, Arq. 1, Pág. 1. ".repeat(50), dispositivo: "Julgo procedente. Determino o pagamento da quantia devida." };
 const resposta = (t, usage) => JSON.stringify({ candidates: [{ content: { role: "model", parts: [{ text: t }] }, finishReason: "STOP", index: 0 }], usageMetadata: { promptTokenCount: usage, candidatesTokenCount: 500, totalTokenCount: usage + 500 }, modelVersion: "gemini-3.6-flash" });
 http.createServer((req, res) => {
+  if (req.method === "GET" && req.url === "/__grounding") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ n: global.__grounding || 0 })); return; }
   let corpo = ""; req.on("data", (c) => (corpo += c));
   req.on("end", () => {
     // fila travada do Google (só em teste): GEMINI_FALSO_TRAVA="modelo1,modelo2" nunca responde para esses modelos
     if (process.env.GEMINI_FALSO_TRAVA && process.env.GEMINI_FALSO_TRAVA.split(",").some((m) => String(req.url).includes("/models/" + m + ":"))) { if (process.env.GEMINI_FALSO_LOG) console.log("trava", req.url); return; }
     let j = {}; try { j = JSON.parse(corpo); } catch {}
+    // pesquisa ao vivo (Grounding): a chamada traz a ferramenta googleSearch; responde com texto e uma fonte, como o Google faria
+    if (/"googleSearch"/.test(corpo)) { global.__grounding = (global.__grounding || 0) + 1; res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ candidates: [{ content: { role: "model", parts: [{ text: "STJ, Súmula 297: o Código de Defesa do Consumidor é aplicável às instituições financeiras. https://scon.stj.jus.br/sumula297" }] }, finishReason: "STOP", index: 0, groundingMetadata: { groundingChunks: [{ web: { uri: "https://scon.stj.jus.br/sumula297", title: "STJ Súmula 297" } }] } }], usageMetadata: { promptTokenCount: 50, candidatesTokenCount: 30, totalTokenCount: 80 } })); return; }
     const sis = JSON.stringify(j.systemInstruction || j.config?.systemInstruction || "") + JSON.stringify(j.generationConfig || {});
     const tudo = corpo;
     if (process.env.GEMINI_FALSO_LOG) console.log("req ~tokens", Math.ceil(corpo.length / 3.2));

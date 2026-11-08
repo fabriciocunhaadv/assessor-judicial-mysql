@@ -5,6 +5,7 @@ import { AvisoCoberturaLeitura } from "./AvisoCoberturaLeitura";
 import { AvisoGigante } from "./AvisoGigante";
 import { AvisoPromptInjection } from "./AvisoPromptInjection";
 import { AvisoFontesConsultadas } from "./AvisoFontesConsultadas";
+import { AvisoGrounding, rotuloGrounding } from "./AvisoGrounding";
 import { conferirComMapa } from "../utils/mapaDoProcesso";
 
 type Tom = "ok" | "atencao" | "perigo" | "info";
@@ -31,6 +32,10 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
     const partes = [`${f.legislacao?.length || 0} artigo(s) conferido(s)`, ...(atencao ? [`${atencao} com atenção`] : [])];
     itens.push({ id: "fontes", tom: atencao ? "atencao" : (f.legislacao?.length || f.precedentes?.length ? "ok" : "info"), rotulo: (f.legislacao?.length || 0) + atencao + (f.precedentes?.length || 0) === 0 ? "📚 Fontes consultadas · nenhum artigo de lei citado nos autos" : `📚 Fontes consultadas · ${partes.join(" · ")}`, conteudo: <AvisoFontesConsultadas info={f} /> });
   }
+
+  // Pesquisa ao vivo (Grounding): só há status na resposta FINAL (a 1ª etapa não pesquisa); mostra de relance se foi executada, com os links
+  const gs = result?.groundingStatus as string | undefined;
+  if (gs) itens.push({ id: "grounding", tom: gs === "ok" ? "ok" : gs === "desligado" ? "info" : "atencao", rotulo: rotuloGrounding(gs, (result?.groundingSources || []).length), conteudo: <AvisoGrounding info={{ status: gs, fontes: result?.groundingSources || [], mensagem: result?.groundingMensagem }} /> });
 
   const mp = result?.mapaProcesso;
   if (mp?.estadoAtual) {
