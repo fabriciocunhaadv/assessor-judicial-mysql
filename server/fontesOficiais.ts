@@ -329,6 +329,8 @@ export async function reconhecer(): Promise<any[]> {
 
 // ---------- rotas (Super Admin) ----------
 const soSuper = (req: any, res: express.Response): boolean => { if (!req.usuarioSessao?.superAdmin) { res.status(403).json({ erro: "somente o super administrador" }); return false; } return true; };
+/** Lista dos sites do teste de acesso (id, grupo, nome e endereço): a extensão testa os mesmos endereços pelo navegador do Super Admin. */
+fontesRouter.get("/sites-teste", (req, res) => { if (!soSuper(req, res)) return; res.json({ sites: SITES }); });
 fontesRouter.post("/reconhecer", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ resultados: await reconhecer() }); } catch (e: any) { res.status(500).json({ erro: "falha no teste" }); } });
 fontesRouter.get("/leis", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ leis: await listarResumoLeis() }); } catch { res.status(500).json({ erro: "não consegui ler o banco" }); } });
 fontesRouter.post("/leis/:id/atualizar", async (req, res) => { if (!soSuper(req, res)) return; try { res.json({ lei: await importarLei(req.params.id) }); } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.message || "falha" }); } });

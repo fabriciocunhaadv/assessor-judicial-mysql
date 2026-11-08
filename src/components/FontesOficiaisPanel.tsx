@@ -3,7 +3,7 @@ import { getApiHeaders } from "../utils/apiKeyManager";
 import { OutrasLeisTab } from "./OutrasLeisTab";
 import { BotaoVerLei } from "./VisualizadorLei";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
-import { extensaoSabeBuscarLeis, versaoDaExtensao, pedirLeisPelaExtensao, ligarEntregasDeLeis, type EntregaLei, type FimDaBusca } from "../utils/leisPelaExtensao";
+import { extensaoSabeBuscarLeis, extensaoSabeTestarSites, versaoDaExtensao, pedirLeisPelaExtensao, ligarEntregasDeLeis, type EntregaLei, type FimDaBusca, type ResultadoSiteNavegador } from "../utils/leisPelaExtensao";
 
 interface Resultado { id: string; grupo: string; nome: string; url: string; status: number; urlFinal?: string; tipo?: string; bytes?: number; ms?: number; amostra?: string; linhas?: number; erro?: string; bloqueio?: string; leitura?: { artigos: number; revogados: number; vetados: number } }
 interface Lei { id: string; nome: string; url: string; baixadoEm?: number; total?: number; revogados?: number; vetados?: number; erro?: string }
@@ -27,6 +27,7 @@ export const FontesOficiaisPanel: React.FC = () => {
   const entradaArquivos = useRef<HTMLInputElement>(null), alvoLei = useRef<string | null>(null);
   const [viaExt, setViaExt] = useState<{ pedidoId: string; total: number; feitas: number } | null>(null);
   const viaExtRef = useRef<typeof viaExt>(null); viaExtRef.current = viaExt;
+  const [sitesTeste, setSitesTeste] = useState<{ id: string; grupo: string; nome: string; url: string }[] | null>(null), [resNav, setResNav] = useState<Record<string, ResultadoSiteNavegador>>({}), [testandoNav, setTestandoNav] = useState(false);
 
   const chamar = async (caminho: string, metodo = "POST") => {
     const r = await fetch("/api/fontes" + caminho, { method: metodo, headers: getApiHeaders() });
@@ -82,14 +83,27 @@ export const FontesOficiaisPanel: React.FC = () => {
     setViaExt((v) => (v ? { ...v, feitas: v.feitas + 1 } : v));
   };
   const terminouExtensao = (f: FimDaBusca) => {
+    if (f.modo === "teste") { setTestandoNav(false); return; }
     setViaExt(null);
     if (f.erro) setErro(`A extensão não conseguiu iniciar a busca: ${f.erro}`);
     else if (f.bloqueios) setErro(`O Planalto bloqueou ${f.bloqueios} página(s) também no seu navegador. As demais foram gravadas; para as outras, use o envio dos arquivos salvos.`);
     else if (f.falhas) setErro(`${f.falhas} lei(s) não puderam ser buscadas pela extensão (veja os envios acima).`);
     void carregarLeis();
   };
-  useEffect(() => ligarEntregasDeLeis(receberDaExtensao, terminouExtensao), []);      // eslint-disable-line react-hooks/exhaustive-deps
-  const extensaoPronta = extensaoSabeBuscarLeis();
+  useEffect(() => ligarEntregasDeLeis(receberDaExtensao, terminouExtensao, (r) => setResNav((m) => ({ ...m, [r.id]: r }))), []);      // eslint-disable-line react-hooks/exhaustive-deps
+  const extensaoPronta = extensaoSabeBuscarLeis(), extensaoTesta = extensaoSabeTestarSites();
+  const testarPeloNavegador = async () => {
+    setErro(""); setResNav({}); setTestandoNav(true);
+    try {
+      const sites = (await chamar("/sites-teste", "GET")).sites as { id: string; grupo: string; nome: string; url: string }[]; setSitesTeste(sites);
+      pedirLeisPelaExtensao(sites, "teste");
+      setTimeout(() => { setTestandoNav((t) => { if (t && Object.keys(resNavRef.current).length === 0) setErro("A extensão ainda não respondeu. Uma aba “Testar o acesso aos sites oficiais” deve ter aberto; se não abriu, confira se a extensão está atualizada (1.0.89 ou mais nova)."); return t; }); }, 15000);
+    } catch (e: any) { setErro(e.message); setTestandoNav(false); }
+  };
+  const resNavRef = useRef(resNav); resNavRef.current = resNav;
+  const linhasTeste = (res || sitesTeste || []) as Resultado[];
+  const funciona = (r?: { status?: number; bloqueio?: string; erro?: string }) => !!r && !!r.status && r.status >= 200 && r.status < 300 && !r.bloqueio && !r.erro;
+  const melhorCaminho = (srv?: Resultado, nav?: ResultadoSiteNavegador): { texto: string; cor: string } => funciona(srv) ? { texto: "servidor", cor: "text-emerald-700" } : funciona(nav) ? { texto: "navegador (extensão)", cor: "text-[#673de6]" } : (srv || nav) ? { texto: srv && nav ? "envio manual" : "…", cor: "text-red-700" } : { texto: "—", cor: "text-slate-400" };
   const buscarPelaExtensao = (alvos: Lei[]) => {
     if (!alvos.length) return; setErro("");
     const pedidoId = pedirLeisPelaExtensao(alvos.map((l) => ({ id: l.id, nome: l.nome, url: l.url })));
@@ -255,15 +269,20 @@ export const FontesOficiaisPanel: React.FC = () => {
                 <div className="space-y-1.5">
                   <p><strong>Teste de acesso:</strong> o servidor da Hostinger tenta abrir os sites do STF, STJ, TNU, TJGO e do Planalto e mostra o que veio.</p>
                   <button disabled={testando} onClick={testar} className={`${btn} bg-[#673de6] text-white`}>{testando ? "Testando (até 1 min)..." : "Testar acesso aos sites oficiais"}</button>
-                  {res && (
-                    <table className="w-full text-[11px] border border-slate-200 bg-white rounded-lg overflow-hidden"><thead className="bg-[#ebe4ff] text-left"><tr><th className="p-1.5">Site</th><th className="p-1.5">Resposta</th><th className="p-1.5">Tamanho</th><th className="p-1.5">Amostra / leitura</th></tr></thead>
-                      <tbody>{res.map((r) => (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button disabled={testandoNav || !extensaoTesta} onClick={testarPeloNavegador} data-testid="testar-pelo-navegador" className={`${btn} bg-white border border-[#673de6] text-[#673de6]`} title={extensaoTesta ? "A extensão abre os mesmos sites no seu navegador e mostra o que veio, para comparar com o servidor" : `Precisa da extensão Conclusões Projudi 1.0.89 ou mais nova${versaoDaExtensao() ? ` (a sua é a ${versaoDaExtensao()})` : " instalada neste navegador"}`}>{testandoNav ? "Testando pelo navegador…" : "Testar também pelo navegador (extensão)"}</button>
+                    {testandoNav && <span className="text-[#673de6] font-bold" data-testid="progresso-teste-navegador">{Object.keys(resNav).length} de {(sitesTeste || []).length || "…"} sites testados. Acompanhe na aba aberta pela extensão.</span>}
+                  </div>
+                  {(res || sitesTeste) && (
+                    <table className="w-full text-[11px] border border-slate-200 bg-white rounded-lg overflow-hidden" data-testid="tabela-teste-acesso"><thead className="bg-[#ebe4ff] text-left"><tr><th className="p-1.5">Site</th><th className="p-1.5">Servidor (Hostinger)</th><th className="p-1.5">Seu navegador</th><th className="p-1.5">Melhor caminho</th><th className="p-1.5">Amostra / leitura</th></tr></thead>
+                      <tbody>{linhasTeste.map((r) => { const nav = resNav[r.id], cam = melhorCaminho(res ? r : undefined, nav); return (
                         <tr key={r.id} className="border-t border-slate-200 align-top">
                           <td className="p-1.5 font-semibold">{r.nome}</td>
-                          <td className={`p-1.5 font-bold ${r.status === 200 && !r.bloqueio ? "text-emerald-700" : "text-red-700"}`}>{r.status || "falhou"}{r.ms ? ` · ${r.ms} ms` : ""}</td>
-                          <td className="p-1.5">{r.bytes ? `${Math.round(r.bytes / 1024)} KB` : "—"}</td>
-                          <td className="p-1.5 break-words">{r.erro || r.bloqueio || ""}{r.leitura ? ` Artigos lidos: ${r.leitura.artigos} (revogados ${r.leitura.revogados}, vetados ${r.leitura.vetados}). ` : ""}{r.amostra}{r.urlFinal ? ` → ${r.urlFinal}` : ""}</td>
-                        </tr>))}</tbody></table>
+                          <td className={`p-1.5 font-bold ${res ? (funciona(r) ? "text-emerald-700" : "text-red-700") : "text-slate-400"}`}>{res ? <>{r.status || "falhou"}{r.ms ? ` · ${r.ms} ms` : ""}{r.bytes ? <span className="font-normal text-slate-500"> · {Math.round(r.bytes / 1024)} KB</span> : null}</> : "—"}</td>
+                          <td className={`p-1.5 font-bold ${nav ? (funciona(nav) ? "text-emerald-700" : "text-red-700") : "text-slate-400"}`} data-testid={`nav-${r.id}`}>{nav ? <>{nav.status || "falhou"}{nav.ms ? ` · ${nav.ms} ms` : ""}{nav.bytes ? <span className="font-normal text-slate-500"> · {Math.round(nav.bytes / 1024)} KB</span> : null}</> : "—"}</td>
+                          <td className={`p-1.5 font-bold ${cam.cor}`} data-testid={`caminho-${r.id}`}>{cam.texto}</td>
+                          <td className="p-1.5 break-words">{res ? (r.erro || r.bloqueio || "") : ""}{res && r.leitura ? ` Artigos lidos: ${r.leitura.artigos} (revogados ${r.leitura.revogados}, vetados ${r.leitura.vetados}). ` : ""}{res ? r.amostra : (nav?.erro || nav?.bloqueio || nav?.amostra || "")}{res && r.urlFinal ? ` → ${r.urlFinal}` : ""}</td>
+                        </tr>); })}</tbody></table>
                   )}
                 </div>
                 <div className="space-y-1.5 pt-2 border-t border-slate-200">
