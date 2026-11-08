@@ -2109,7 +2109,8 @@ export default function App() {
       const payload = {
         mapaProcesso: (generationResult as any)?.mapaProcesso?.bloco,
         executionStage: 2,
-        isGroundingEnabled: getIsGroundingEnabled(),      // a pesquisa ao vivo é feita (e usada) na 2ª etapa
+        isGroundingEnabled: getIsGroundingEnabled(),
+        groundingReuso: (generationResult as any)?.groundingTexto ? { texto: (generationResult as any).groundingTexto, fontes: (generationResult as any).groundingSources || [] } : undefined,      // a pesquisa ao vivo foi feita na 1ª etapa: a 2ª reaproveita o resultado (uma busca só)
         stage1Snapshot,
         coberturaLeitura: coberturaEnvioRef.current,
         processText: (processText || "").trim(),

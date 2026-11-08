@@ -22,5 +22,6 @@ assert.match(renderToStaticMarkup(<AvisoGrounding info={{ status: "falhou", mens
 const barra = (r: any) => renderToStaticMarkup(<AvisosDaMinuta result={r} />);
 assert.ok(barra({ groundingStatus: "ok", groundingSources: [{ url: "https://x.gov.br/a" }] }).includes("Pesquisa ao vivo · 1 fonte(s)"), "botão do aviso aparece quando executou");
 assert.ok(barra({ groundingStatus: "desligado" }).includes("Pesquisa ao vivo desligada"));
-assert.ok(!barra({}).includes("Pesquisa ao vivo"), "sem status (1ª etapa), nada aparece");
+assert.ok(!barra({}).includes("Pesquisa ao vivo"), "sem status, nada aparece");
+
 console.log("OK lei do cheque + selo do grounding"); process.exit(0);

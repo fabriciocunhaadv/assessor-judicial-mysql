@@ -12,7 +12,7 @@ const AVISO_CORTE = "\n[... texto cortado nesta cópia por tamanho ...]";
 const cortar = (s: unknown, max: number): unknown => (typeof s === "string" && s.length > max ? s.slice(0, max) + AVISO_CORTE : s);
 
 // do menos importante para o mais importante (a minuta fica por último e só é tocada se nada mais resolver)
-const BLOCOS_OPCIONAIS = ["holisticSynopsis", "stage1Snapshot", "auditAnalysis", "groundingSources", "cadernoTesesApplied", "paradigmUsed"];
+const BLOCOS_OPCIONAIS = ["holisticSynopsis", "stage1Snapshot", "auditAnalysis", "groundingSources", "groundingTexto", "cadernoTesesApplied", "paradigmUsed"];
 
 export function limitarAtoParaNuvem(ato: SavedAnalysis, limiteBytes = 850_000): { dado: SavedAnalysis; cortou: string[] } {
   const dado: any = { ...ato, result: ato.result ? { ...(ato.result as any) } : ato.result };

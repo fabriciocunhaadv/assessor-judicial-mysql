@@ -4563,7 +4563,7 @@ app.post("/api/generate-minute", async (req, res) => {
     const reqUserEmail = ((req.headers["x-user-email"] as string) || "").toLowerCase().trim();
     const reqUserName = req.headers["x-user-name"] ? decodeURIComponent(req.headers["x-user-name"] as string) : "";
     const reqTenantId = (req.headers["x-tenant-id"] as string) || "";
-    const{processText,pdfBase64,pdfFiles,knowledgePdfs,customPromptText,cabinetTesesText,isTesesEnabled,paradigmModelText,paradigmModelTitle,isParadigmEnabled,proceduralPhase,actType,actSubtype,specificInstructions,processInfo,processActsSummary,isExpertModeEnabled,isGroundingEnabled: rawGroundingEnabled,generationMode,isEconomyMode,executionStage,stage1Snapshot}=req.body;
+    const{processText,pdfBase64,pdfFiles,knowledgePdfs,customPromptText,cabinetTesesText,isTesesEnabled,paradigmModelText,paradigmModelTitle,isParadigmEnabled,proceduralPhase,actType,actSubtype,specificInstructions,processInfo,processActsSummary,isExpertModeEnabled,isGroundingEnabled: rawGroundingEnabled,generationMode,isEconomyMode,executionStage,stage1Snapshot,groundingReuso}=req.body;
     const activePromptTitle = req.body.activePromptTitle || "";
     const isGroundingEnabled = rawGroundingEnabled === true;
     let safeProcessText = filterInnocuousCertificates(cleanJudicialPdfText(processText || ""));
@@ -4716,7 +4716,13 @@ let groundingFalha = "";
 
 const isNativeAllowed = isRequestNativeAllowed(req);
 
-if (isGroundingEnabled && executionStage !== 1) {      // na 1ª etapa o resultado não é usado (só a 2ª etapa o inclui na instrução): pesquisar lá era uma busca paga jogada fora
+// Pesquisa ao vivo: feita na 1ª etapa (o resultado entra já na instrução dela) e REAPROVEITADA na 2ª (o app devolve o texto e as fontes), para não pagar duas buscas por análise
+const reusoGrounding = executionStage === 2 && groundingReuso && typeof groundingReuso.texto === "string" && groundingReuso.texto.trim().length > 30;
+if (isGroundingEnabled && reusoGrounding) {
+    liveGroundingPrecedents = String(groundingReuso.texto).slice(0, 8000);
+    if (Array.isArray(groundingReuso.fontes)) for (const f of groundingReuso.fontes.slice(0, 12)) if (f?.url && /^https?:\/\//i.test(String(f.url))) liveGroundingSources.push({ title: String(f.title || "Precedente Oficial").slice(0, 160), url: String(f.url).slice(0, 500) });
+}
+if (isGroundingEnabled && !reusoGrounding) {
     try {
         console.log("[Assessor Judicial] Executando camada de Grounding Oficial ao Vivo (TJGO • STJ • STF)...");
         const briefFacts = combinedContextForPrecedents.slice(0, 1500);
@@ -4768,6 +4774,12 @@ Retorne de 1 a 3 precedentes oficiais aplicáveis (informando o tribunal, númer
     }
 }
 
+const statusGrounding = (): string => !isGroundingEnabled ? "desligado" : groundingFalha ? "falhou" : (liveGroundingPrecedents ? (liveGroundingSources.length > 0 ? "ok" : "sem_fontes") : "sem_resultado");
+let groundingJaRegistrado = !!reusoGrounding;      // a 2ª etapa que só reaproveita o resultado não conta de novo na aba Saúde
+const registrarGroundingNaSaude = () => {
+    if (!isGroundingEnabled || groundingJaRegistrado) return; groundingJaRegistrado = true;
+    try { const sUsuario = (req as any).usuarioSessao, st = statusGrounding(); registrarSaude({ tipo: "ia", modulo: "grounding", severidade: st === "ok" ? "info" : "aviso", mensagem: `Pesquisa ao vivo (Grounding): ${st}${st === "ok" ? ` (${liveGroundingSources.length} fonte(s))` : ""}`, detalhe: { status: st, fontes: liveGroundingSources.length, etapa: executionStage === 1 ? 1 : executionStage === 2 ? 2 : "completo", erro: groundingFalha || undefined }, email: sUsuario?.email, tenant: sUsuario?.tenant }); } catch { /* monitor nunca derruba */ }
+};
 const activeTeses = getActiveCabinetTeses(cabinetTesesText, isTesesEnabled, [accumulatedPdfText, safeProcessText, customPromptText, activePromptTitle].filter(Boolean).join(" "));
 const hasActiveParadigm = (isParadigmEnabled !== false) && Boolean(paradigmModelText && typeof paradigmModelText === "string" && paradigmModelText.trim().length > 0);
 
@@ -4903,6 +4915,9 @@ if (matchedPrecedents.length > 0) {
 }
 if (taxonomySummary) {
     stage1SystemInstruction += `\n\n[MAPEAMENTO TAXONÔMICO NORMATIVO & MICROSSISTEMAS]:\n${taxonomySummary}\n`;
+}
+if (liveGroundingPrecedents) {
+    stage1SystemInstruction += `\n\n[PESQUISA OFICIAL AO VIVO VIA GROUNDING (TJGO • STJ • STF)]:\n${liveGroundingPrecedents}\n\nDIRETRIZ DA ETAPA 1 SOBRE O GROUNDING: use os precedentes acima para identificar as teses e súmulas aplicáveis aos fatos e para orientar a fundamentação; cite apenas o que constar acima COM a fonte indicada, sem inventar número, tema ou ementa.\n`;
 }
 
 if (knowledgeBaseText) {
@@ -5960,6 +5975,11 @@ if (executionStage === 1) {
     }
     if ((stage1Response as any)?.autosReduzidos) parsedStage1.autosReduzidos = (stage1Response as any).autosReduzidos;
     if (alertaInjecao) parsedStage1.alertaInjecao = alertaInjecao;
+    if (isGroundingEnabled) {      // pesquisa ao vivo feita já na 1ª etapa: a tela mostra o selo e devolve o texto na 2ª etapa, que o reaproveita (uma busca só por análise)
+        parsedStage1.groundingStatus = statusGrounding(); parsedStage1.groundingSources = liveGroundingSources; parsedStage1.groundingTexto = liveGroundingPrecedents.slice(0, 8000);
+        if (groundingFalha) parsedStage1.groundingMensagem = groundingFalha;
+        registrarGroundingNaSaude();
+    }
     if (avisoDescumprimento) parsedStage1.avisoDescumprimento = avisoDescumprimento;
     if (fontesParaTela()) parsedStage1.fontesConsultadas = fontesParaTela();
     try { const trocas = corrigirCitacoesDaMinuta(parsedStage1.minute, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")); if (trocas) parsedStage1.citacoesCorrigidas = trocas; } catch { /* a correção nunca derruba a minuta */ }
@@ -6565,9 +6585,9 @@ if (parsed.minute) {
 
 parsed.groundingSources = liveGroundingSources;
 // Estado da pesquisa ao vivo, para a tela avisar quando ela foi ligada mas não trouxe fontes (antes falhava em silêncio)
-parsed.groundingStatus = !isGroundingEnabled ? "desligado" : groundingFalha ? "falhou" : (liveGroundingPrecedents ? (liveGroundingSources.length > 0 ? "ok" : "sem_fontes") : "sem_resultado");
+parsed.groundingStatus = statusGrounding();
 if (groundingFalha) parsed.groundingMensagem = groundingFalha;
-if (isGroundingEnabled) { const sUsuario = (req as any).usuarioSessao; registrarSaude({ tipo: "ia", modulo: "grounding", severidade: parsed.groundingStatus === "ok" ? "info" : "aviso", mensagem: `Pesquisa ao vivo (Grounding): ${parsed.groundingStatus}${parsed.groundingStatus === "ok" ? ` (${liveGroundingSources.length} fonte(s))` : ""}`, detalhe: { status: parsed.groundingStatus, fontes: liveGroundingSources.length, erro: groundingFalha || undefined }, email: sUsuario?.email, tenant: sUsuario?.tenant }); }      // painel Saúde: quantas pesquisas rodaram e quantas falharam
+registrarGroundingNaSaude();      // painel Saúde: quantas pesquisas rodaram e quantas falharam
 if (liveGroundingSources && liveGroundingSources.length > 0 && parsed.auditAnalysis?.preAudit) {
     const curStatus = parsed.auditAnalysis.preAudit.precedentsStatus || "Precedentes validados";
     parsed.auditAnalysis.preAudit.precedentsStatus = `${curStatus} • ${liveGroundingSources.length} precedente(s) consultado(s) ao vivo via Grounding oficial (TJGO • STJ • STF).`;

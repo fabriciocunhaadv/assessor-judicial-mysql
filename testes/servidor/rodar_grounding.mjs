@@ -1,4 +1,4 @@
-// Pesquisa ao vivo (Grounding): na execução em 2 etapas só a 2ª etapa pesquisa (a 1ª não usa o resultado); o status volta na resposta; a 2ª etapa recebe a opção do app. Rodar: node testes/servidor/rodar_grounding.mjs
+// Pesquisa ao vivo (Grounding): feita na 1ª etapa e reaproveitada na 2ª (uma busca só); o status volta na resposta; a 2ª etapa recebe a opção do app. Rodar: node testes/servidor/rodar_grounding.mjs
 import { spawn } from "node:child_process";
 import { SignJWT } from "jose";
 import fs from "node:fs";
@@ -20,14 +20,18 @@ try {
 
   let antes = await buscas(), r = await chamar({ ...base, executionStage: 1, isGroundingEnabled: true });
   ok(r.status === 200, "1ª etapa responde 200");
-  ok((await buscas()) === antes, "1ª etapa NÃO faz a pesquisa ao vivo (o resultado só é usado na 2ª etapa)");
-  ok(r.j?.groundingStatus === undefined, "1ª etapa não afirma status de Grounding");
+  ok((await buscas()) === antes + 1, "1ª etapa FAZ a pesquisa ao vivo (uma busca)");
+  ok(r.j?.groundingStatus === "ok" && r.j?.groundingSources?.length === 1 && String(r.j?.groundingTexto || "").includes("Súmula 297"), `1ª etapa devolve status ok, a fonte e o texto (veio ${r.j?.groundingStatus})`);
+  const g1 = { texto: r.j?.groundingTexto, fontes: r.j?.groundingSources };
   const snap = r.j?.minute ? { processNumber: r.j.minute.processNumber, relatorio: r.j.minute.relatorio || "Relatório.", fundamentacao: r.j.minute.fundamentacao || "Fundamentação.", dispositivo: r.j.minute.dispositivo || "Dispositivo." } : { relatorio: "Relatório.", fundamentacao: "Fundamentação." };
 
-  antes = await buscas(); r = await chamar({ ...base, executionStage: 2, stage1Snapshot: snap, isGroundingEnabled: true });
+  antes = await buscas(); r = await chamar({ ...base, executionStage: 2, stage1Snapshot: snap, isGroundingEnabled: true, groundingReuso: g1 });
   ok(r.status === 200, "2ª etapa responde 200");
-  ok((await buscas()) === antes + 1, "2ª etapa faz UMA pesquisa ao vivo");
-  ok(r.j?.groundingStatus === "ok" && r.j?.groundingSources?.length === 1, `2ª etapa devolve groundingStatus=ok e a fonte (veio ${r.j?.groundingStatus})`);
+  ok((await buscas()) === antes, "2ª etapa REAPROVEITA o resultado da 1ª: nenhuma busca nova (uma busca só por análise)");
+  ok(r.j?.groundingStatus === "ok" && r.j?.groundingSources?.length === 1, `2ª etapa mantém status ok e a fonte (veio ${r.j?.groundingStatus})`);
+
+  antes = await buscas(); r = await chamar({ ...base, executionStage: 2, stage1Snapshot: snap, isGroundingEnabled: true });
+  ok((await buscas()) === antes + 1 && r.j?.groundingStatus === "ok", "2ª etapa sem o resultado da 1ª (ex.: recarregou a página): pesquisa por conta própria");
 
   antes = await buscas(); r = await chamar({ ...base, executionStage: 2, stage1Snapshot: snap });
   ok((await buscas()) === antes && r.j?.groundingStatus === "desligado", "sem a opção ligada: nenhuma pesquisa e status desligado");
@@ -37,6 +41,6 @@ try {
 
   // o app precisa enviar a opção também na 2ª etapa (antes só a 1ª enviava)
   const app = fs.readFileSync(path.join(raiz, "src/App.tsx"), "utf8"), i2 = app.indexOf("executionStage: 2,");
-  ok(i2 > 0 && app.slice(i2, i2 + 2500).includes("isGroundingEnabled: getIsGroundingEnabled()"), "App: o pedido da 2ª etapa leva isGroundingEnabled");
+  ok(i2 > 0 && app.slice(i2, i2 + 2500).includes("isGroundingEnabled: getIsGroundingEnabled()") && app.slice(i2, i2 + 2500).includes("groundingReuso"), "App: o pedido da 2ª etapa leva isGroundingEnabled e o resultado da 1ª");
 } finally { for (const p of filhos) try { process.kill(-p.pid, 9); } catch {} }
 process.exit(falhas ? 1 : 0);

@@ -146,7 +146,7 @@ const enxugarItem = (item: SavedAnalysis): SavedAnalysis => {
   const r: any = item.result ? { ...(item.result as any) } : item.result;
   if (r) {
     delete r.auditAnalysis; delete r.holisticSynopsis; delete r.stage1Snapshot;
-    delete r.cadernoTesesApplied; delete r.paradigmUsed; delete r.groundingSources;
+    delete r.cadernoTesesApplied; delete r.paradigmUsed; delete r.groundingSources; delete r.groundingTexto;
   }
   const o: any = { ...item, result: r };
   delete o.holisticSynopsis; delete o.processTextContext;
