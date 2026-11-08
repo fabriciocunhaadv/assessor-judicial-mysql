@@ -159,13 +159,13 @@ export const FontesOficiaisPanel: React.FC = () => {
 
   const pct = contagem.total ? Math.round((contagem.prontas / contagem.total) * 100) : 0;
   const aba_ = (id: "leis" | "outras" | "testes" | "pendentes", rotulo: string) => (
-    <button onClick={() => setAba(id)} className={`px-4 py-2 text-xs font-bold border-b-2 cursor-pointer ${aba === id ? "border-[#673de6] text-[#673de6]" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{rotulo}</button>
+    <button onClick={() => setAba(id)} className={`px-4 py-2 text-xs font-bold border-b-2 cursor-pointer whitespace-nowrap shrink-0 ${aba === id ? "border-[#673de6] text-[#673de6]" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{rotulo}</button>
   );
 
   return (
     <div className="shrink-0 border-b border-[#c9b8ff] bg-[#f5f1ff]" data-testid="fontes-oficiais">
       <button onClick={() => setAberto(true)} className="w-full px-4 sm:px-6 py-2 text-left text-xs font-bold text-[#2f1c6a] flex items-center justify-between gap-3 cursor-pointer">
-        <span>Central de fontes oficiais (Super Admin): leis do Planalto e testes de acesso</span>
+        <span>Central de fontes oficiais <span className="hidden sm:inline">(Super Admin): leis do Planalto, fontes pendentes e testes de acesso</span></span>
         <span className="flex items-center gap-2 shrink-0">
           {leis && <span className="px-2 py-0.5 rounded-full bg-white border border-[#c9b8ff] text-[11px]">{contagem.prontas} de {contagem.total} leis prontas</span>}
           <span className="px-2.5 py-1 rounded-full bg-[#673de6] text-white text-[11px]">Abrir central</span>
@@ -179,15 +179,15 @@ export const FontesOficiaisPanel: React.FC = () => {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-base font-bold">Central de fontes oficiais</h3>
-                  <p className="text-[11px] text-slate-500">Leis do Planalto usadas na conferência das minutas. Só o Super Admin alimenta; vale para todos os gabinetes.</p>
+                  <p className="text-[11px] text-slate-500">Leis e normas usadas na conferência das minutas, fontes citadas que ainda faltam e testes de acesso. Só o Super Admin alimenta; vale para todos os gabinetes.</p>
                 </div>
                 <button onClick={() => setAberto(false)} className="text-slate-400 hover:text-slate-700 text-lg cursor-pointer" aria-label="Fechar">✕</button>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-[#673de6] transition-all" style={{ width: `${pct}%` }} /></div>
-                <span className="text-xs font-bold whitespace-nowrap">{contagem.prontas} de {contagem.total} leis prontas</span>
+                <span className="hidden sm:flex items-center gap-1.5 text-[11px] font-semibold"><span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✅ {contagem.prontas} prontas</span>{contagem.pendentes > 0 && <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">⏳ {contagem.pendentes} pendentes</span>}{contagem.erro > 0 && <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">⚠ {contagem.erro} com erro</span>}</span><span className="text-xs font-bold whitespace-nowrap">{contagem.prontas} de {contagem.total} leis prontas</span>
               </div>
-              <div className="flex">{aba_("leis", "Leis do Planalto")}{aba_("outras", "Outras leis (estaduais e municipais)")}{aba_("pendentes", nPendentes ? `Fontes pendentes (${nPendentes})` : "Fontes pendentes")}{aba_("testes", "Testes de acesso")}</div>
+              <div className="flex overflow-x-auto -mx-1 px-1">{aba_("leis", "Leis do Planalto")}{aba_("outras", "Outras leis (estaduais e municipais)")}{aba_("pendentes", nPendentes ? `Fontes pendentes (${nPendentes})` : "Fontes pendentes")}{aba_("testes", "Testes de acesso")}</div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-xs text-slate-700">
@@ -195,9 +195,9 @@ export const FontesOficiaisPanel: React.FC = () => {
 
               {aba === "leis" && (<>
                 <div onDragOver={(e) => { e.preventDefault(); setArrastando(true); }} onDragLeave={() => setArrastando(false)} onDrop={aoSoltar} onClick={() => entradaArquivos.current?.click()}
-                  className={`rounded-xl border-2 border-dashed p-5 text-center cursor-pointer transition ${arrastando ? "border-[#673de6] bg-[#ebe4ff]" : "border-slate-300 bg-slate-50 hover:bg-[#f5f1ff]"}`} data-testid="area-envio">
-                  <p className="text-sm font-bold">Arraste aqui os arquivos das leis (vários de uma vez) ou clique para escolher</p>
-                  <p className="text-[11px] text-slate-500 mt-1">Páginas do Planalto salvas no navegador (Ctrl+S › “Página da Web, somente HTML”), ou o PDF ou .txt da lei (para PDF/.txt, use “Reenviar arquivo” na linha da lei certa). O sistema reconhece cada lei pelo nome do arquivo ou pelo começo do texto.</p>
+                  className={`rounded-xl border-2 border-dashed px-4 py-3 text-center cursor-pointer transition ${arrastando ? "border-[#673de6] bg-[#ebe4ff]" : "border-slate-300 bg-slate-50 hover:bg-[#f5f1ff]"}`} data-testid="area-envio">
+                  <p className="text-[13px] font-bold">⬆ Arraste aqui os arquivos das leis (vários de uma vez) ou clique para escolher</p>
+                  <p className="hidden sm:block text-[11px] text-slate-500 mt-1">Páginas do Planalto salvas no navegador (Ctrl+S › “Página da Web, somente HTML”), ou o PDF ou .txt da lei (para PDF/.txt, use “Reenviar arquivo” na linha da lei certa). O sistema reconhece cada lei pelo nome do arquivo ou pelo começo do texto.</p>
                 </div>
                 <input ref={entradaArquivos} type="file" accept=".htm,.html,.pdf,.txt" multiple className="hidden" onChange={aoEscolher} data-testid="entrada-arquivos" />
 
@@ -222,16 +222,20 @@ export const FontesOficiaisPanel: React.FC = () => {
                   </div>
                 )}
 
+                <div className="sm:sticky sm:-top-4 sm:z-10 -mx-5 px-5 pt-3 pb-2 bg-white/95 backdrop-blur border-b border-slate-100 space-y-2" data-testid="barra-leis">
                 <div className="flex flex-wrap items-center gap-2">
                   {([["todas", `Todas (${contagem.total})`], ["pendentes", `Pendentes (${contagem.pendentes})`], ["prontas", `Prontas (${contagem.prontas})`], ["erro", `Com erro (${contagem.erro})`]] as const).map(([id, rot]) => (
                     <button key={id} onClick={() => setFiltro(id)} className={`px-3 py-1 rounded-full text-[11px] font-bold border cursor-pointer ${filtro === id ? "bg-[#673de6] text-white border-[#673de6]" : "bg-white text-slate-600 border-slate-300"}`}>{rot}</button>
                   ))}
                   <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar lei ou nome do arquivo" className="flex-1 min-w-[180px] border border-slate-300 rounded-lg px-2 py-1 bg-white" />
-                  <button className={`${btn} bg-white border border-slate-300 text-[#673de6]`} onClick={() => leis && copiar(leis.filter((l) => !pronta(l)), "endereço(s) das pendentes")}>Copiar endereços das pendentes</button>
-                  <button className={`${btn} bg-white border border-slate-300 text-[#673de6]`} onClick={() => leis && copiar(leis, "endereço(s)")}>Copiar todos</button>
+                  <button className="px-2 py-1 rounded-full text-[11px] font-semibold text-[#673de6] hover:bg-[#f5f1ff] cursor-pointer" onClick={() => leis && copiar(leis.filter((l) => !pronta(l)), "endereço(s) das pendentes")}>Copiar endereços das pendentes</button>
+                  <button className="px-2 py-1 rounded-full text-[11px] font-semibold text-[#673de6] hover:bg-[#f5f1ff] cursor-pointer" onClick={() => leis && copiar(leis, "endereço(s)")}>Copiar todos</button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
                   <button disabled={!extensaoPronta || !!viaExt || !leis || contagem.pendentes === 0} onClick={() => leis && buscarPelaExtensao(leis.filter((l) => !pronta(l)))} data-testid="buscar-pendentes-extensao" className={`${btn} bg-[#673de6] text-white`} title={extensaoPronta ? "A extensão busca no seu navegador as leis que faltam e entrega ao Studio" : `Precisa da extensão Conclusões Projudi 1.0.88 ou mais nova${versaoDaExtensao() ? ` (a sua é a ${versaoDaExtensao()})` : " instalada neste navegador"}`}>Buscar pendentes pelo navegador ({contagem.pendentes})</button>
                   <button disabled={!extensaoPronta || !!viaExt || !leis} onClick={() => leis && buscarPelaExtensao(leis)} data-testid="buscar-todas-extensao" className={`${btn} bg-white border border-[#673de6] text-[#673de6]`} title={extensaoPronta ? "A extensão busca no seu navegador todas as leis e entrega ao Studio" : "Precisa da extensão Conclusões Projudi 1.0.88 ou mais nova"}>Buscar todas pelo navegador</button>
                   <button disabled={!!atualizando || !!lote || !leis || !!(leis || []).some(bloqueioDoPlanalto)} onClick={atualizarTodas} className={`${btn} bg-white border border-slate-300 text-slate-600`} title={(leis || []).some(bloqueioDoPlanalto) ? "O Planalto está bloqueando o servidor: envie os arquivos salvos no seu navegador. (O botão “Atualizar pelo site” de cada lei continua disponível para testar de novo.)" : "Tenta baixar direto do site do Planalto (não funciona se o servidor estiver bloqueado)"}>{lote ? `Atualizando ${lote.feitas}/${lote.total}...` : (leis || []).some(bloqueioDoPlanalto) ? "Atualizar todas pelo site (bloqueado pelo Planalto)" : "Atualizar todas pelo site"}</button>
+                </div>
                 </div>
 
                 {viaExt && <p className="text-[#673de6] font-bold" data-testid="progresso-extensao">Buscando pelo navegador (extensão): {viaExt.feitas} de {viaExt.total} entregues… Acompanhe na aba aberta pela extensão (ela pede a permissão de acesso ao Planalto na primeira vez).</p>}
@@ -246,16 +250,16 @@ export const FontesOficiaisPanel: React.FC = () => {
                           <p className="text-[10px] text-slate-500 break-all">Salvar como <code className="bg-slate-100 px-1 rounded">{nomeArquivo(l)}</code> · <a href={l.url} target="_blank" rel="noopener noreferrer" className="text-[#673de6] underline">abrir no Planalto</a></p>
                         </div>
                         <div className="min-w-[190px] text-[11px]">
-                          {pronta(l) ? <span className="text-emerald-700">✅ {l.total} artigos · {l.revogados} revogados · {l.vetados} vetados<br />{new Date(l.baixadoEm!).toLocaleDateString("pt-BR")}</span> : <span className="text-slate-500">⏳ pendente</span>}
+                          {pronta(l) ? <span className="text-emerald-700">✅ {l.total} artigos · {l.revogados} revogados · {l.vetados} vetados<br /><span className="text-slate-400">atualizada em {new Date(l.baixadoEm!).toLocaleDateString("pt-BR")}</span></span> : <span className="inline-block rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">⏳ pendente</span>}
                           {l.erro && (bloqueioDoPlanalto(l)
-                            ? <span className="text-amber-700 block" data-testid="aviso-bloqueio-planalto">{pronta(l) ? "A cópia acima continua em uso. " : ""}O Planalto bloqueou a atualização automática pelo site. {pronta(l) ? "Reenvie o arquivo se a lei mudou." : "Envie o arquivo salvo no seu navegador."}</span>
-                            : <span className="text-red-700 block">Falha: {l.erro}</span>)}
+                            ? <span className="mt-1 block rounded-md bg-amber-50 border border-amber-200 text-amber-800 px-2 py-1 text-[10.5px] leading-snug" data-testid="aviso-bloqueio-planalto">{pronta(l) ? "A cópia acima continua em uso. " : ""}O Planalto bloqueou a atualização automática pelo site. {pronta(l) ? "Reenvie o arquivo se a lei mudou." : "Envie o arquivo salvo no seu navegador."}</span>
+                            : <span className="mt-1 block rounded-md bg-red-50 border border-red-200 text-red-800 px-2 py-1 text-[10.5px] leading-snug">Falha: {l.erro}</span>)}
                         </div>
                         <div className="flex items-center gap-1.5">
                           {pronta(l) && <BotaoVerLei caminho={`/api/fontes/leis/${encodeURIComponent(l.id)}/texto`} titulo={`Ver o texto guardado: ${l.nome}`} />}
                           <button onClick={() => escolherParaLei(l.id)} className={`${btn} bg-[#673de6] text-white`} title="Enviar o arquivo salvo desta lei (não precisa ter o nome certo)">{pronta(l) ? "Reenviar arquivo" : "Enviar arquivo"}</button>
-                          {(pronta(l) || !!l.erro) && <button disabled={!!atualizando || !!lote} onClick={() => void excluirLei(l)} className={`${btn} bg-white border border-red-300 text-red-700`} title="Excluir o texto guardado desta lei">Excluir</button>}
-                          <button disabled={!!atualizando || !!lote} onClick={() => atualizar(l.id)} className={`${btn} bg-white border border-slate-300 text-slate-600`}>{atualizando === l.id ? "..." : "Atualizar pelo site"}</button>
+                          {(pronta(l) || !!l.erro) && <button disabled={!!atualizando || !!lote} onClick={() => void excluirLei(l)} className="px-2.5 py-1.5 rounded-full text-xs font-semibold text-red-600 hover:bg-red-50 cursor-pointer disabled:opacity-50" title="Excluir o texto guardado desta lei">Excluir</button>}
+                          <button disabled={!!atualizando || !!lote} onClick={() => atualizar(l.id)} className="px-2.5 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-50">{atualizando === l.id ? "..." : "Atualizar pelo site"}</button>
                         </div>
                       </div>
                     ))}

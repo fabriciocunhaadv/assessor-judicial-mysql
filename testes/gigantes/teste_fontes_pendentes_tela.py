@@ -39,7 +39,7 @@ try:
             pg.route("**/api/fontes/pendentes**", rota)
             pg.goto(f"http://127.0.0.1:{PV}/testes/gigantes/fontes.html"); pg.get_by_text("Abrir central").first.click(); pg.wait_for_selector("text=Constituição Federal de 1988", timeout=60000)
             return pg, erros, chamadas, estado
-        pg, erros, ch, est = nova("1.0.89"); pg.get_by_role("button", name="Fontes pendentes", exact=False).first.click(); pg.wait_for_selector("[data-testid=aba-fontes-pendentes]")
+        pg, erros, ch, est = nova("1.0.89"); pg.get_by_role("button", name="Fontes pendentes (4)", exact=True).click(); pg.wait_for_selector("[data-testid=aba-fontes-pendentes]")
         assert pg.get_by_test_id("buscar-todas-pendentes").is_disabled() and pg.get_by_test_id("buscar-mun").is_disabled(), "extensão antiga: busca desativada"; pg.close()
         pg, erros, ch, est = nova("1.0.90")
         assert "Fontes pendentes (4)" in pg.inner_text("body"), "badge com a contagem de pendentes (mun, est, súmula, tratado)"
