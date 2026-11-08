@@ -3,7 +3,7 @@
 // vai para uma fila em memória e é gravado em lote; se o banco falhar, o evento é descartado (a fila tem limite).
 import express from "express";
 import crypto from "node:crypto";
-import { banco, garantirEsquema, definirAoErroBanco } from "./historyRoutes";
+import { banco, garantirEsquema, definirAoErroBanco, definirAoRecuperarBanco } from "./historyRoutes";
 import { autenticarSessao, mensagemDeErro } from "./authRoutes";
 import { mascararTexto, normalizarParaAssinatura, agruparEventos, gerarAlertas, semaforoDoTipo, nivelDeAviso, contarExpiracoes, RETENCAO_DIAS, type EventoSaudeBase, type SeveridadeSaude } from "../src/utils/saudeRegras";
 
@@ -169,6 +169,7 @@ let iniciada = false;
 export function iniciarSaudeDoSistema(): void {
   if (iniciada) return; iniciada = true;
   definirAoErroBanco((e, sql) => registrarSaude({ tipo: "banco", modulo: String(sql || "").trim().split(/\s+/).slice(0, 3).join(" ").slice(0, 60), severidade: "erro", mensagem: `${e?.code || "ERRO"}: ${e?.sqlMessage || e?.message || e}` }));
+  definirAoRecuperarBanco((ms) => registrarSaude({ tipo: "banco", modulo: "conexao", severidade: "info", mensagem: `MySQL voltou a responder (ficou instável por ${Math.max(1, Math.round(ms / 1000))}s)`, duracaoMs: ms }));
   process.on("unhandledRejection", (e: any) => registrarSaude({ tipo: "servidor", modulo: "promessa", severidade: "erro", mensagem: String(e?.message || e), detalhe: { pilha: String(e?.stack || "").split("\n").slice(0, 4).join(" | ") } }));
   process.on("uncaughtException", (e: any) => registrarSaude({ tipo: "servidor", modulo: "excecao", severidade: "erro", mensagem: String(e?.message || e), detalhe: { pilha: String(e?.stack || "").split("\n").slice(0, 4).join(" | ") } }));
   for (const s of ["SIGTERM", "SIGINT"] as const) process.once(s, () => { registrarSaude({ tipo: "sistema", modulo: "servidor", severidade: "info", mensagem: `Servidor encerrando (${s})` }); void descarregar().finally(() => process.exit(0)); });

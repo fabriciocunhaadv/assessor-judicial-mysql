@@ -2,6 +2,7 @@
 // Login próprio (server/authRoutes.ts): o navegador manda a sessão (Authorization: Bearer) e o servidor confere no banco.
 // Credenciais do banco SÓ em variáveis de ambiente (MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE).
 import express from "express";
+import { consultarComTentativa } from "./bancoResiliente";
 import mysql from "mysql2/promise";
 import { autenticarSessao, mensagemDeErro } from "./authRoutes";
 import { resumoLeve, digitosDoProcesso } from "../src/utils/historicoLeve";
@@ -15,17 +16,19 @@ const LISTA_PADRAO = 40, LISTA_MAXIMA = 300, COMPLETO_MAXIMO = 200;
 // ---------- banco ----------
 let pool: mysql.Pool | null = null;
 let esquemaPronto: Promise<void> | null = null;
-let aoErroBanco: ((e: any, sql: string) => void) | null = null;
+let aoErroBanco: ((e: any, sql: string) => void) | null = null, aoRecuperarBanco: ((instavelPorMs: number) => void) | null = null;
 /** Gancho do monitor (Saúde do sistema): chamado quando uma consulta ao banco falha. */
 export const definirAoErroBanco = (f: (e: any, sql: string) => void) => { aoErroBanco = f; };
+/** Gancho do monitor: o banco voltou a responder depois de falhar (com o tempo que ficou instável). */
+export const definirAoRecuperarBanco = (f: (instavelPorMs: number) => void) => { aoRecuperarBanco = f; };
 export const banco = (): mysql.Pool => {
   if (!pool) {
     const { MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE } = process.env;
     if (!MYSQL_USER || !MYSQL_DATABASE) throw new Error("Banco MySQL não configurado (defina MYSQL_USER, MYSQL_PASSWORD e MYSQL_DATABASE nas variáveis de ambiente).");
-    pool = mysql.createPool({ host: MYSQL_HOST || "localhost", port: Number(MYSQL_PORT) || 3306, user: MYSQL_USER, password: MYSQL_PASSWORD || "", database: MYSQL_DATABASE, connectionLimit: 8, charset: "utf8mb4" });
+    pool = mysql.createPool({ host: MYSQL_HOST || "localhost", port: Number(MYSQL_PORT) || 3306, user: MYSQL_USER, password: MYSQL_PASSWORD || "", database: MYSQL_DATABASE, connectionLimit: 8, charset: "utf8mb4", enableKeepAlive: true, keepAliveInitialDelay: 10000, connectTimeout: 20000 });      // conexão mantida viva e 20 s para conectar (o padrão era 10 s)
     const p: any = pool, original = p.query.bind(pool);
     p.__original = original;      // o monitor grava por aqui, sem passar pelo gancho abaixo
-    p.query = async (...a: any[]) => { try { return await original(...a); } catch (e) { try { aoErroBanco?.(e, typeof a[0] === "string" ? a[0] : String(a[0]?.sql || "")); } catch { /* monitor nunca derruba */ } throw e; } };
+    p.query = (...a: any[]) => consultarComTentativa(original, a, () => ({ aoErro: aoErroBanco || undefined, aoRecuperar: aoRecuperarBanco || undefined }));      // repete UMA vez em queda de conexão (nunca gravação que pode já ter ocorrido) e só avisa o monitor de erro de verdade
   }
   return pool;
 };
