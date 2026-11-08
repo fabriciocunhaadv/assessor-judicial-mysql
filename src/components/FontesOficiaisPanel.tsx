@@ -3,6 +3,7 @@ import { getApiHeaders } from "../utils/apiKeyManager";
 import { OutrasLeisTab } from "./OutrasLeisTab";
 import { BotaoVerLei } from "./VisualizadorLei";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
+import { extensaoSabeBuscarLeis, versaoDaExtensao, pedirLeisPelaExtensao, ligarEntregasDeLeis, type EntregaLei, type FimDaBusca } from "../utils/leisPelaExtensao";
 
 interface Resultado { id: string; grupo: string; nome: string; url: string; status: number; urlFinal?: string; tipo?: string; bytes?: number; ms?: number; amostra?: string; linhas?: number; erro?: string; bloqueio?: string; leitura?: { artigos: number; revogados: number; vetados: number } }
 interface Lei { id: string; nome: string; url: string; baixadoEm?: number; total?: number; revogados?: number; vetados?: number; erro?: string }
@@ -24,6 +25,8 @@ export const FontesOficiaisPanel: React.FC = () => {
   const [testando, setTestando] = useState(false), [res, setRes] = useState<Resultado[] | null>(null);
   const [consulta, setConsulta] = useState(""), [saidaConsulta, setSaidaConsulta] = useState<any>(null), [consultando, setConsultando] = useState(false);
   const entradaArquivos = useRef<HTMLInputElement>(null), alvoLei = useRef<string | null>(null);
+  const [viaExt, setViaExt] = useState<{ pedidoId: string; total: number; feitas: number } | null>(null);
+  const viaExtRef = useRef<typeof viaExt>(null); viaExtRef.current = viaExt;
 
   const chamar = async (caminho: string, metodo = "POST") => {
     const r = await fetch("/api/fontes" + caminho, { method: metodo, headers: getApiHeaders() });
@@ -64,6 +67,34 @@ export const FontesOficiaisPanel: React.FC = () => {
       setLeis((ls) => (ls || []).map((x) => (x.id === l.id ? l : x)));
       atualizar(l.erro ? { estado: "erro", msg: `${l.nome}: ${l.erro}` } : { estado: "ok", msg: `${l.nome}: ${l.total} artigos, ${l.revogados} revogados, ${l.vetados} vetados` });
     } catch (err: any) { atualizar({ estado: "erro", msg: err?.message || "falha ao enviar" }); }
+  };
+  // ---------- busca pelo navegador (extensão): o Planalto bloqueia o servidor, mas não o navegador do Super Admin ----------
+  const receberDaExtensao = async (e: EntregaLei) => {
+    const chave = `ext_${Date.now()}_${e.id}`;
+    const mudar = (p: Partial<ItemEnvio>) => setEnvios((v) => v.map((x) => (x.chave === chave ? { ...x, ...p } : x)));
+    setEnvios((v) => [...v, { chave, arquivo: new File([], e.nome), nome: `${e.nome} (pela extensão)`, estado: "enviando", msg: "Recebido do navegador, gravando..." }]);
+    try {
+      const r = await fetch(`/api/fontes/leis/importar-arquivo?id=${encodeURIComponent(e.id)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream", "x-nome-arquivo": encodeURIComponent(e.nome), "x-formato": "" }, body: e.bytes as any });
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok) mudar({ estado: "erro", msg: j.erro || `erro ${r.status}` });
+      else { const l: Lei = j.lei; setLeis((ls) => (ls || []).map((x) => (x.id === l.id ? l : x))); mudar(l.erro ? { estado: "erro", msg: `${l.nome}: ${l.erro}` } : { estado: "ok", msg: `${l.nome}: ${l.total} artigos, ${l.revogados} revogados, ${l.vetados} vetados` }); }
+    } catch (err: any) { mudar({ estado: "erro", msg: err?.message || "falha ao gravar" }); }
+    setViaExt((v) => (v ? { ...v, feitas: v.feitas + 1 } : v));
+  };
+  const terminouExtensao = (f: FimDaBusca) => {
+    setViaExt(null);
+    if (f.erro) setErro(`A extensão não conseguiu iniciar a busca: ${f.erro}`);
+    else if (f.bloqueios) setErro(`O Planalto bloqueou ${f.bloqueios} página(s) também no seu navegador. As demais foram gravadas; para as outras, use o envio dos arquivos salvos.`);
+    else if (f.falhas) setErro(`${f.falhas} lei(s) não puderam ser buscadas pela extensão (veja os envios acima).`);
+    void carregarLeis();
+  };
+  useEffect(() => ligarEntregasDeLeis(receberDaExtensao, terminouExtensao), []);      // eslint-disable-line react-hooks/exhaustive-deps
+  const extensaoPronta = extensaoSabeBuscarLeis();
+  const buscarPelaExtensao = (alvos: Lei[]) => {
+    if (!alvos.length) return; setErro("");
+    const pedidoId = pedirLeisPelaExtensao(alvos.map((l) => ({ id: l.id, nome: l.nome, url: l.url })));
+    setViaExt({ pedidoId, total: alvos.length, feitas: 0 });
+    setTimeout(() => { if (viaExtRef.current?.pedidoId === pedidoId && viaExtRef.current.feitas === 0) setErro("A extensão ainda não respondeu. Uma nova aba de “Atualizar leis pelo navegador” deve ter aberto; se não abriu, confira se a extensão está atualizada (1.0.88 ou mais nova)."); }, 15000);
   };
   const enviarArquivos = async (arquivos: File[], idForcado?: string) => {
     const validos = arquivos.filter((f) => /\.(html?|pdf|txt)$/i.test(f.name));
@@ -183,9 +214,12 @@ export const FontesOficiaisPanel: React.FC = () => {
                   <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar lei ou nome do arquivo" className="flex-1 min-w-[180px] border border-slate-300 rounded-lg px-2 py-1 bg-white" />
                   <button className={`${btn} bg-white border border-slate-300 text-[#673de6]`} onClick={() => leis && copiar(leis.filter((l) => !pronta(l)), "endereço(s) das pendentes")}>Copiar endereços das pendentes</button>
                   <button className={`${btn} bg-white border border-slate-300 text-[#673de6]`} onClick={() => leis && copiar(leis, "endereço(s)")}>Copiar todos</button>
+                  <button disabled={!extensaoPronta || !!viaExt || !leis || contagem.pendentes === 0} onClick={() => leis && buscarPelaExtensao(leis.filter((l) => !pronta(l)))} data-testid="buscar-pendentes-extensao" className={`${btn} bg-[#673de6] text-white`} title={extensaoPronta ? "A extensão busca no seu navegador as leis que faltam e entrega ao Studio" : `Precisa da extensão Conclusões Projudi 1.0.88 ou mais nova${versaoDaExtensao() ? ` (a sua é a ${versaoDaExtensao()})` : " instalada neste navegador"}`}>Buscar pendentes pelo navegador ({contagem.pendentes})</button>
+                  <button disabled={!extensaoPronta || !!viaExt || !leis} onClick={() => leis && buscarPelaExtensao(leis)} data-testid="buscar-todas-extensao" className={`${btn} bg-white border border-[#673de6] text-[#673de6]`} title={extensaoPronta ? "A extensão busca no seu navegador todas as leis e entrega ao Studio" : "Precisa da extensão Conclusões Projudi 1.0.88 ou mais nova"}>Buscar todas pelo navegador</button>
                   <button disabled={!!atualizando || !!lote || !leis || !!(leis || []).some(bloqueioDoPlanalto)} onClick={atualizarTodas} className={`${btn} bg-white border border-slate-300 text-slate-600`} title={(leis || []).some(bloqueioDoPlanalto) ? "O Planalto está bloqueando o servidor: envie os arquivos salvos no seu navegador. (O botão “Atualizar pelo site” de cada lei continua disponível para testar de novo.)" : "Tenta baixar direto do site do Planalto (não funciona se o servidor estiver bloqueado)"}>{lote ? `Atualizando ${lote.feitas}/${lote.total}...` : (leis || []).some(bloqueioDoPlanalto) ? "Atualizar todas pelo site (bloqueado pelo Planalto)" : "Atualizar todas pelo site"}</button>
                 </div>
 
+                {viaExt && <p className="text-[#673de6] font-bold" data-testid="progresso-extensao">Buscando pelo navegador (extensão): {viaExt.feitas} de {viaExt.total} entregues… Acompanhe na aba aberta pela extensão (ela pede a permissão de acesso ao Planalto na primeira vez).</p>}
                 {!leis && <p className="text-slate-500">Carregando a lista de leis...</p>}
                 {leis && (
                   <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
