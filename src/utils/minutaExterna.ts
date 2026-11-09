@@ -41,7 +41,7 @@ export function montarAnaliseDeMinutaExterna(d: MinutaExterna, ctx: { unitId: st
   };
   return {
     id, unitId: ctx.unitId, promptTitle: d.prompt || d.promptAgaia || "Agaia", promptCategory: "civel", promptScope: "judicial", date: Date.now(), processNumber: cnj,
-    result: { minute, auditAnalysis: { fatoVsProva: [], regularidadeDocumental: {}, competenciaCheck: {}, normasAplicadas: [], alertasProcessuais: [] }, modelUsed: "Agaia (TJGO)", origemExterna: { sistema: d.origem || "Agaia", promptAgaia: d.promptAgaia || "", aproximado: d.aproximado || "", semSecoes, htmlOriginal: d.minutaHtml || "" } } as any,
+    result: { minute, auditAnalysis: { fatoVsProva: [], regularidadeDocumental: {}, competenciaCheck: {}, normasAplicadas: [], alertasProcessuais: [] }, modelUsed: d.origem && !/agaia|colada/i.test(d.origem) ? `${d.origem} (IA externa)` : "Agaia (TJGO)", origemExterna: { sistema: d.origem || "Agaia", promptAgaia: d.promptAgaia || "", aproximado: d.aproximado || "", semSecoes, htmlOriginal: d.minutaHtml || "" } } as any,
     originalMinute: JSON.parse(JSON.stringify(minute)),
     processTextContext: `[Minuta gerada no ${d.origem || "Agaia"}${d.promptAgaia ? ` com o prompt “${d.promptAgaia}”` : ""}; os autos não passaram pelo Studio]`,
     createdBy: ctx.uid || "anonymous", creatorName: ctx.nome || "Assessor", creatorEmail: ctx.email || "", chatMessages: [],

@@ -912,10 +912,27 @@ export default function App() {
       let r: { ok: boolean; id?: string; erro?: string };
       try { r = await entradasExternas.receber(d); } catch (e: any) { r = { ok: false, erro: String(e?.message || e) }; }
       try { document.documentElement.dataset.agaiaCadastro = JSON.stringify({ reqId: d.reqId, guardada: r.ok, ...r }); } catch { /* sem dataset */ }
-      if (r.ok) toast(`Chegou do Agaia: ${d.processo}. Está sendo gravada no Histórico em segundo plano.`, { icon: "🤖", duration: 4000 });
+      if (r.ok) toast(`Chegou ${d.origem && !/agaia/i.test(d.origem) ? `de ${d.origem}` : "do Agaia"}: ${d.processo}. Está sendo gravada no Histórico em segundo plano.`, { icon: "🤖", duration: 4000 });
     };
     window.addEventListener("assessor:cadastrar-minuta", ouvir);
     return () => window.removeEventListener("assessor:cadastrar-minuta", ouvir);
+  }, []);
+
+  // Ponte com a extensão: para mandar a análise a uma IA externa (ChatGPT, Gemini, Claude…), a extensão pede o TEXTO do prompt da matéria (pelo título); a resposta volta num atributo da página
+  const promptsRef = useRef(prompts); promptsRef.current = prompts;
+  useEffect(() => {
+    const ouvir = () => {
+      const el = document.documentElement; let pedido: { reqId?: string; nome?: string } | null = null;
+      try { pedido = JSON.parse(el.dataset.projudiPromptPedido || "null"); } catch { pedido = null; }
+      if (!pedido?.reqId) return; delete el.dataset.projudiPromptPedido;
+      const norm = (s: string) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+      const lista = (promptsRef.current || []).filter((p: any) => !p.isDeleted && p.promptText), alvo = norm(pedido.nome || "");
+      const achado = lista.find((p: any) => norm(p.title) === alvo) || (alvo ? lista.filter((p: any) => norm(p.title).includes(alvo) || alvo.includes(norm(p.title))) : [])[0];
+      const resp = achado ? { reqId: pedido.reqId, ok: true, titulo: achado.title, texto: String(achado.promptText).slice(0, 60000), categoria: achado.category || "" } : { reqId: pedido.reqId, ok: false, erro: `não achei o prompt “${pedido.nome || ""}” no Studio`, opcoes: lista.map((p: any) => p.title).slice(0, 80) };
+      try { el.dataset.projudiPromptResposta = JSON.stringify(resp); window.dispatchEvent(new Event("projudi:prompt-resposta")); } catch { /* sem dataset */ }
+    };
+    window.addEventListener("projudi:pedir-prompt", ouvir);
+    return () => window.removeEventListener("projudi:pedir-prompt", ouvir);
   }, []);
 
   const montarConfigGigante = (): ConfigGigante => {

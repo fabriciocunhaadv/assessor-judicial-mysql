@@ -136,7 +136,8 @@ const chaveAutor = (it: any): string => {
 const origemExterna = (a: any): { rotulo: string; dica: string } | null => {
   const o = a?.result?.origemExterna; if (!o) return null;
   const colada = /colada/i.test(String(o.sistema || ""));
-  return { rotulo: colada ? "✍ Colada" : "🤖 Agaia", dica: colada ? "Minuta feita fora do Studio e colada à mão no Histórico" : `Analisado pelo Agaia${o.promptAgaia ? ` (prompt “${o.promptAgaia}”)` : ""}: a minuta não foi gerada pelo Studio` };
+  const sistema = String(o.sistema || "Agaia"), agaia = /agaia/i.test(sistema);
+  return { rotulo: colada ? "✍ Colada" : `🤖 ${sistema.slice(0, 18)}`, dica: colada ? "Minuta feita fora do Studio e colada à mão no Histórico" : agaia ? `Analisado pelo Agaia${o.promptAgaia ? ` (prompt “${o.promptAgaia}”)` : ""}: a minuta não foi gerada pelo Studio` : `Analisada em ${sistema} (IA externa), com o prompt do Studio${o.promptAgaia ? ` “${o.promptAgaia}”` : ""}: a minuta não foi gerada pelo Studio` };
 };
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
