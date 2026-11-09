@@ -24,11 +24,20 @@ export function reportarSaude(e: EventoCliente, sempre = false): void {
   } catch { /* nunca atrapalha */ }
 }
 
+/** Presença da extensão (uma vez por dia e por versão): a extensão deixa a versão em `data-assessor-extensao`; o painel Calibragem → Extensão mostra quem está desatualizado. */
+function informarPresenca(): void {
+  const versao = document.documentElement.dataset.assessorExtensao; if (!versao || !/^\d+(\.\d+)*$/.test(versao)) return;
+  const chave = `ext_presenca_${new Date().toISOString().slice(0, 10)}_${versao}`;
+  try { if (localStorage.getItem(chave)) return; localStorage.setItem(chave, "1"); } catch { /* sem armazenamento: informa mesmo assim (reportarSaude limita a 1 por hora) */ }
+  reportarSaude({ tipo: "extensao", modulo: "presenca", severidade: "info", mensagem: `[v${versao}] extensão ativa`, detalhe: { versao } }, true);
+}
+
 let ponteLigada = false;
 /** Ponte com a extensão: o script da extensão deixa os eventos em `data-projudi-saude-fila` e avisa com o evento `projudi:saude`; o app envia e confirma em `data-projudi-saude-ack`. */
 export function ligarPonteDaExtensao(): void {
   if (ponteLigada || typeof window === "undefined") return; ponteLigada = true;
   const recolher = () => {
+    try { informarPresenca(); } catch { /* ignora */ }
     try {
       const el = document.documentElement, bruto = el.dataset.projudiSaudeFila; if (!bruto) return;
       const lista: any[] = JSON.parse(bruto); if (!Array.isArray(lista) || !lista.length) return;

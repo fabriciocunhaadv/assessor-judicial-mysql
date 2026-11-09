@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
-import { Compass, HeartPulse, 
+import { Gauge, Compass, HeartPulse, 
   Server, 
   Building, 
   Users, 
@@ -67,6 +67,7 @@ import { Compass, HeartPulse,
 import { collection, getDocs, setDoc, doc, deleteDoc } from '../lib/docstore';
 import { MonitorErrosPanel } from './MonitorErrosPanel';
 import { MonitorOperacaoPanel } from './MonitorOperacaoPanel';
+import { CalibragemPanel } from './CalibragemPanel';
 import { CentralDecisoesPanel } from './CentralDecisoesPanel';
 import { SaudePanel } from './SaudePanel';
 import { UtilizacaoPanel } from './UtilizacaoPanel';
@@ -138,7 +139,7 @@ interface SuperAdminPanelProps {
 let limpezaSnapsFeita = false;
 export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClose, onOpenTicketsModal }) => {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'tenants' | 'users' | 'snapshots' | 'broadcast' | 'migration' | 'tokens' | 'erros' | 'operacao' | 'saude' | 'utilizacao' | 'central'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'users' | 'snapshots' | 'broadcast' | 'migration' | 'tokens' | 'erros' | 'operacao' | 'saude' | 'utilizacao' | 'central' | 'calibragem'>('tenants');
 
   // Snapshots & Healing State
   const [snapshots, setSnapshots] = useState<GlobalDatabaseSnapshot[]>([]);
@@ -1818,6 +1819,20 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
           </button>
 
           <button
+            onClick={() => setActiveTab('calibragem')}
+            data-testid="aba-calibragem"
+            title="Calibragem: como cada motor, gabinete e a extensão estão se comportando (só leitura)"
+            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
+              activeTab === 'calibragem'
+                ? 'border-amber-500 text-amber-300 bg-amber-500/10'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Gauge className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-300" />
+            <span>Calibragem</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('saude')}
             data-testid="aba-saude"
             title="Saúde do sistema: servidor, banco, IA, retomadas, extensão e atualizações, com alertas automáticos"
@@ -3479,6 +3494,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
           {activeTab === 'erros' && <MonitorErrosPanel />}
           {activeTab === 'operacao' && <MonitorOperacaoPanel />}
           {activeTab === 'central' && <CentralDecisoesPanel irParaAba={(a) => setActiveTab(a as any)} />}
+          {activeTab === 'calibragem' && <CalibragemPanel />}
           {activeTab === 'saude' && <SaudePanel />}
           {activeTab === 'utilizacao' && <UtilizacaoPanel />}
 

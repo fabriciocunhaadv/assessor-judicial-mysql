@@ -12,6 +12,7 @@ import { contarUsoNoServidor } from './server/usoNoServidor';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { fontesPendentesRouter, detectoresDosMotores } from './server/fontesPendentes';
+import { medirMotores, iniciarMetricasDosMotores } from './server/motoresMetricas';
 import { centralRouter } from './server/centralDecisoes';
 import { saudeRouter, medirPedidos, iniciarSaudeDoSistema, registrarSaude, contarIA } from './server/saudeSistema';
 import { pedidoClaude, gerarComClaude, MODELOS_CLAUDE } from './server/provedorClaude';
@@ -263,6 +264,7 @@ const PORT = Number(process.env.PORTA_TESTE) || 3000;      // PORTA_TESTE só pa
 app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
+app.use("/api", medirMotores);      // Calibragem: soma por hora e por motor (só mede, depois da resposta)
 app.use("/api", medirPedidos);      // Saúde do sistema: mede tempo e status de cada pedido
 app.use("/api", exigirSessao);      // tudo em /api exige login (exceto /api/auth e a informação /api/native-key-info)
 app.use(["/api/advogado-peticao/auto-extract-evidence", "/api/advogado-peticao/generate-full-petition"], contarUsoNoServidor((req: any) => isRequestNativeAllowed(req)));      // consumo da Petição 360° contado no servidor
@@ -6870,7 +6872,7 @@ if (process.env.NODE_ENV !== "production") {
     }).then(vite => {
         app.use(vite.middlewares);
         const server = app.listen(PORT, "0.0.0.0", () => {
-            iniciarRetencaoNoServidor(); iniciarSaudeDoSistema();
+            iniciarRetencaoNoServidor(); iniciarSaudeDoSistema(); iniciarMetricasDosMotores();
             console.log("Server running on http://localhost:" + PORT);
         });
         server.setTimeout(600000);
@@ -6884,7 +6886,7 @@ if (process.env.NODE_ENV !== "production") {
         res.sendFile(path.join(distPath, 'index.html'));
     });
     const server = app.listen(PORT, "0.0.0.0", () => {
-        iniciarRetencaoNoServidor(); iniciarSaudeDoSistema();
+        iniciarRetencaoNoServidor(); iniciarSaudeDoSistema(); iniciarMetricasDosMotores();
         console.log("Server running on port " + PORT);
     });
     server.setTimeout(600000);
