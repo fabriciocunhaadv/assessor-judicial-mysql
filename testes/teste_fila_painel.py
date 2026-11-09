@@ -32,7 +32,23 @@ def main():
                 else:
                     t = pg.inner_text("[data-testid=minha-fila]"); assert "Computador sem sinal" in t and "Nenhuma fila enviada ainda" in t, t[:300]
                 assert pg.locator("[data-testid=fila-avisos]").is_visible()
+                if not com:
+                    pg.locator("[data-testid=fila-instalar] summary").click(); pg.wait_for_selector("[data-testid=fila-qr] img", timeout=15000)
+                    src = pg.locator("[data-testid=fila-qr] img").get_attribute("src"); assert src.startswith("data:image/png"), src[:30]
+                    assert "QR" in pg.inner_text("[data-testid=fila-instalar]") and "?fila=1" in pg.inner_text("[data-testid=fila-qr]")
                 pg.wait_for_timeout(300); pg.screenshot(path=f"/tmp/claude-0/work/teste/fila_{nome}.png"); pg.close()
+            UAS = {"android": ("Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36", "Instalar no Android", "Instalar app", False),
+                   "iphone-safari": ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1", "Instalar no iPhone", "Tela de Início", False),
+                   "iphone-chrome": ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/124.0 Mobile/15E148 Safari/604.1", "Instalar no iPhone", "Safari", True)}
+            for nome, (ua, titulo, trecho, aviso) in UAS.items():
+                ctx = b.new_context(user_agent=ua, viewport={"width": 390, "height": 800}); pg = ctx.new_page(); pg.on("pageerror", lambda e: erros.append(str(e)[:200]))
+                pg.route("**/api/fila/minha", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(estado())))
+                pg.goto("http://127.0.0.1:5198/testes/gigantes/fila.html"); pg.wait_for_timeout(500)
+                pg.evaluate("window.dispatchEvent(new CustomEvent('fila:abrir'))"); pg.wait_for_selector("[data-testid=fila-instalar]")
+                t = pg.inner_text("[data-testid=fila-instalar]"); assert titulo in t and trecho in t, (nome, t[:300])
+                assert pg.locator("[data-testid=fila-aviso-navegador]").count() == (1 if aviso else 0), nome
+                assert pg.locator("[data-testid=fila-qr]").count() == 0, "celular não mostra QR"
+                pg.screenshot(path=f"/tmp/claude-0/work/teste/fila_{nome}.png"); ctx.close()
             b.close()
         assert not erros, erros[:3]; print("OK tela Minha fila")
     finally:

@@ -3,6 +3,12 @@ import { toast } from "react-hot-toast";
 import { Smartphone, X, RefreshCw, Loader2, BellRing, BellOff, Laptop } from "lucide-react";
 import { lerMinhaFila, salvarPrefs, enviarAvisoDeTeste, ativarAvisos, desativarAvisos, avisosAtivosNesteAparelho, suportaAvisos, registrarServiceWorker } from "../utils/filaCliente";
 import type { ResumoFila } from "../utils/filaRegras";
+import { instrucoesDeInstalacao, enderecoDoApp } from "../utils/instalacaoApp";
+
+// o Chrome do Android avisa que o app pode ser instalado (uma vez, cedo): guardamos para oferecer o botão “Instalar agora”
+let pedidoInstalar: any = null;
+if (typeof window !== "undefined") window.addEventListener("beforeinstallprompt", (ev: any) => { ev.preventDefault(); pedidoInstalar = ev; });
+const jaInstalado = () => { try { return window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true; } catch { return false; } };
 
 interface Estado { resumo: ResumoFila | null; ultimoSinal: number; online: boolean; prefs: Record<string, boolean>; aparelhos: number; minutosSemSinal: number }
 const AVISOS = [{ id: "concluida", rotulo: "Fila concluída" }, { id: "erro", rotulo: "Um processo parou com erro" }, { id: "pausa", rotulo: "A IA pediu login ou verificação" }, { id: "parou", rotulo: "O computador parou de responder (15 min sem sinal)" }];
@@ -11,7 +17,7 @@ const quando = (t: number) => { if (!t) return "nunca"; const m = Math.round((Da
 /** "Minha fila": mostra a fila da extensão (também no celular), se o computador está dando sinal e liga os avisos deste aparelho. Abre pelo menu, por `fila:abrir` ou por /?fila=1. */
 export function MinhaFilaModal() {
   const [aberto, setAberto] = useState(false), [e, setE] = useState<Estado | null>(null), [erro, setErro] = useState(""), [carregando, setCarregando] = useState(false);
-  const [avisosAqui, setAvisosAqui] = useState(false), [ocupado, setOcupado] = useState(false);
+  const [avisosAqui, setAvisosAqui] = useState(false), [ocupado, setOcupado] = useState(false), [qr, setQr] = useState("");
   const carregar = useCallback(async () => {
     setCarregando(true);
     try { setE(await lerMinhaFila()); setErro(""); setAvisosAqui(await avisosAtivosNesteAparelho()); } catch (x: any) { setErro(String(x?.message || x)); } finally { setCarregando(false); }
@@ -26,7 +32,13 @@ export function MinhaFilaModal() {
     return () => { window.removeEventListener("fila:abrir", abrir); navigator.serviceWorker?.removeEventListener("message", msg); };
   }, []);
   useEffect(() => { if (!aberto) return; void carregar(); const t = setInterval(() => { if (!document.hidden) void carregar(); }, 15_000); return () => clearInterval(t); }, [aberto, carregar]);
+  useEffect(() => {      // QR code do endereço do app (para abrir no celular a partir do computador)
+    if (!aberto || qr) return; let vivo = true;
+    import("qrcode").then((m) => (m.default || (m as any)).toDataURL(enderecoDoApp(location.origin), { margin: 1, width: 192 })).then((u: string) => { if (vivo) setQr(u); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [aberto, qr]);
   if (!aberto) return null;
+  const inst = instrucoesDeInstalacao(navigator.userAgent, jaInstalado(), (navigator as any).platform || "", navigator.maxTouchPoints || 0);
 
   const r = e?.resumo, feitos = r ? r.concluidos : 0, pct = r && r.total ? Math.round((r.concluidos / r.total) * 100) : 0;
   const alternarAvisos = async () => { setOcupado(true); try { if (avisosAqui) { await desativarAvisos(); toast.success("Avisos desligados neste aparelho."); } else { await ativarAvisos(); toast.success("Avisos ligados neste aparelho."); } await carregar(); } catch (x: any) { toast.error(String(x?.message || x)); } finally { setOcupado(false); } };
@@ -56,6 +68,20 @@ export function MinhaFilaModal() {
                 {r.ultimoErro && <div className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-lg p-2">Último erro: {r.ultimoErro}</div>}
               </div>
             )}
+            <details className="rounded-2xl border border-slate-200 p-3 text-sm" open={!inst.instalado && inst.aparelho !== "computador"} data-testid="fila-instalar">
+              <summary className="font-bold cursor-pointer flex items-center gap-2">📲 {inst.titulo}</summary>
+              <div className="mt-2 space-y-2">
+                {inst.avisoNavegador && <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2" data-testid="fila-aviso-navegador">{inst.avisoNavegador}</div>}
+                <div className="flex gap-3 items-start flex-wrap">
+                  <ol className="list-decimal pl-5 space-y-1 text-xs text-slate-700 flex-1 min-w-[200px]">{inst.passos.map((p, i) => <li key={i}>{p}</li>)}</ol>
+                  {!inst.instalado && inst.aparelho === "computador" && (
+                    <div className="text-center" data-testid="fila-qr">{qr ? <img src={qr} alt="QR code para abrir o Studio no celular" className="w-40 h-40 rounded-lg border border-slate-200" /> : <div className="w-40 h-40 rounded-lg bg-slate-100 flex items-center justify-center text-xs text-slate-500">Gerando…</div>}
+                      <div className="text-[10px] text-slate-500 mt-1 break-all max-w-[10rem]">{enderecoDoApp(location.origin)}</div></div>
+                  )}
+                </div>
+                {!inst.instalado && inst.aparelho === "android" && pedidoInstalar && <button type="button" onClick={async () => { try { await pedidoInstalar.prompt(); } catch { /* cancelado */ } pedidoInstalar = null; }} className="px-3 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600" data-testid="fila-instalar-agora">Instalar agora</button>}
+              </div>
+            </details>
             <div className="rounded-2xl border border-slate-200 p-3 space-y-2" data-testid="fila-avisos">
               <div className="flex items-center gap-2 font-bold text-sm">{avisosAqui ? <BellRing className="w-4 h-4 text-emerald-600" /> : <BellOff className="w-4 h-4 text-slate-500" />} Avisos neste aparelho</div>
               {!suportaAvisos() ? <p className="text-xs text-slate-600">Este navegador não suporta avisos. No iPhone, abra o menu de compartilhar e escolha “Adicionar à Tela de Início”; depois abra o app por lá e volte aqui.</p> : (
