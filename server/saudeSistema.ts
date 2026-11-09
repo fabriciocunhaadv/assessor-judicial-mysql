@@ -26,6 +26,12 @@ const garantir = () => (esquema ||= (async () => {
 })().catch((e) => { esquema = null; throw e; }));
 
 /** Consulta SEM passar pelo gancho de erro do banco (senão uma falha do banco geraria evento, que falharia de novo, em laço). */
+export const consultaSaude = (sql: string, params: any[] = []) => consulta(sql, params);
+export const garantirSaude = () => garantir();
+export const esvaziarFilaSaude = () => descarregar();
+const limpadores: ((limite: number) => Promise<number>)[] = [];
+/** Outros módulos registram aqui o que também deve ser limpo na rotina de 30 dias. */
+export const aoLimparSaude = (f: (limite: number) => Promise<number>) => { limpadores.push(f); };
 const consulta = async (sql: string, params: any[] = []): Promise<any> => { const b: any = banco(); return (b.__original ? b.__original(sql, params) : b.query(sql, params)); };
 
 /** Registra um evento (síncrono e à prova de falhas). */
@@ -84,14 +90,15 @@ function despejarMetricaDaHora(): void {
 }
 
 // ---------- limpeza automática (30 dias) ----------
-export async function limparSaude(): Promise<{ eventos: number; erros: number; operacoes: number }> {
+export async function limparSaude(): Promise<{ eventos: number; erros: number; operacoes: number; extras: number }> {
   await garantir();
   const limite = Date.now() - RETENCAO_DIAS * DIA;
   const [r1]: any = await consulta("DELETE FROM saude_eventos WHERE ts < ?", [limite]);
   // monitores antigos (erros da tela e operações) ficam na tabela docs: mesma regra de 30 dias; erro "aceito" (correção ainda pendente) não é apagado
   const [r2]: any = await consulta("DELETE FROM docs WHERE col REGEXP '^gabinetes/[^/]+/error_events$' AND updated_at < ? AND data NOT LIKE '%\"situacao\":\"aceito\"%'", [limite]);
   const [r3]: any = await consulta("DELETE FROM docs WHERE col REGEXP '^gabinetes/[^/]+/ops_events$' AND updated_at < ?", [limite]);
-  const out = { eventos: r1?.affectedRows || 0, erros: r2?.affectedRows || 0, operacoes: r3?.affectedRows || 0 };
+  let extras = 0; for (const f of limpadores) { try { extras += await f(limite); } catch { /* um limpador com falha não impede os outros */ } }
+  const out = { eventos: r1?.affectedRows || 0, erros: r2?.affectedRows || 0, operacoes: r3?.affectedRows || 0, extras };
   await consulta("INSERT INTO docs (col, id, data, updated_at) VALUES ('settings','saude_limpeza',?,?) ON DUPLICATE KEY UPDATE data=VALUES(data), updated_at=VALUES(updated_at)", [JSON.stringify({ ts: Date.now(), ...out }), Date.now()]);
   return out;
 }

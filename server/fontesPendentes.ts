@@ -93,6 +93,8 @@ export const detectoresDosMotores: [string, string, express.RequestHandler][] = 
 ];
 
 // ---------- rotas (Super Admin) ----------
+/** Quantas fontes aguardam decisão (para a Central de decisões). */
+export const contarFontesPendentes = async (): Promise<number> => (await lerTodos()).filter((f) => f.status === "pendente").length;
 export const fontesPendentesRouter = express.Router();
 const soSuper = (req: any, res: express.Response): boolean => { if (!req.usuarioSessao?.superAdmin) { res.status(403).json({ erro: "somente o super administrador" }); return false; } return true; };
 const corpoBruto = express.raw({ type: () => true, limit: "30mb" });
