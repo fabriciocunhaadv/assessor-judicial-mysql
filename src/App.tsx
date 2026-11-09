@@ -1,6 +1,6 @@
 import { guardarRequisicao, reenviarRequisicao } from "./utils/reenvioPendente";
 import { reportarSaude, ligarPonteDaExtensao } from "./utils/saudeCliente";
-import { ligarPonteDaFila } from "./utils/filaCliente";
+import { ligarPonteDaFila, ligarAvisosLocais } from "./utils/filaCliente";
 import { MinhaFilaModal } from "./components/MinhaFilaModal";
 import { NovoChamadoCelular } from "./components/NovoChamadoCelular";
 import { salvarPendente, lerPendente, limparPendente, consultarResultado, lerCorpo, lerPendenteModulo, limparPendenteModulo, salvarPendenteModulo, ativosNestaPagina, type ModuloPendente } from "./utils/analisePendente";
@@ -1642,7 +1642,7 @@ export default function App() {
 
   ocupadoRef.current = isLoading || isProceedingToStage2;
   // Busca no servidor o resultado de uma análise que ficou pendente (página fechada pelo celular, conexão perdida...) e o mostra como se tivesse acabado de chegar.
-  useEffect(() => { ligarPonteDaExtensao(); ligarPonteDaFila(); }, []);
+  useEffect(() => { ligarPonteDaExtensao(); ligarPonteDaFila(); ligarAvisosLocais(); }, []);
   const recuperarPendente = async (forcar = false) => {
     const pend = lerPendente();
     if (!pend || recuperandoRef.current || (!forcar && ocupadoRef.current)) return;

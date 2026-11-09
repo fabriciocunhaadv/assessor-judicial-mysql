@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { Smartphone, X, RefreshCw, Loader2, BellRing, BellOff, Laptop } from "lucide-react";
-import { lerMinhaFila, salvarPrefs, enviarAvisoDeTeste, enviarComando, ativarAvisos, desativarAvisos, avisosAtivosNesteAparelho, suportaAvisos, registrarServiceWorker } from "../utils/filaCliente";
+import { lerMinhaFila, salvarPrefs, enviarAvisoDeTeste, enviarComando, ativarAvisos, desativarAvisos, avisosAtivosNesteAparelho, explicarErroDeAvisos, diagnosticoDeAvisos, avisosLocaisAtivos, ativarAvisosLocais, desativarAvisosLocais, suportaAvisos, registrarServiceWorker } from "../utils/filaCliente";
 import { ROTULO_COMANDO, COMANDOS, type ResumoFila, type TipoComando } from "../utils/filaRegras";
 import { instrucoesDeInstalacao, enderecoDoApp } from "../utils/instalacaoApp";
 
@@ -17,7 +17,7 @@ const quando = (t: number) => { if (!t) return "nunca"; const m = Math.round((Da
 /** "Minha fila": mostra a fila da extensão (também no celular), se o computador está dando sinal e liga os avisos deste aparelho. Abre pelo menu, por `fila:abrir` ou por /?fila=1. */
 export function MinhaFilaModal() {
   const [aberto, setAberto] = useState(false), [e, setE] = useState<Estado | null>(null), [erro, setErro] = useState(""), [carregando, setCarregando] = useState(false);
-  const [avisosAqui, setAvisosAqui] = useState(false), [ocupado, setOcupado] = useState(false), [qr, setQr] = useState("");
+  const [avisosAqui, setAvisosAqui] = useState(false), [ocupado, setOcupado] = useState(false), [qr, setQr] = useState(""), [falhaAvisos, setFalhaAvisos] = useState(""), [diag, setDiag] = useState(""), [locais, setLocais] = useState(avisosLocaisAtivos());
   const carregar = useCallback(async () => {
     setCarregando(true);
     try { setE(await lerMinhaFila()); setErro(""); setAvisosAqui(await avisosAtivosNesteAparelho()); } catch (x: any) { setErro(String(x?.message || x)); } finally { setCarregando(false); }
@@ -45,7 +45,16 @@ export function MinhaFilaModal() {
     try { const j = await enviarComando(tipo); toast.success(j.repetido ? "Esse comando já foi enviado. Aguarde o computador." : "Comando enviado. O computador executa em até 15 segundos."); void carregar(); setTimeout(carregar, 8000); setTimeout(carregar, 20000); }
     catch (x: any) { toast.error(String(x?.message || x)); }
   };
-  const alternarAvisos = async () => { setOcupado(true); try { if (avisosAqui) { await desativarAvisos(); toast.success("Avisos desligados neste aparelho."); } else { await ativarAvisos(); toast.success("Avisos ligados neste aparelho."); } await carregar(); } catch (x: any) { toast.error(String(x?.message || x)); } finally { setOcupado(false); } };
+  const alternarAvisos = async () => {
+    setOcupado(true); setFalhaAvisos("");
+    try { if (avisosAqui) { await desativarAvisos(); toast.success("Avisos desligados neste aparelho."); } else { await ativarAvisos(); desativarAvisosLocais(); setLocais(false); toast.success("Avisos ligados neste aparelho."); } await carregar(); }
+    catch (x: any) { const msg = explicarErroDeAvisos(x); setFalhaAvisos(msg); setDiag(await diagnosticoDeAvisos()); toast.error(msg.length > 90 ? msg.slice(0, 90) + "…" : msg); }
+    finally { setOcupado(false); }
+  };
+  const alternarLocais = async () => {
+    try { if (locais) { desativarAvisosLocais(); setLocais(false); toast.success("Avisos com o app aberto desligados."); } else { await ativarAvisosLocais(); setLocais(true); setFalhaAvisos(""); toast.success("Pronto: com o app aberto, você recebe a notificação."); } }
+    catch (x: any) { toast.error(explicarErroDeAvisos(x)); }
+  };
   const mudarPref = async (id: string, v: boolean) => { if (!e) return; const prefs = { ...e.prefs, [id]: v }; setE({ ...e, prefs }); try { await salvarPrefs(prefs); } catch (x: any) { toast.error(String(x?.message || x)); void carregar(); } };
   const testar = async () => { try { const j = await enviarAvisoDeTeste(); toast[j.enviados ? "success" : "error"](j.enviados ? "Aviso enviado. Olhe o celular." : "Nenhum aparelho recebeu. Ligue os avisos neste aparelho primeiro."); } catch (x: any) { toast.error(String(x?.message || x)); } };
 
@@ -103,6 +112,14 @@ export function MinhaFilaModal() {
               {!suportaAvisos() ? <p className="text-xs text-slate-600">Este navegador não suporta avisos. No iPhone, abra o menu de compartilhar e escolha “Adicionar à Tela de Início”; depois abra o app por lá e volte aqui.</p> : (
                 <div className="flex gap-2 flex-wrap"><button type="button" disabled={ocupado} onClick={alternarAvisos} className={`px-3 py-2 rounded-xl text-xs font-bold text-white ${avisosAqui ? "bg-slate-600" : "bg-indigo-600"}`}>{ocupado ? "Aguarde…" : avisosAqui ? "Desligar avisos" : "Ligar avisos neste aparelho"}</button>
                   {avisosAqui && <button type="button" onClick={testar} className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 border border-slate-300">Enviar aviso de teste</button>}</div>
+              )}
+              {(falhaAvisos || locais) && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 space-y-1.5 text-xs" data-testid="fila-plano-b">
+                  {falhaAvisos && <p className="text-amber-900" data-testid="fila-falha-avisos">{falhaAvisos}</p>}
+                  {diag && <p className="text-[10px] text-slate-500 break-words">Diagnóstico: {diag}</p>}
+                  <button type="button" onClick={alternarLocais} className={`px-3 py-2 rounded-xl text-xs font-bold text-white ${locais ? "bg-slate-600" : "bg-amber-600"}`} data-testid="fila-avisos-locais">{locais ? "Desligar “avisar só com o app aberto”" : "Avisar só com o app aberto"}</button>
+                  <p className="text-[11px] text-slate-600">{locais ? "Ligado: o aparelho confere a fila a cada 30 segundos e avisa pela notificação, enquanto o app estiver aberto (o Android pode parar o app em segundo plano depois de um tempo)." : "Não depende do serviço de avisos do Google, mas só avisa enquanto o app estiver aberto."}</p>
+                </div>
               )}
               <div className="space-y-1">{AVISOS.map((a) => <label key={a.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={e.prefs[a.id] !== false} onChange={(ev) => mudarPref(a.id, ev.target.checked)} /> {a.rotulo}</label>)}</div>
               <button type="button" onClick={() => { setAberto(false); window.dispatchEvent(new CustomEvent("chamado:abrir")); }} className="w-full py-2.5 rounded-xl border border-rose-300 bg-rose-50 text-rose-800 text-xs font-bold" data-testid="fila-abrir-chamado">🆘 Algo deu errado? Abrir chamado (com print)</button>

@@ -54,6 +54,21 @@ def main():
                 else:
                     assert all(pg.locator(f"[data-testid=comando-{c}]").is_disabled() for c in ("pausar", "retomar", "repetir_erros")) and "sem sinal" in pg.inner_text("[data-testid=fila-comandos]")
                 pg.close()
+            # o serviço de avisos do Google falha ("push service error"): o app tenta de novo, explica o que fazer e oferece o plano B (avisar só com o app aberto)
+            ctx = b.new_context(viewport={"width": 390, "height": 800}); pg = ctx.new_page(); pg.on("pageerror", lambda e: erros.append(str(e)[:200]))
+            pg.add_init_script("""() => {}""")
+            pg.add_init_script("""Notification.requestPermission = async () => 'granted'; Object.defineProperty(Notification, 'permission', { get: () => 'granted' });
+              window.__tentativas = 0; if (window.PushManager) PushManager.prototype.subscribe = function () { window.__tentativas++; return Promise.reject(new Error('Registration failed - push service error')); };""")
+            pg.route("**/api/fila/minha", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(estado())))
+            pg.route("**/api/fila/push/chave", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps({"chave": "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U"})))
+            pg.goto("http://127.0.0.1:5198/testes/gigantes/fila.html"); pg.wait_for_timeout(800)
+            pg.evaluate("window.dispatchEvent(new CustomEvent('fila:abrir'))"); pg.wait_for_selector("[data-testid=fila-avisos]")
+            pg.get_by_role("button", name="Ligar avisos neste aparelho").click(); pg.wait_for_selector("[data-testid=fila-falha-avisos]", timeout=30000)
+            t = pg.inner_text("[data-testid=fila-plano-b]"); assert "serviço de avisos do Google" in t and "Wi-Fi" in t and "Diagnóstico" in t, t[:400]
+            assert pg.evaluate("window.__tentativas") == 3, "tenta 3 vezes antes de desistir"
+            pg.click("[data-testid=fila-avisos-locais]"); pg.wait_for_timeout(500)
+            assert pg.evaluate("localStorage.getItem('fila_avisos_locais')") == "1" and "Ligado" in pg.inner_text("[data-testid=fila-plano-b]"), "plano B liga"
+            pg.screenshot(path="/tmp/claude-0/work/teste/fila_planob.png"); ctx.close()
             UAS = {"android": ("Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36", "Instalar no Android", "Instalar app", False),
                    "iphone-safari": ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1", "Instalar no iPhone", "Tela de Início", False),
                    "iphone-chrome": ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/124.0 Mobile/15E148 Safari/604.1", "Instalar no iPhone", "Safari", True)}
