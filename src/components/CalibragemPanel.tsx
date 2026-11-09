@@ -32,7 +32,7 @@ function Motores() {
       {erro && <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg p-2" data-testid="calib-erro">Não consegui carregar: {erro}</div>}
       {d?.avisos?.map((a) => <Aviso key={a}>{a}</Aviso>)}
       <div className="grid gap-3 md:grid-cols-2">
-        {d?.motores.map((m) => {
+        {(d?.motores || []).map((m) => {
           const max = Math.max(1, ...m.porDia.map((x) => x.n));
           return (
             <div key={m.id} className="border border-slate-700 rounded-xl bg-slate-800/40 p-3 space-y-2" data-testid="calib-motor">
@@ -66,9 +66,9 @@ function Gabinetes() {
         <button type="button" onClick={carregar} className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold text-slate-200 flex items-center gap-1.5">{carregando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Atualizar</button></div>
       {erro && <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg p-2" data-testid="calib-erro">Não consegui carregar: {erro}</div>}
       {d?.avisos?.map((a) => <Aviso key={a}>{a}</Aviso>)}
-      {d && !d.gabinetes.length && <p className="text-xs text-slate-400">Nenhum gabinete encontrado.</p>}
+      {d && !(d.gabinetes || []).length && <p className="text-xs text-slate-400">Nenhum gabinete encontrado.</p>}
       <div className="grid gap-3 md:grid-cols-2">
-        {d?.gabinetes.map((g) => (
+        {(d?.gabinetes || []).map((g) => (
           <div key={g.id} className="border border-slate-700 rounded-xl bg-slate-800/40 p-3 space-y-1.5" data-testid="calib-gabinete">
             <div className="flex items-center gap-2"><Building2 className="w-4 h-4 text-emerald-300" /><b className="text-sm text-white break-words">{g.nome}</b></div>
             <div className="text-xs text-slate-300">{g.usuarios.total} usuário(s) · {g.usuarios.ativos30d} ativo(s) em 30 dias · {g.minutasSemana} minuta(s)/semana</div>
@@ -85,7 +85,7 @@ function Gabinetes() {
 function Extensao() {
   const { d, erro, carregando, carregar } = useRota<{ versoes: { atual: string; usuarios: UsuarioExt[]; porVersao: { versao: string; usuarios: number }[] }; iaExterna: ResumoIA[]; erros: any[]; totalEventos: number }>("/api/central/extensao?dias=30");
   const NOME_IA: Record<string, string> = { chatgpt: "ChatGPT", gemini: "Gemini", claude: "Claude", jusbrasil: "IA do Jusbrasil" };
-  const atras = d?.versoes.usuarios.filter((u) => u.desatualizado) || [];
+  const vs = d?.versoes || { atual: "", usuarios: [], porVersao: [] }, atras = (vs.usuarios || []).filter((u) => u.desatualizado), ia = d?.iaExterna || [], errosExt = d?.erros || [];
   return (
     <div className="space-y-4" data-testid="calib-extensao">
       <div className="flex items-center gap-2"><p className="text-xs text-slate-400 flex-1">O que a extensão informa (últimos 30 dias): a versão de cada usuário, os erros e o sucesso das IAs externas. A versão aparece quando a pessoa abre o Studio com a extensão instalada.</p>
@@ -94,17 +94,17 @@ function Extensao() {
       {d && (
         <>
           <section className="border border-slate-700 rounded-xl bg-slate-800/40 p-3 space-y-2" data-testid="ext-versoes">
-            <h4 className="text-sm font-black text-white">Versões {d.versoes.atual && <span className="text-slate-400 font-normal">(mais nova vista: {d.versoes.atual})</span>}</h4>
-            {!d.versoes.usuarios.length ? <p className="text-xs text-slate-500">Nenhuma versão informada ainda. Elas aparecem depois que os usuários atualizarem a extensão para a versão que informa a presença.</p> : (
+            <h4 className="text-sm font-black text-white">Versões {vs.atual && <span className="text-slate-400 font-normal">(mais nova vista: {vs.atual})</span>}</h4>
+            {!(vs.usuarios || []).length ? <p className="text-xs text-slate-500">Nenhuma versão informada ainda. Elas aparecem depois que os usuários atualizarem a extensão para a versão que informa a presença.</p> : (
               <>
-                <div className="flex gap-2 flex-wrap">{d.versoes.porVersao.map((v) => <span key={v.versao} className="text-xs px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-200">v{v.versao}: {v.usuarios} usuário(s)</span>)}</div>
+                <div className="flex gap-2 flex-wrap">{(vs.porVersao || []).map((v) => <span key={v.versao} className="text-xs px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-200">v{v.versao}: {v.usuarios} usuário(s)</span>)}</div>
                 {atras.length > 0 && <Aviso>{atras.length} usuário(s) com versão antiga: {atras.map((u) => `${u.email} (v${u.versao})`).join(", ")}</Aviso>}
               </>
             )}
           </section>
           <section className="border border-slate-700 rounded-xl bg-slate-800/40 p-3 space-y-2" data-testid="ext-ia">
             <h4 className="text-sm font-black text-white flex items-center gap-2"><Puzzle className="w-4 h-4 text-violet-300" /> IAs externas (ChatGPT, Gemini, Claude, Jusbrasil)</h4>
-            {!d.iaExterna.length ? <p className="text-xs text-slate-500">Nenhum uso informado ainda.</p> : <div className="grid gap-2 sm:grid-cols-2">{d.iaExterna.map((i) => (
+            {!ia.length ? <p className="text-xs text-slate-500">Nenhum uso informado ainda.</p> : <div className="grid gap-2 sm:grid-cols-2">{ia.map((i) => (
               <div key={i.ia} className="border border-slate-700 rounded-lg p-2 bg-slate-900/60" data-testid="ext-ia-linha">
                 <div className="flex items-center gap-2"><b className="text-sm text-white">{NOME_IA[i.ia] || i.ia}</b><span className={`ml-auto text-sm font-black ${i.taxaSucesso < 0.7 ? "text-rose-300" : "text-emerald-300"}`}>{pct(i.taxaSucesso)}</span></div>
                 <div className="text-xs text-slate-400">{i.ok} com sucesso · {i.falhas} falha(s) · último uso {quando(i.ultimoUso)}</div>
@@ -114,7 +114,7 @@ function Extensao() {
           </section>
           <section className="border border-slate-700 rounded-xl bg-slate-800/40 p-3 space-y-1" data-testid="ext-erros">
             <h4 className="text-sm font-black text-white">Erros reportados pela extensão</h4>
-            {!d.erros.length ? <p className="text-xs text-slate-500">Nenhum erro nos últimos 30 dias.</p> : d.erros.map((g) => <div key={g.assinatura} className="text-xs text-slate-300 break-words"><span className={g.severidade === "erro" ? "text-rose-300 font-bold" : "text-amber-300 font-bold"}>{g.severidade}</span> · {g.mensagem} <span className="text-slate-500">({g.total}×, {g.usuarios} usuário(s), último {quando(g.ultimo)})</span></div>)}
+            {!errosExt.length ? <p className="text-xs text-slate-500">Nenhum erro nos últimos 30 dias.</p> : errosExt.map((g) => <div key={g.assinatura} className="text-xs text-slate-300 break-words"><span className={g.severidade === "erro" ? "text-rose-300 font-bold" : "text-amber-300 font-bold"}>{g.severidade}</span> · {g.mensagem} <span className="text-slate-500">({g.total}×, {g.usuarios} usuário(s), último {quando(g.ultimo)})</span></div>)}
           </section>
         </>
       )}

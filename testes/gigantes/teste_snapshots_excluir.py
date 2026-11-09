@@ -52,9 +52,15 @@ def main():
             pg.locator("button[title='Atualizar lista']").click(); pg.wait_for_timeout(1000)
             pg.locator("button[title='Excluir este snapshot']").first.click(); pg.locator("[data-testid=btn-confirmar-exclusao]").click(); pg.wait_for_timeout(900)
             print("6) lixeira individual:", n()); assert n() == 2
-            vis = pg.evaluate("() => { const t = document.querySelector('[data-testid=abas-super-admin]'); const r = t.getBoundingClientRect(); return { linhas: new Set([...t.querySelectorAll('button')].map(x => Math.round(x.getBoundingClientRect().top))).size, larg: r.width, rolagem: t.scrollWidth > t.clientWidth + 1, abas: [...t.querySelectorAll('button')].map(x => { const q = x.getBoundingClientRect(); return q.right <= window.innerWidth + 1 && q.left >= -1; }) }; }")
-            print("7) abas:", vis); assert not vis["rolagem"] and all(vis["abas"]) and vis["linhas"] == 1, vis
-            pg.screenshot(path="/tmp/claude-0/work/mob/snapshots.png")
+            larg = int(os.environ.get("LARG", 1400))
+            if larg < 768:      # celular: seletor com grupos, com as 12 seções
+                n_op = pg.locator("[data-testid=abas-super-admin-mobile] select option").count(); print("7) seletor mobile:", n_op); assert n_op == 12, n_op
+            else:      # computador: menu lateral com as 12 seções, todas à vista (sem rolar para o lado)
+                vis = pg.evaluate("() => { const t = document.querySelector('[data-testid=abas-super-admin]'); const bs = [...t.querySelectorAll('button')]; return { n: bs.length, rolagemLateral: t.scrollWidth > t.clientWidth + 1, dentro: bs.every(x => { const q = x.getBoundingClientRect(); return q.right <= window.innerWidth + 1 && q.left >= -1; }) }; }")
+                print("7) menu lateral:", vis); assert vis["n"] == 12 and not vis["rolagemLateral"] and vis["dentro"], vis
+            os.makedirs("/tmp/claude-0/work/mob", exist_ok=True)
+            pg.locator("[data-testid=aba-central], #seletor-aba-super").first.scroll_into_view_if_needed()
+            pg.screenshot(path="/tmp/claude-0/work/mob/snapshots_%s.png" % os.environ.get("LARG", 1400) + "")
             print("OK"); b.close()
     finally:
         for pr in procs:

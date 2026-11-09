@@ -140,6 +140,19 @@ export function separarSecoes(corpo: string): { relatorio: string; fundamentacao
 }
 
 /** Texto (e HTML opcional) da minuta externa -> título, seções formatadas, fecho e partes. */
+// Partes: só vale uma LINHA que COMEÇA pelo rótulo (“Autor:”, “Requerida:”…); um “autor:” no meio de uma frase não conta.
+// O valor precisa parecer nome (nada de “a genitora e A”, “para”): se não parecer, fica vazio e o Studio mostra “Parte Autora/Parte Ré”.
+const ROT_AUTOR = "Exequentes?|Autor(?:a|es|as)?|Requerentes?|Promoventes?|Embargantes?|Reclamantes?";
+const ROT_REU = "Executad[oa]s?|R[ée]u?s?|Requerid[oa]s?|Promovid[oa]s?|Embargad[oa]s?|Reclamad[oa]s?";
+export function pegarParte(texto: string, rotulos: string): string {
+  const re = new RegExp(`^[\\s>*_•-]*(?:${rotulos})\\b\\s*(?:\\([^)\\n]*\\))?\\s*[*_]*\\s*:\\s*[*_]*\\s*([^\\n]+)$`, "i");
+  for (const l of String(texto || "").split("\n").slice(0, 80)) {
+    const v = (re.exec(l)?.[1] || "").replace(/[*_]+/g, "").trim();
+    if (v.length >= 5 && v.length <= 200 && !/^(a|o|as|os|um|uma|de|da|do|para|por|em|e|que|se|conforme)(\s|$)/i.test(v) && /\p{Lu}/u.test(v)) return v;
+  }
+  return "";
+}
+
 export function organizarMinutaExterna(texto: string, html = ""): MinutaOrganizada {
   const plano = String(texto || "").replace(/\r/g, "").trim();
   const md = html ? htmlParaMarkdown(html) : "";
@@ -150,8 +163,7 @@ export function organizarMinutaExterna(texto: string, html = ""): MinutaOrganiza
   const titulo = iTit >= 0 ? limpa(linhas[iTit]).replace(/[.:\s]+$/, "").toUpperCase() : "MINUTA (AGAIA)";
   const corpo = (iTit >= 0 ? linhas.slice(iTit + 1) : linhas).join("\n").trim();
   const topo = (iTit >= 0 ? linhas.slice(0, iTit) : linhas.slice(0, 12)).join("\n");
-  const autor = (topo.match(/(?:Exequente|Autor(?:a)?|Requerente|Promovente|Embargante|Reclamante)\s*(?:\(.*?\))?\s*:\s*([^\n]+)/i) || plano.match(/(?:Exequente|Autor(?:a)?|Requerente|Promovente)\s*:\s*([^\n]+)/i) || [])[1]?.replace(/\*+/g, "").trim() || "";
-  const reu = (topo.match(/(?:Executad[oa]s?|R[ée]u?s?|Requerid[oa]s?|Promovid[oa]s?|Embargad[oa]s?|Reclamad[oa]s?)\s*(?:\(.*?\))?\s*:\s*([^\n]+)/i) || plano.match(/(?:Executad[oa]s?|R[ée]u?s?|Requerid[oa]s?|Promovid[oa]s?)\s*:\s*([^\n]+)/i) || [])[1]?.replace(/\*+/g, "").trim() || "";
+  const autor = pegarParte(topo, ROT_AUTOR) || pegarParte(plano, ROT_AUTOR), reu = pegarParte(topo, ROT_REU) || pegarParte(plano, ROT_REU);
   const s = separarSecoes(corpo);
   return { titulo, ...s, autor, reu };
 }

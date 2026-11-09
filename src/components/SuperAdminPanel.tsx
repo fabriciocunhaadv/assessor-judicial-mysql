@@ -67,6 +67,7 @@ import { Gauge, Compass, HeartPulse,
 import { collection, getDocs, setDoc, doc, deleteDoc } from '../lib/docstore';
 import { MonitorErrosPanel } from './MonitorErrosPanel';
 import { MonitorOperacaoPanel } from './MonitorOperacaoPanel';
+import { SuperAdminNav, gruposDoMenu, type AbaSuper } from './SuperAdminNav';
 import { CalibragemPanel } from './CalibragemPanel';
 import { CentralDecisoesPanel } from './CentralDecisoesPanel';
 import { SaudePanel } from './SaudePanel';
@@ -139,7 +140,7 @@ interface SuperAdminPanelProps {
 let limpezaSnapsFeita = false;
 export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClose, onOpenTicketsModal }) => {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'tenants' | 'users' | 'snapshots' | 'broadcast' | 'migration' | 'tokens' | 'erros' | 'operacao' | 'saude' | 'utilizacao' | 'central' | 'calibragem'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'users' | 'snapshots' | 'broadcast' | 'migration' | 'tokens' | 'erros' | 'operacao' | 'saude' | 'utilizacao' | 'central' | 'calibragem'>('central');
 
   // Snapshots & Healing State
   const [snapshots, setSnapshots] = useState<GlobalDatabaseSnapshot[]>([]);
@@ -1627,10 +1628,10 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-1.5 sm:p-5 bg-slate-950/90 backdrop-blur-md animate-in fade-in">
-      <div data-janela="clara" className="bg-slate-900 border border-indigo-500/40 rounded-2xl sm:rounded-3xl shadow-2xl max-w-6xl w-full flex flex-col h-[98vh] sm:h-[92vh] overflow-hidden text-slate-200">
+      <div data-janela="clara" className="bg-slate-900 border border-indigo-500/40 rounded-2xl sm:rounded-3xl shadow-2xl max-w-[96rem] w-full flex flex-col md:grid md:grid-cols-[230px_minmax(0,1fr)] md:grid-rows-[auto_auto_auto_minmax(0,1fr)] h-[98vh] sm:h-[94vh] overflow-hidden text-slate-200">
         
         {/* Top Header Responsivo */}
-        <div className="p-3 sm:p-5 border-b border-slate-800 bg-slate-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 shrink-0">
+        <div className="p-3 sm:p-4 border-b border-slate-800 bg-slate-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 shrink-0 md:col-span-2 md:row-start-1">
           <div className="flex items-center justify-between w-full sm:w-auto min-w-0">
             <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
               <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-800 text-white flex items-center justify-center shadow-lg shadow-indigo-500/20 border border-indigo-400/30 shrink-0">
@@ -1729,6 +1730,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
           </div>
         </div>
 
+        <div className="md:col-span-2 md:row-start-2 empty:hidden">
         {/* Global Success Notification Toast */}
         {actionSuccessMsg && (
           <div className="bg-emerald-950/90 border-b border-emerald-500/40 px-4 sm:px-5 py-2 flex items-center justify-between text-xs text-emerald-200 animate-in slide-in-from-top-2">
@@ -1751,8 +1753,10 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
           </div>
         )}
 
+        </div>
+
         {/* Metrics Banner: Carrossel touch horizontal no mobile, grid no desktop */}
-        <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 lg:grid-cols-6 gap-2 p-2.5 sm:p-4 bg-slate-950/60 border-b border-slate-800 text-xs shrink-0 scrollbar-thin scrollbar-thumb-slate-800">
+        <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 lg:grid-cols-5 gap-2 p-2.5 sm:px-4 sm:py-3 bg-slate-950/60 border-b border-slate-800 text-xs shrink-0 scrollbar-thin scrollbar-thumb-slate-800 md:col-span-2 md:row-start-3">
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 min-w-[130px] sm:min-w-0 shrink-0 sm:shrink">
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
               <Building className="w-3 h-3 text-indigo-400" /> Gabinetes
@@ -1787,14 +1791,6 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
 
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 min-w-[130px] sm:min-w-0 shrink-0 sm:shrink">
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-cyan-400" /> Modelo SaaS
-            </p>
-            <p className="text-base font-black text-white mt-0.5">Multi-Tenant</p>
-            <p className="text-[9px] text-cyan-400 mt-0.5">Particionado</p>
-          </div>
-
-          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 min-w-[130px] sm:min-w-0 shrink-0 sm:shrink">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
               <Megaphone className="w-3 h-3 text-rose-400" /> Comunicado
             </p>
             <p className="text-base font-black text-white mt-0.5">{globalBroadcast.active ? 'Transmitindo' : 'Inativo'}</p>
@@ -1802,173 +1798,11 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
           </div>
         </div>
 
-        {/* Tab Navigation com labels responsivas e scroll horizontal limpo */}
-        <div data-testid="abas-super-admin" className="px-2 sm:px-4 border-b border-slate-800 bg-slate-950 flex items-center gap-0.5 shrink-0 overflow-x-auto scrollbar-none">
-          <button
-            onClick={() => setActiveTab('central')}
-            data-testid="aba-central"
-            title="Central de decisões: o que precisa de você hoje e o status dos erros agrupados"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'central'
-                ? 'border-indigo-500 text-indigo-300 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Compass className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-indigo-300" />
-            <span>Central</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('calibragem')}
-            data-testid="aba-calibragem"
-            title="Calibragem: como cada motor, gabinete e a extensão estão se comportando (só leitura)"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'calibragem'
-                ? 'border-amber-500 text-amber-300 bg-amber-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Gauge className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-300" />
-            <span>Calibragem</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('saude')}
-            data-testid="aba-saude"
-            title="Saúde do sistema: servidor, banco, IA, retomadas, extensão e atualizações, com alertas automáticos"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'saude'
-                ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <HeartPulse className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-emerald-400" />
-            <span>Saúde</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('operacao')}
-            data-testid="aba-monitor-operacao"
-            title="Monitor de operação: o que cada usuário fez no Studio e na esteira"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'operacao'
-                ? 'border-sky-500 text-sky-400 bg-sky-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-sky-400" />
-            <span>Operação</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('utilizacao')}
-            data-testid="aba-utilizacao"
-            title="Utilização: quanto cada pessoa usou o sistema e os módulos liberados"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'utilizacao'
-                ? 'border-amber-500 text-amber-400 bg-amber-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-400" />
-            <span>Utilização</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('erros')}
-            title="Monitor de erros"
-            data-testid="aba-monitor-erros"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'erros'
-                ? 'border-rose-500 text-rose-400 bg-rose-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Bug className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-rose-400" />
-            <span>Erros</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('tenants')}
-            title="Gabinetes contratantes"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'tenants'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Building className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span>Gabinetes</span><span className="ml-0.5 px-1.5 py-px rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">{tenants.length}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('users')}
-            title="Usuários globais do SaaS"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'users'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span>Usuários</span><span className="ml-0.5 px-1.5 py-px rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">{globalUsers.length}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('snapshots')}
-            title="Snapshots & segurança"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'snapshots'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-emerald-400" />
-            <span>Snapshots</span><span className="ml-0.5 px-1.5 py-px rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">{snapshots.length}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('broadcast')}
-            title="Comunicado global"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'broadcast'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Megaphone className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span>Comunicado</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('migration')}
-            title="Migração de banco legado"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'migration'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Database className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span>Migração</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('tokens')}
-            title="Uso da chave nativa (tokens)"
-            className={`px-2.5 py-2.5 text-[11px] sm:text-xs font-bold border-b-2 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap ${
-              activeTab === 'tokens'
-                ? 'border-amber-500 text-amber-400 bg-amber-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-400" />
-            <span>Tokens</span>
-          </button>
-        </div>
+        {/* Menu: lateral no computador, seletor com grupos no celular (nenhuma seção fica escondida) */}
+        <SuperAdminNav grupos={gruposDoMenu({ gabinetes: tenants.length, usuarios: globalUsers.length, snapshots: snapshots.length, comunicadoAtivo: !!globalBroadcast.active })} ativa={activeTab as AbaSuper} aoEscolher={(t) => setActiveTab(t as any)} />
 
         {/* Tab Content Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6 md:col-start-2 md:row-start-4">
 
           {/* ============================================================== */}
           {/* TAB 1: GABINETES                                                */}
