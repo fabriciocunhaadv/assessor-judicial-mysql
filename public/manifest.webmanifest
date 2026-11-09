@@ -1,0 +1,15 @@
+{
+  "name": "Assessor Judicial",
+  "short_name": "Assessor",
+  "description": "Assistente de Inteligência Artificial para Gabinetes Judiciais. Acompanhe a fila de minutas pelo celular.",
+  "start_url": "/?fila=1",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

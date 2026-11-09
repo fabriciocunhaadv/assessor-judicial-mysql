@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   Home, ShieldCheck, UserCheck, Activity, History, Scale,
   Sparkles, BookOpen, ClipboardList, Calendar, Gavel, SlidersHorizontal,
-  ChevronLeft, ChevronRight, Bot, KeyRound
+  ChevronLeft, ChevronRight, Bot, KeyRound, Smartphone
 } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 
@@ -125,6 +125,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {!isCollapsed && <span>Histórico Local</span>}
             </button>
           )}
+
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("fila:abrir"))}
+            className={`flex items-center gap-2.5 px-3 h-10 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs transition cursor-pointer ${isCollapsed ? 'justify-center' : 'justify-start'}`}
+            title="Minha fila: acompanhe a esteira da extensão pelo celular e ligue os avisos"
+            data-testid="menu-minha-fila"
+          >
+            <Smartphone className="w-4 h-4 text-indigo-500" />
+            {!isCollapsed && <span>Minha fila (celular)</span>}
+          </button>
 
           <button
             onClick={() => window.dispatchEvent(new CustomEvent("agaia:abrir"))}

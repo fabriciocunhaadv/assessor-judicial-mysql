@@ -1,5 +1,7 @@
 import { guardarRequisicao, reenviarRequisicao } from "./utils/reenvioPendente";
 import { reportarSaude, ligarPonteDaExtensao } from "./utils/saudeCliente";
+import { ligarPonteDaFila } from "./utils/filaCliente";
+import { MinhaFilaModal } from "./components/MinhaFilaModal";
 import { salvarPendente, lerPendente, limparPendente, consultarResultado, lerCorpo, lerPendenteModulo, limparPendenteModulo, salvarPendenteModulo, ativosNestaPagina, type ModuloPendente } from "./utils/analisePendente";
 import { saveAudit as salvarAuditoria } from "./utils/auditDb";
 import { AvisoNovaVersao } from "./components/AvisoNovaVersao";
@@ -1639,7 +1641,7 @@ export default function App() {
 
   ocupadoRef.current = isLoading || isProceedingToStage2;
   // Busca no servidor o resultado de uma análise que ficou pendente (página fechada pelo celular, conexão perdida...) e o mostra como se tivesse acabado de chegar.
-  useEffect(() => { ligarPonteDaExtensao(); }, []);
+  useEffect(() => { ligarPonteDaExtensao(); ligarPonteDaFila(); }, []);
   const recuperarPendente = async (forcar = false) => {
     const pend = lerPendente();
     if (!pend || recuperandoRef.current || (!forcar && ocupadoRef.current)) return;
@@ -2908,6 +2910,7 @@ export default function App() {
 
       <MapaSegundoPlano />
       <EntradaAgaia onVerHistorico={() => setIsHistoryModalOpen(true)} />
+      <MinhaFilaModal />
       <AvisoSegundoPlano />
       <GigantesPanel config={montarConfigGigante()} onVerHistorico={() => setIsHistoryModalOpen(true)} />
       <HistoryModal

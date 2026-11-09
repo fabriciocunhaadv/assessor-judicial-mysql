@@ -1,0 +1,22 @@
+// Rodar: npx tsx testes/teste_fila_regras.ts
+import * as r from "../src/utils/filaRegras";
+let falhas = 0; const ok = (c: boolean, m: string) => { if (!c) { falhas++; console.log("FALHOU:", m); } else console.log("ok:", m); };
+const A = 1_800_000_000_000;
+const R = (o: any = {}): r.ResumoFila => ({ total: 10, aguardando: 4, analisando: 1, concluidos: 5, erros: 0, pausados: 0, modo: "ia", ia: "Jusbrasil", pausa: "", ultimoErro: "", versao: "1.0.96", geradoEm: A, ...o });
+const s = r.sanearResumo({ total: "12", aguardando: -5, analisando: 1e12, concluidos: 3.7, erros: "x", modo: "ia", ultimoErro: "falhou 5381285-41.2025.8.09.0166 de a@b.com", versao: "1.0.9; DROP", extra: "ignorado" }, A);
+ok(s.total === 12 && s.aguardando === 0 && s.analisando === 100000 && s.concluidos === 4 && s.erros === 0, "números limitados");
+ok(!/\d{7}-\d{2}/.test(s.ultimoErro) && !/@/.test(s.ultimoErro) && s.versao === "" && !("extra" in s), "texto mascarado, versão inválida descartada, campos extras ignorados");
+ok(r.pendentes(R()) === 5 && r.pendentes(R({ aguardando: 0, analisando: 0 })) === 0, "pendentes");
+let a = r.detectarAvisos(R(), R({ aguardando: 0, analisando: 0, concluidos: 10 }));
+ok(a.length === 1 && a[0].tipo === "concluida" && /10 concluído/.test(a[0].corpo), "fila concluída");
+a = r.detectarAvisos(R(), R({ aguardando: 0, analisando: 0, concluidos: 9, erros: 1, ultimoErro: "ChatGPT: login" }));
+ok(a.map((x) => x.tipo).join() === "concluida,erro" && /com erro/.test(a[0].corpo) && a[1].corpo === "ChatGPT: login", "concluída com erro + aviso de erro");
+a = r.detectarAvisos(R({ erros: 1 }), R({ erros: 2, ultimoErro: "x" })); ok(a.length === 1 && a[0].tipo === "erro", "só o erro novo");
+ok(r.detectarAvisos(R({ erros: 1 }), R({ erros: 1 })).length === 0, "sem mudança, sem aviso");
+ok(r.detectarAvisos(null, R()).length === 0, "primeiro resumo não avisa");
+a = r.detectarAvisos(R(), R({ pausa: "O Jusbrasil pediu login" })); ok(a.length === 1 && a[0].tipo === "pausa", "pausa por login");
+ok(r.detectarAvisos(R({ pausa: "O Jusbrasil pediu login" }), R({ pausa: "O Jusbrasil pediu login" })).length === 0, "mesma pausa não repete");
+ok(r.detectarAvisos(R({ aguardando: 0, analisando: 0 }), R({ aguardando: 0, analisando: 0 })).length === 0, "fila parada e vazia não avisa");
+ok(r.computadorSemSinal(R(), A - 16 * 60_000, A) && !r.computadorSemSinal(R(), A - 10 * 60_000, A) && !r.computadorSemSinal(R({ aguardando: 0, analisando: 0 }), A - 99 * 60_000, A), "computador sem sinal só com trabalho pendente");
+ok(r.computadorOnline(A - 60_000, A) && !r.computadorOnline(A - 6 * 60_000, A) && !r.computadorOnline(0, A), "computador online");
+if (falhas) process.exit(1); console.log("TUDO OK");
