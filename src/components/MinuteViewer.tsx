@@ -1,4 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import toast from "react-hot-toast";
+import { getHistory, marcarLancadoProjudi, HISTORICO_MUDOU } from "../utils/historyDb";
+import { idsDoMesmoProcesso } from "../utils/lancadoProcesso";
 import { AvisosDaMinuta } from "./AvisosDaMinuta";
 import ReactMarkdown from "react-markdown";
 import { organizarTextoDaMinuta } from "../utils/organizarTextoDaMinuta";
@@ -118,6 +121,25 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
 }) => {
   const { user, userProfile, isJudge } = useAuth();
   const userName = userProfile?.name?.split(" ")[0] || user?.displayName?.split(" ")[0] || "Gabinete";
+  // “Marcar lançado” ao lado de “Salvar Tese”: mesma marcação do Histórico (vale para todas as minutas do processo)
+  const [lancado, setLancado] = useState<number | null>(null);
+  const [lancadoIds, setLancadoIds] = useState<string[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    const ler = async () => {
+      if (!currentAnalysisId) { if (vivo) { setLancado(null); setLancadoIds([]); } return; }
+      try { const lista = await getHistory(), ato = lista.find((i) => i.id === currentAnalysisId); if (!vivo) return; setLancado(ato?.lancadoProjudi || null); setLancadoIds(ato ? idsDoMesmoProcesso(lista, ato) : [currentAnalysisId]); } catch { /* sem lista: o botão ainda funciona pela minuta aberta */ }
+    };
+    void ler(); window.addEventListener(HISTORICO_MUDOU, ler);
+    return () => { vivo = false; window.removeEventListener(HISTORICO_MUDOU, ler); };
+  }, [currentAnalysisId]);
+  const alternarLancadoDaMinuta = async () => {
+    if (!currentAnalysisId) return;
+    const quando = lancado ? null : Date.now(), ids = lancadoIds.length ? lancadoIds : [currentAnalysisId];
+    setLancado(quando);
+    try { await Promise.all(ids.map((id) => marcarLancadoProjudi(id, quando))); toast.success(quando ? `Processo ${result?.minute?.processNumber || ""} marcado como LANÇADO no Projudi.` : "Marcação de lançamento removida."); }
+    catch { toast.error("Não consegui gravar a marcação agora; tente de novo."); setLancado(lancado); }
+  };
   const [chatAberto, setChatAberto] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "formatted" | "preAudit" | "original" | "compare" | "history" | "editor" | "projudi" | "fatoVsProva" | "compliance" | "calculator" | "synopsis"
@@ -1204,6 +1226,18 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
 
         {/* Action buttons */}
         <div id="tour-result-actions" className="flex items-center flex-wrap gap-1.5 text-xs">
+          {currentAnalysisId && (
+            <button
+              type="button"
+              onClick={alternarLancadoDaMinuta}
+              data-testid="btn-lancado-minuta"
+              className={`px-2.5 py-1 border font-bold rounded flex items-center gap-1.5 transition cursor-pointer shadow-2xs ${lancado ? "bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700" : "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900"}`}
+              title={lancado ? "Marcada como lançada no Projudi. Clique para desfazer." : "Marcar este processo como já lançado no Projudi (vale para todas as minutas dele)"}
+            >
+              <CheckCircle2 className={`w-3.5 h-3.5 ${lancado ? "text-white" : "text-emerald-600"}`} />
+              <span>{lancado ? "Lançado" : "Marcar lançado"}</span>
+            </button>
+          )}
           {onInjectTextAsParadigm && !hasLinkedParadigm && (
             <button
               id="tour-save-tese"

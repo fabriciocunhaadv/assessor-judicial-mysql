@@ -73,6 +73,9 @@ interface HistoryModalProps {
   onDeleteAnalysis?: (deletedId: string, processNumber?: string) => void;
   /** muda (1, 2, 3...) cada vez que alguém pede para ver as minutas que estão vencendo: o Histórico abre já filtrado nelas */
   abrirVencendo?: number;
+  /** id da minuta que está aberta na tela agora (o Histórico a destaca) e o número do processo dela */
+  analiseAbertaId?: string | null;
+  processoAberto?: string;
 }
 
 const toSafeString = (val: any, fallback: string = ""): string => {
@@ -147,6 +150,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   onGoHome,
   onDeleteAnalysis,
   abrirVencendo = 0,
+  analiseAbertaId = null,
+  processoAberto = "",
 }) => {
   const { allowedUnits, isAdmin, isJudge, isSuperAdmin, activeUnit, userProfile: perfilAuth } = useAuth();
   const verBanco = ehDonoDoSistema(perfilAuth);      // selo e faixa de origem do banco: só o dono do sistema
@@ -482,6 +487,14 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   );
 
   useEffect(() => { if (isOpen && abrirVencendo > 0) { setVencendoFilter(true); setScopeFilter("meus"); setSearchTerm(""); setCurrentPage(1); } }, [abrirVencendo, isOpen]);
+  // destaca (e leva a tela até) o processo da minuta que está aberta agora; uma vez por abertura do Histórico
+  const rolouParaAberta = useRef(false);
+  useEffect(() => { if (!isOpen) rolouParaAberta.current = false; }, [isOpen]);
+  useEffect(() => {
+    if (!isOpen || !analiseAbertaId || rolouParaAberta.current) return;
+    const t = setTimeout(() => { const el = document.querySelector('[data-aberta="1"]'); if (el) { rolouParaAberta.current = true; (el as HTMLElement).scrollIntoView({ block: "center", behavior: "smooth" }); } }, 250);
+    return () => clearTimeout(t);
+  });
   const ehVencendo = (item: any) => { const f = situacaoValidade(item?.date, configRetencaoAtual()).fase; return f === "aviso1" || f === "aviso3" || f === "vencido"; };
   // Filtragem dos registros
   const filteredHistory = history.filter((item) => {
@@ -737,6 +750,13 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
             
             /* VIEW MODE 1: UNIFIED PROCESS DOSSIERS (ZERO DUPLICATES) */
             <div id="tour-history-list" className="grid grid-cols-1 gap-1.5">
+              {analiseAbertaId && !paginatedDossiers.some((d) => d.analyses.some((a: any) => a?.id === analiseAbertaId)) && (
+                <div className="flex items-center gap-2 flex-wrap rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-2 text-[11px] text-indigo-900" data-testid="aviso-minuta-aberta">
+                  <span className="font-black">📂 Minuta aberta agora: processo {processoAberto || "(sem número)"}</span>
+                  <span className="text-indigo-700">— não aparece nesta página ou está escondida pelo filtro.</span>
+                  <button type="button" onClick={() => { setLancFilter("todos"); setVencendoFilter(false); setSearchTerm(processoAberto || ""); setCurrentPage(1); }} className="ml-auto px-2 py-1 rounded-md bg-indigo-600 text-white font-bold cursor-pointer" data-testid="btn-mostrar-aberta">Mostrar na lista</button>
+                </div>
+              )}
               {paginatedDossiers.map((dossier) => {
                 const latestAct = dossier.analyses[dossier.analyses.length - 1];
                 const canDelete = dossier.analyses.some(a => podeExcluirAto(a, currentUid));
@@ -754,12 +774,15 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                   });
                 };
 
+                const aberta = !!analiseAbertaId && dossier.analyses.some((a: any) => a?.id === analiseAbertaId);
                 return (
                   <div
                     key={dossier.id}
-                    className={`px-2.5 py-2 rounded-lg border hover:border-indigo-300 hover:shadow-sm transition group ${latestAct?.lancadoProjudi ? "bg-emerald-50/60 border-emerald-300" : "bg-white border-slate-200"}`}
+                    className={`px-2.5 py-2 rounded-lg border hover:border-indigo-300 hover:shadow-sm transition group ${aberta ? "ring-2 ring-indigo-500 border-indigo-500 bg-indigo-50" : latestAct?.lancadoProjudi ? "bg-emerald-50/60 border-emerald-300" : "bg-white border-slate-200"}`}
                     data-testid="dossie-linha"
+                    data-aberta={aberta ? "1" : undefined}
                   >
+                    {aberta && <div className="flex items-center gap-1.5 mb-1 text-[11px] font-black text-indigo-800" data-testid="dossie-aberto">📂 Minuta aberta agora na tela</div>}
                     {/* Linha 1: número, vara, atos, partes, data e excluir */}
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {modoSelecao && <input type="checkbox" className="w-4 h-4 cursor-pointer accent-indigo-600" checked={selecionados.has(dossier.id)} onChange={() => alternarSelecao(dossier.id)} aria-label={`Marcar o processo ${dossier.processNumber}`} data-testid="marcar-dossie" />}

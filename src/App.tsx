@@ -2922,6 +2922,8 @@ export default function App() {
         onLoadAnalysis={handleLoadAnalysis}
         onDeleteAnalysis={handleAnalysisDeletedFromHistory}
         abrirVencendo={vencendoToken}
+        analiseAbertaId={generationResult ? currentAnalysisId : null}
+        processoAberto={generationResult?.minute?.processNumber || ""}
       />
 
       <XRayModal
