@@ -18,7 +18,7 @@ export function htmlParaMarkdown(html: string): string {
   t = t.replace(/<(script|style)[\s\S]*?<\/\1>/gi, "").replace(/<br\s*\/?>/gi, "\n");
   t = t.replace(/<(strong|b)\b[^>]*>([\s\S]*?)<\/\1>/gi, (_m, _t, x: string) => (x.replace(/<[^>]+>/g, "").trim() ? `**${x.replace(/<[^>]+>/g, "").trim()}**` : x));
   t = t.replace(/<(em|i)\b[^>]*>([\s\S]*?)<\/\1>/gi, (_m, _t, x: string) => (x.replace(/<[^>]+>/g, "").trim() ? `*${x.replace(/<[^>]+>/g, "").trim()}*` : x));
-  t = t.replace(/<li\b[^>]*>/gi, "\n- ").replace(/<\/li>/gi, "").replace(/<blockquote\b[^>]*>/gi, "\n\n> ").replace(/<\/(p|div|h[1-6]|blockquote|ul|ol|tr|table)>/gi, "\n\n");
+  t = t.replace(/<li\b[^>]*>/gi, "\n- ").replace(/<\/li>/gi, "").replace(/<blockquote\b[^>]*>/gi, "\n\n> ").replace(/<h[1-6]\b[^>]*>/gi, "\n\n## ").replace(/<\/(p|div|h[1-6]|blockquote|ul|ol|tr|table)>/gi, "\n\n");
   t = t.replace(/<[^>]+>/g, "");
   t = t.replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(+n)).replace(/&#x([0-9a-f]+);/gi, (_m, n) => String.fromCharCode(parseInt(n, 16))).replace(/&([a-z]+);/gi, (m, n) => ENT[n.toLowerCase()] ?? m);
   return t.replace(/[ \t ]+/g, " ").split("\n").map((l) => l.trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -139,6 +139,24 @@ export function separarSecoes(corpo: string): { relatorio: string; fundamentacao
   return { relatorio: organizar("relatorio", rel), fundamentacao: organizar("fundamentacao", fund), dispositivo: organizar("dispositivo", disp), closing, semSecoes };
 }
 
+
+/** Tira restos da tela da IA que vêm misturados ao texto (botões, rótulos, marcas de fonte) e separa itens numerados que ficaram colados. */
+export function limparArtefatosDeIA(t: string): string {
+  return String(t || "")
+    .replace(/[ \t]*Marca Jusbrasil[ \t]*(?=\d+\.\s)/gi, "\n\n").replace(/[ \t]*Marca Jusbrasil\b/gi, "")
+    .split("\n").filter((l) => !/^[\s>*_#-]*(Ver fontes|Validar cita[çc][õo]es|Copiar|Baixar|Reescrever|Buscar julgados|Perguntar|Compartilhar|Editar|Regenerar|Gostei|N[ãa]o gostei|Mostrar mais|Sugest[õo]es)[\s*_]*$/i.test(l)).join("\n")
+    .replace(/Reescrever\s*Buscar julgados\s*Perguntar/gi, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Ementas e trechos de acórdão (parágrafo longo que começa em CAIXA ALTA e termina com a referência do tribunal/relator) viram citação em bloco (“> ”), como na tela e no PDF. */
+export function marcarCitacoes(t: string): string {
+  return String(t || "").split(/\n[ \t]*\n/).map((p) => {
+    const x = p.trim(); if (!x || /^>/.test(x) || x.length < 180) return p;
+    const ementa = /^[\d.\s-]*[A-ZÀ-Ú][A-ZÀ-Ú0-9ªº .,;:()§/–-]{30,}/.test(x), referencia = /\((?:TJ|STJ|STF|TR[FT]|TST)[A-Z0-9]*\s*[-–]|Relator(?:a)?\s*:/i.test(x);
+    return ementa && referencia ? "> " + x.replace(/\n+/g, " ") : p;
+  }).join("\n\n");
+}
+
 /** Texto (e HTML opcional) da minuta externa -> título, seções formatadas, fecho e partes. */
 // Partes: só vale uma LINHA que COMEÇA pelo rótulo (“Autor:”, “Requerida:”…); um “autor:” no meio de uma frase não conta.
 // O valor precisa parecer nome (nada de “a genitora e A”, “para”): se não parecer, fica vazio e o Studio mostra “Parte Autora/Parte Ré”.
@@ -154,10 +172,10 @@ export function pegarParte(texto: string, rotulos: string): string {
 }
 
 export function organizarMinutaExterna(texto: string, html = ""): MinutaOrganizada {
-  const plano = String(texto || "").replace(/\r/g, "").trim();
-  const md = html ? htmlParaMarkdown(html) : "";
+  const plano = limparArtefatosDeIA(String(texto || "").replace(/\r/g, "").trim());
+  const md = html ? limparArtefatosDeIA(htmlParaMarkdown(html)) : "";
   const semMarcas = (s: string) => s.replace(/[*_>#-]+/g, "").replace(/\s+/g, "");
-  const fonte = md && semMarcas(md).length >= 0.85 * semMarcas(plano).length && semMarcas(md).length <= 1.6 * semMarcas(plano).length ? md : plano; // usa o HTML (negrito, itálico, listas) quando ele traz o mesmo conteúdo
+  const fonte = md && semMarcas(md).length >= 0.85 * semMarcas(plano).length && semMarcas(md).length <= 1.6 * semMarcas(plano).length ? marcarCitacoes(md) : marcarCitacoes(plano); // usa o HTML (negrito, itálico, listas) quando ele traz o mesmo conteúdo
   const linhas = fonte.split("\n");
   const iTit = linhas.findIndex((l) => TITULO_ATO.test(limpa(l).replace(/[.:\s]+$/, "")));
   const titulo = iTit >= 0 ? limpa(linhas[iTit]).replace(/[.:\s]+$/, "").toUpperCase() : "MINUTA (AGAIA)";

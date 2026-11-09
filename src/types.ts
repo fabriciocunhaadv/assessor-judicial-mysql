@@ -935,6 +935,8 @@ export interface TicketStatusHistoryItem {
   comment?: string;
 }
 
+export interface AnexoChamado { id: string; nome: string; tipo: string; tamanho: number }
+
 export interface SupportTicket {
   id: string;
   tenantId: string;
@@ -961,6 +963,7 @@ export interface SupportTicket {
   isReadBySuperAdmin?: boolean;
   tags?: string[];
   systemModule?: string;
+  anexos?: AnexoChamado[];
 }
 
 export type HearingType = "instrucao_julgamento" | "conciliacao" | "saneamento" | "justificacao" | "una";

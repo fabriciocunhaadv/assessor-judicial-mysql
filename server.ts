@@ -13,6 +13,7 @@ import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { fontesPendentesRouter, detectoresDosMotores } from './server/fontesPendentes';
 import { medirMotores, iniciarMetricasDosMotores } from './server/motoresMetricas';
+import { chamadoAnexosRouter, iniciarChamadoAnexos } from './server/chamadoAnexos';
 import { filaRouter, iniciarFilaCelular } from './server/filaCelular';
 import { centralRouter } from './server/centralDecisoes';
 import { saudeRouter, medirPedidos, iniciarSaudeDoSistema, registrarSaude, contarIA } from './server/saudeSistema';
@@ -274,6 +275,7 @@ app.use("/api/db/history", historyRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/db/docs", docsRouter);
 app.use("/api/db/retencao", retencaoRouter);
+app.use("/api/chamados/anexos", chamadoAnexosRouter);      // Chamados: anexos (print e PDF)
 app.use("/api/fila", filaRouter);      // Fila no celular: resumo enviado pela extensão, "Minha fila" e avisos (Web Push)
 app.use("/api/central", centralRouter);      // Super Admin: Central de decisões (o que precisa de atenção + status dos erros agrupados)
 app.use("/api/saude", saudeRouter);      // Super Admin: painel Saúde do sistema; qualquer usuário logado só envia eventos (POST /evento)
@@ -6874,7 +6876,7 @@ if (process.env.NODE_ENV !== "production") {
     }).then(vite => {
         app.use(vite.middlewares);
         const server = app.listen(PORT, "0.0.0.0", () => {
-            iniciarRetencaoNoServidor(); iniciarSaudeDoSistema(); iniciarMetricasDosMotores(); iniciarFilaCelular();
+            iniciarRetencaoNoServidor(); iniciarSaudeDoSistema(); iniciarMetricasDosMotores(); iniciarFilaCelular(); iniciarChamadoAnexos();
             console.log("Server running on http://localhost:" + PORT);
         });
         server.setTimeout(600000);
@@ -6888,7 +6890,7 @@ if (process.env.NODE_ENV !== "production") {
         res.sendFile(path.join(distPath, 'index.html'));
     });
     const server = app.listen(PORT, "0.0.0.0", () => {
-        iniciarRetencaoNoServidor(); iniciarSaudeDoSistema(); iniciarMetricasDosMotores(); iniciarFilaCelular();
+        iniciarRetencaoNoServidor(); iniciarSaudeDoSistema(); iniciarMetricasDosMotores(); iniciarFilaCelular(); iniciarChamadoAnexos();
         console.log("Server running on port " + PORT);
     });
     server.setTimeout(600000);

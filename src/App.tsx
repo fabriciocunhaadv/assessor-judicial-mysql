@@ -2,6 +2,7 @@ import { guardarRequisicao, reenviarRequisicao } from "./utils/reenvioPendente";
 import { reportarSaude, ligarPonteDaExtensao } from "./utils/saudeCliente";
 import { ligarPonteDaFila } from "./utils/filaCliente";
 import { MinhaFilaModal } from "./components/MinhaFilaModal";
+import { NovoChamadoCelular } from "./components/NovoChamadoCelular";
 import { salvarPendente, lerPendente, limparPendente, consultarResultado, lerCorpo, lerPendenteModulo, limparPendenteModulo, salvarPendenteModulo, ativosNestaPagina, type ModuloPendente } from "./utils/analisePendente";
 import { saveAudit as salvarAuditoria } from "./utils/auditDb";
 import { AvisoNovaVersao } from "./components/AvisoNovaVersao";
@@ -2911,6 +2912,7 @@ export default function App() {
       <MapaSegundoPlano />
       <EntradaAgaia onVerHistorico={() => setIsHistoryModalOpen(true)} />
       <MinhaFilaModal />
+      <NovoChamadoCelular />
       <AvisoSegundoPlano />
       <GigantesPanel config={montarConfigGigante()} onVerHistorico={() => setIsHistoryModalOpen(true)} />
       <HistoryModal

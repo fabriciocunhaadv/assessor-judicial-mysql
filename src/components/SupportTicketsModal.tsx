@@ -55,6 +55,7 @@ import {
   markTicketAsRead
 } from "../utils/ticketsDb";
 import { useAuth } from "../lib/AuthContext";
+import { abrirAnexo, apagarAnexo } from "../utils/chamadoCliente";
 import { toast } from "react-hot-toast";
 
 interface SupportTicketsModalProps {
@@ -372,7 +373,9 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
 
   const handleDeleteTicket = async (ticketId: string) => {
     try {
+      const apagando = scopedTickets.find((t) => t.id === ticketId);      // os anexos (print/PDF) saem junto com o chamado
       await deleteTicket(ticketId, activeTenantId, currentUid, Boolean(isSuperAdmin));
+      for (const a of apagando?.anexos || []) { void apagarAnexo(a.id); }
       toast.success("Chamado excluído com sucesso.");
       if (selectedTicketId === ticketId) {
         setSelectedTicketId(null);
@@ -760,6 +763,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                       <p className="text-[11px] text-slate-300 line-clamp-2 leading-relaxed">
                         {ticket.description}
                       </p>
+                      {!!ticket.anexos?.length && <span className="text-[10px] text-emerald-300 font-bold">📎 {ticket.anexos.length} anexo(s)</span>}
 
                       <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/50">
                         <span className={`px-1.5 py-0.2 rounded border font-semibold ${typeBadge.color}`}>
@@ -1048,6 +1052,15 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                     <p className="text-xs sm:text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
                       {currentTicket.description}
                     </p>
+                    {!!currentTicket.anexos?.length && (
+                      <div className="flex flex-wrap gap-2 pt-1" data-testid="chamado-anexos-detalhe">
+                        {currentTicket.anexos.map((a) => (
+                          <button key={a.id} type="button" onClick={() => abrirAnexo(a.id).catch((e) => toast.error(String(e?.message || e)))} className="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-[11px] font-bold text-emerald-300 hover:bg-slate-700 flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5" /> {a.nome} <span className="text-slate-400 font-normal">({Math.max(1, Math.round(a.tamanho / 1024))} KB)</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Resolução / Parecer Oficial (se concluído ou não provido) */}

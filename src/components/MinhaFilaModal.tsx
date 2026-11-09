@@ -89,6 +89,7 @@ export function MinhaFilaModal() {
                   {avisosAqui && <button type="button" onClick={testar} className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 border border-slate-300">Enviar aviso de teste</button>}</div>
               )}
               <div className="space-y-1">{AVISOS.map((a) => <label key={a.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={e.prefs[a.id] !== false} onChange={(ev) => mudarPref(a.id, ev.target.checked)} /> {a.rotulo}</label>)}</div>
+              <button type="button" onClick={() => { setAberto(false); window.dispatchEvent(new CustomEvent("chamado:abrir")); }} className="w-full py-2.5 rounded-xl border border-rose-300 bg-rose-50 text-rose-800 text-xs font-bold" data-testid="fila-abrir-chamado">🆘 Algo deu errado? Abrir chamado (com print)</button>
               <p className="text-[11px] text-slate-500">{e.aparelhos} aparelho(s) cadastrado(s). O aviso é um só por tipo a cada 10 minutos. O resumo tem só números e estados, sem número de processo.</p>
             </div>
           </>
