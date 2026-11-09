@@ -8,6 +8,7 @@ const json = async (url: string, corpo?: unknown) => {
 export const lerMinhaFila = () => json("/api/fila/minha");
 export const salvarPrefs = (prefs: Record<string, boolean>) => json("/api/fila/prefs", { prefs });
 export const enviarAvisoDeTeste = () => json("/api/fila/push/teste", {});
+export const enviarComando = (tipo: string) => json("/api/fila/comando", { tipo });
 
 let ponteLigada = false, ultimoEnvio = 0, ultimoTexto = "";
 /** A extensão deixa o resumo em `data-projudi-fila-resumo` e avisa com `projudi:fila`; só envia se mudou (ou a cada 3 min, para provar que o computador está ativo). */
@@ -22,6 +23,20 @@ export function ligarPonteDaFila(): void {
     } catch { /* ignora */ }
   };
   window.addEventListener("projudi:fila", enviar); setInterval(enviar, 20_000); setTimeout(enviar, 5000);
+  // comandos do celular: só o Studio do COMPUTADOR (o que tem a extensão) busca os pendentes e os entrega à extensão; o resultado volta pelo mesmo caminho
+  const buscarComandos = () => {
+    try {
+      if (!document.documentElement.dataset.assessorExtensao || document.documentElement.dataset.projudiFilaComandos) return;
+      void json("/api/fila/comandos/pendentes").then((j) => { if (Array.isArray(j.comandos) && j.comandos.length) { document.documentElement.dataset.projudiFilaComandos = JSON.stringify(j.comandos); window.dispatchEvent(new Event("projudi:fila-comandos")); } }).catch(() => {});
+    } catch { /* ignora */ }
+  };
+  window.addEventListener("projudi:fila-resultado", () => {
+    try {
+      const lista = JSON.parse(document.documentElement.dataset.projudiFilaResultado || "[]"); if (!Array.isArray(lista) || !lista.length) return;
+      void json("/api/fila/comandos/resultado", { resultados: lista }).then(() => { document.documentElement.dataset.projudiFilaResultadoAck = JSON.stringify(lista.map((r: any) => r.id)); window.dispatchEvent(new Event("projudi:fila-resultado-ok")); }).catch(() => {});
+    } catch { /* ignora */ }
+  });
+  setInterval(buscarComandos, 12_000); setTimeout(buscarComandos, 6000);
 }
 
 // ---------- avisos deste aparelho ----------

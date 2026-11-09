@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { Smartphone, X, RefreshCw, Loader2, BellRing, BellOff, Laptop } from "lucide-react";
-import { lerMinhaFila, salvarPrefs, enviarAvisoDeTeste, ativarAvisos, desativarAvisos, avisosAtivosNesteAparelho, suportaAvisos, registrarServiceWorker } from "../utils/filaCliente";
-import type { ResumoFila } from "../utils/filaRegras";
+import { lerMinhaFila, salvarPrefs, enviarAvisoDeTeste, enviarComando, ativarAvisos, desativarAvisos, avisosAtivosNesteAparelho, suportaAvisos, registrarServiceWorker } from "../utils/filaCliente";
+import { ROTULO_COMANDO, COMANDOS, type ResumoFila, type TipoComando } from "../utils/filaRegras";
 import { instrucoesDeInstalacao, enderecoDoApp } from "../utils/instalacaoApp";
 
 // o Chrome do Android avisa que o app pode ser instalado (uma vez, cedo): guardamos para oferecer o botão “Instalar agora”
@@ -10,7 +10,7 @@ let pedidoInstalar: any = null;
 if (typeof window !== "undefined") window.addEventListener("beforeinstallprompt", (ev: any) => { ev.preventDefault(); pedidoInstalar = ev; });
 const jaInstalado = () => { try { return window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true; } catch { return false; } };
 
-interface Estado { resumo: ResumoFila | null; ultimoSinal: number; online: boolean; prefs: Record<string, boolean>; aparelhos: number; minutosSemSinal: number }
+interface Estado { comandos?: { id: string; tipo: TipoComando; ts: number; estado: string; resultado: string }[]; resumo: ResumoFila | null; ultimoSinal: number; online: boolean; prefs: Record<string, boolean>; aparelhos: number; minutosSemSinal: number }
 const AVISOS = [{ id: "concluida", rotulo: "Fila concluída" }, { id: "erro", rotulo: "Um processo parou com erro" }, { id: "pausa", rotulo: "A IA pediu login ou verificação" }, { id: "parou", rotulo: "O computador parou de responder (15 min sem sinal)" }];
 const quando = (t: number) => { if (!t) return "nunca"; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "agora há pouco" : m < 60 ? `há ${m} min` : new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 
@@ -41,6 +41,10 @@ export function MinhaFilaModal() {
   const inst = instrucoesDeInstalacao(navigator.userAgent, jaInstalado(), (navigator as any).platform || "", navigator.maxTouchPoints || 0);
 
   const r = e?.resumo, feitos = r ? r.concluidos : 0, pct = r && r.total ? Math.round((r.concluidos / r.total) * 100) : 0;
+  const comandar = async (tipo: TipoComando) => {
+    try { const j = await enviarComando(tipo); toast.success(j.repetido ? "Esse comando já foi enviado. Aguarde o computador." : "Comando enviado. O computador executa em até 15 segundos."); void carregar(); setTimeout(carregar, 8000); setTimeout(carregar, 20000); }
+    catch (x: any) { toast.error(String(x?.message || x)); }
+  };
   const alternarAvisos = async () => { setOcupado(true); try { if (avisosAqui) { await desativarAvisos(); toast.success("Avisos desligados neste aparelho."); } else { await ativarAvisos(); toast.success("Avisos ligados neste aparelho."); } await carregar(); } catch (x: any) { toast.error(String(x?.message || x)); } finally { setOcupado(false); } };
   const mudarPref = async (id: string, v: boolean) => { if (!e) return; const prefs = { ...e.prefs, [id]: v }; setE({ ...e, prefs }); try { await salvarPrefs(prefs); } catch (x: any) { toast.error(String(x?.message || x)); void carregar(); } };
   const testar = async () => { try { const j = await enviarAvisoDeTeste(); toast[j.enviados ? "success" : "error"](j.enviados ? "Aviso enviado. Olhe o celular." : "Nenhum aparelho recebeu. Ligue os avisos neste aparelho primeiro."); } catch (x: any) { toast.error(String(x?.message || x)); } };
@@ -66,6 +70,18 @@ export function MinhaFilaModal() {
                 {r.ia && <div className="text-xs text-slate-600">Motor: {r.modo === "ia" ? `IA externa (${r.ia})` : r.modo || "Studio"}{r.versao ? ` · extensão v${r.versao}` : ""}</div>}
                 {r.pausa && <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">⏸ {r.pausa}</div>}
                 {r.ultimoErro && <div className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-lg p-2">Último erro: {r.ultimoErro}</div>}
+              </div>
+            )}
+            {r && r.total > 0 && (
+              <div className="rounded-2xl border border-slate-200 p-3 space-y-2" data-testid="fila-comandos">
+                <div className="font-bold text-sm">Comandos para a fila do computador</div>
+                {r.pausadaManual && <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2" data-testid="fila-pausada">⏸ A fila está pausada pelo celular. O processo em andamento termina; nenhum novo começa.</div>}
+                <div className="flex gap-2 flex-wrap">
+                  {COMANDOS.map((c) => <button key={c} type="button" disabled={!e.online || (c === "pausar" && r.pausadaManual) || (c === "retomar" && !r.pausadaManual)} onClick={() => comandar(c)} data-testid={"comando-" + c} className="px-3 py-2 rounded-xl text-xs font-bold border border-slate-300 bg-slate-50 disabled:opacity-40">{c === "pausar" ? "⏸ " : c === "retomar" ? "▶ " : "🔁 "}{ROTULO_COMANDO[c]}</button>)}
+                </div>
+                {!e.online && <p className="text-[11px] text-amber-700">O computador está sem sinal: os comandos só funcionam com o Chrome e o Studio abertos.</p>}
+                {!!e.comandos?.length && <ul className="text-[11px] text-slate-600 space-y-0.5" data-testid="fila-comandos-lista">{e.comandos.map((c) => <li key={c.id}>{ROTULO_COMANDO[c.tipo] || c.tipo} · {quando(c.ts)} · <b className={c.estado === "feito" ? "text-emerald-700" : c.estado === "falhou" || c.estado === "expirado" ? "text-rose-700" : "text-slate-700"}>{{ pendente: "aguardando o computador", entregue: "entregue ao computador", feito: "executado", falhou: "falhou", expirado: "expirou (o computador não respondeu em 10 min)" }[c.estado] || c.estado}</b>{c.resultado ? ` — ${c.resultado}` : ""}</li>)}</ul>}
+                <p className="text-[11px] text-slate-500">Só estes três comandos existem; nada é apagado nem lançado no Projudi pelo celular.</p>
               </div>
             )}
             <details className="rounded-2xl border border-slate-200 p-3 text-sm" open={!inst.instalado && inst.aparelho !== "computador"} data-testid="fila-instalar">

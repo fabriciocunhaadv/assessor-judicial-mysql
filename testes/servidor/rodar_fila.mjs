@@ -25,6 +25,14 @@ try {
   r = await fetch(U + "/prefs", { method: "POST", headers: h, body: JSON.stringify({ prefs: { erro: false } }) }); j = await r.json(); ok(r.status === 200 && j.prefs.erro === false && j.prefs.concluida === true, "preferências (200)");
   r = await fetch(U + "/push/teste", { method: "POST", headers: h }); ok(r.status === 200, "aviso de teste responde (200) mesmo sem entrega");
   r = await fetch(U + "/push/remover", { method: "POST", headers: h, body: JSON.stringify({ endpoint: "https://push.exemplo.invalid/abc" }) }); ok(r.status === 200, "remover aparelho (200)");
+  r = await fetch(U + "/comando", { method: "POST", headers: h, body: JSON.stringify({ tipo: "apagar_tudo" }) }); ok(r.status === 400, "comando fora dos 3 seguros recusado (400)");
+  r = await fetch(U + "/comando", { method: "POST", headers: h, body: JSON.stringify({ tipo: "lancar_projudi" }) }); ok(r.status === 400, "lançar no Projudi não existe como comando (400)");
+  r = await fetch(U + "/comando", { method: "POST", headers: h, body: JSON.stringify({ tipo: "pausar" }) }); ok(r.status === 409, "computador sem sinal: comando recusado com explicação (409; o banco de teste não guarda o resumo)");
+  r = await fetch(U + "/comando", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo: "pausar" }) }); ok(r.status === 401, "comando sem login recusa (401)");
+  r = await fetch(U + "/comandos/pendentes", { headers: h }); j = await r.json(); ok(r.status === 200 && Array.isArray(j.comandos), "GET /comandos/pendentes (200)");
+  r = await fetch(U + "/comandos/pendentes"); ok(r.status === 401, "pendentes sem login recusa (401)");
+  r = await fetch(U + "/comandos/resultado", { method: "POST", headers: h, body: JSON.stringify({ resultados: [{ id: "a".repeat(32), ok: true, mensagem: "Fila pausada." }, { id: "xyz", ok: true }] }) }); ok(r.status === 200, "POST /comandos/resultado (200)");
+  r = await fetch(U + "/minha", { headers: h }); j = await r.json(); ok(Array.isArray(j.comandos), "minha traz a lista de comandos");
   r = await fetch("http://localhost:3057/api/saude/limpar", { method: "POST", headers: h }); j = await r.json(); ok(r.status === 200 && typeof j.extras === "number", "limpeza inclui a fila: " + JSON.stringify(j));
 } finally { try { process.kill(-srv.pid, 9); } catch {} }
 if (falhas) { console.log(log.slice(-1500)); process.exit(1); } console.log("TUDO OK");

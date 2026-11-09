@@ -2,7 +2,7 @@
 import * as r from "../src/utils/filaRegras";
 let falhas = 0; const ok = (c: boolean, m: string) => { if (!c) { falhas++; console.log("FALHOU:", m); } else console.log("ok:", m); };
 const A = 1_800_000_000_000;
-const R = (o: any = {}): r.ResumoFila => ({ total: 10, aguardando: 4, analisando: 1, concluidos: 5, erros: 0, pausados: 0, modo: "ia", ia: "Jusbrasil", pausa: "", ultimoErro: "", versao: "1.0.96", geradoEm: A, ...o });
+const R = (o: any = {}): r.ResumoFila => ({ total: 10, aguardando: 4, analisando: 1, concluidos: 5, erros: 0, pausados: 0, modo: "ia", ia: "Jusbrasil", pausa: "", ultimoErro: "", versao: "1.0.96", pausadaManual: false, geradoEm: A, ...o });
 const s = r.sanearResumo({ total: "12", aguardando: -5, analisando: 1e12, concluidos: 3.7, erros: "x", modo: "ia", ultimoErro: "falhou 5381285-41.2025.8.09.0166 de a@b.com", versao: "1.0.9; DROP", extra: "ignorado" }, A);
 ok(s.total === 12 && s.aguardando === 0 && s.analisando === 100000 && s.concluidos === 4 && s.erros === 0, "números limitados");
 ok(!/\d{7}-\d{2}/.test(s.ultimoErro) && !/@/.test(s.ultimoErro) && s.versao === "" && !("extra" in s), "texto mascarado, versão inválida descartada, campos extras ignorados");
@@ -19,4 +19,7 @@ ok(r.detectarAvisos(R({ pausa: "O Jusbrasil pediu login" }), R({ pausa: "O Jusbr
 ok(r.detectarAvisos(R({ aguardando: 0, analisando: 0 }), R({ aguardando: 0, analisando: 0 })).length === 0, "fila parada e vazia não avisa");
 ok(r.computadorSemSinal(R(), A - 16 * 60_000, A) && !r.computadorSemSinal(R(), A - 10 * 60_000, A) && !r.computadorSemSinal(R({ aguardando: 0, analisando: 0 }), A - 99 * 60_000, A), "computador sem sinal só com trabalho pendente");
 ok(r.computadorOnline(A - 60_000, A) && !r.computadorOnline(A - 6 * 60_000, A) && !r.computadorOnline(0, A), "computador online");
+ok(r.sanearResumo({ pausadaManual: true }, A).pausadaManual === true && r.sanearResumo({ pausadaManual: "true" }, A).pausadaManual === false, "pausada manual só com true de verdade");
+ok(r.comandoValido("pausar") && r.comandoValido("retomar") && r.comandoValido("repetir_erros") && !r.comandoValido("apagar_tudo") && !r.comandoValido("lancar_projudi") && !r.comandoValido(undefined), "só os 3 comandos seguros");
+ok(!r.comandoExpirado(A - 9 * 60_000, A) && r.comandoExpirado(A - 11 * 60_000, A), "comando expira em 10 minutos");
 if (falhas) process.exit(1); console.log("TUDO OK");

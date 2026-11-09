@@ -8,6 +8,8 @@ export interface AchadoInjecao { nivel: NivelInjecao; categoria: string; trecho:
 // verificado=true: a varredura rodou (total 0 = nenhum indício → tarja verde); false: não havia texto para verificar
 export interface ResultadoInjecao { verificado: boolean; caracteres: number; total: number; alto: number; medio: number; achados: AchadoInjecao[] }
 
+import { classificarTextoOculto } from "./pdfTextoOculto";
+
 // letras acentuadas → base, MESMO comprimento (as posições do texto normalizado valem para o original)
 const DE = "áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ", PARA = "aaaaaeeeeiiiiooooouuuucnaaaaaeeeeiiiiooooouuuucn";
 const normalizar = (s: string) => s.replace(/(?<![A-Za-zÀ-ÿ])IA(?![A-Za-zÀ-ÿ])/g, "ią").replace(/[À-ÿ]/g, (c) => { const i = DE.indexOf(c); return i >= 0 ? PARA[i] : c; }).toLowerCase();
@@ -63,8 +65,10 @@ export function detectarInjecao(texto: string, max = 20): ResultadoInjecao {
       if (livre(a, b)) {
         ocupado.push([a, b]);
         if (r.categoria.startsWith("Texto ESCONDIDO")) {      // o trecho é o próprio texto escondido; a página é a do arquivo PDF
-          const bruto = t.slice(a, b), pg = bruto.match(/p[aá]g\.?\s*(\d+)/i);
-          achados.push({ nivel: r.nivel, categoria: r.categoria, trecho: bruto.replace(/^[^\]]*\]:\s*/, "").slice(0, 400), pagina: pg ? Number(pg[1]) : undefined, documento: local(a).documento, posicao: a });
+          const bruto = t.slice(a, b), pg = bruto.match(/p[aá]g\.?\s*(\d+)/i), conteudo = bruto.replace(/^[^\]]*\]:\s*/, "");
+          const intencao = classificarTextoOculto(conteudo);      // texto branco sem intenção (rótulo sobre caixa colorida, código, protocolo) não é alerta
+          if (!intencao.suspeito) { ocupado.pop(); continue; }
+          achados.push({ nivel: r.nivel, categoria: `Texto ESCONDIDO em fonte branca com intenção de influenciar a IA (${intencao.motivo})`, trecho: conteudo.slice(0, 400), pagina: pg ? Number(pg[1]) : undefined, documento: local(a).documento, posicao: a });
         } else achados.push({ nivel: r.nivel, categoria: r.categoria, trecho: recorte(a, m[0].length), ...local(a), posicao: a });
       }
     }

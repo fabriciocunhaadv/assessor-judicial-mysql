@@ -3,9 +3,9 @@ import glob, json, os, subprocess, time, urllib.request
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from playwright.sync_api import sync_playwright
 AG = int(time.time() * 1000)
-def estado(online=True, resumo=True):
-    r = {"total": 20, "aguardando": 5, "analisando": 1, "concluidos": 13, "erros": 1, "pausados": 0, "modo": "ia", "ia": "IA do Jusbrasil", "pausa": "O Jusbrasil pediu login", "ultimoErro": "ChatGPT: não achei a caixa", "versao": "1.0.96", "geradoEm": AG} if resumo else None
-    return {"resumo": r, "ultimoSinal": AG - (60000 if online else 3600000), "online": online, "prefs": {"concluida": True, "erro": True, "pausa": True, "parou": True}, "aparelhos": 0, "minutosSemSinal": 15}
+def estado(online=True, resumo=True, pausada=False):
+    r = {"total": 20, "aguardando": 5, "analisando": 1, "concluidos": 13, "erros": 1, "pausados": 0, "modo": "ia", "ia": "IA do Jusbrasil", "pausa": "O Jusbrasil pediu login", "ultimoErro": "ChatGPT: não achei a caixa", "versao": "1.0.96", "pausadaManual": pausada, "geradoEm": AG} if resumo else None
+    return {"comandos": [{"id": "a" * 32, "tipo": "pausar", "ts": AG - 30000, "estado": "feito", "resultado": "Fila pausada."}], "resumo": r, "ultimoSinal": AG - (60000 if online else 3600000), "online": online, "prefs": {"concluida": True, "erro": True, "pausa": True, "parou": True}, "aparelhos": 0, "minutosSemSinal": 15}
 def main():
     os.makedirs("/tmp/claude-0/work/teste", exist_ok=True)
     srv = subprocess.Popen(["npx", "vite", "--config", "testes/gigantes/vite.config.ts"], cwd=RAIZ, stdout=open("/tmp/claude-0/work/teste/vite_fila.log", "w"), stderr=subprocess.STDOUT, start_new_session=True)
@@ -14,18 +14,24 @@ def main():
             try: urllib.request.urlopen("http://127.0.0.1:5198/testes/gigantes/fila.html", timeout=2); break
             except Exception: time.sleep(1)
         with sync_playwright() as p:
-            b = p.chromium.launch(executable_path=glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome")[0], args=["--no-sandbox"]); erros = []; posts = []
+            b = p.chromium.launch(executable_path=glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome")[0], args=["--no-sandbox"]); erros = []; posts = []; cmds = []
             for nome, w, h, online, com in (("celular", 390, 800, True, True), ("computador", 1100, 800, False, False)):
                 pg = b.new_page(viewport={"width": w, "height": h}); pg.on("pageerror", lambda e: erros.append(str(e)[:200]))
                 est = estado(online, com)
                 pg.route("**/api/fila/minha", (lambda e: (lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(e))))(est))
                 def prefs(r): posts.append(r.request.post_data); r.fulfill(status=200, content_type="application/json", body='{"ok":true}')
                 pg.route("**/api/fila/prefs", prefs)
+                def comando(r): cmds.append(r.request.post_data); r.fulfill(status=200, content_type="application/json", body='{"ok":true,"id":"' + "b" * 32 + '"}')
+                pg.route("**/api/fila/comando", comando)
                 pg.goto("http://127.0.0.1:5198/testes/gigantes/fila.html"); pg.wait_for_timeout(500)
                 pg.evaluate("window.dispatchEvent(new CustomEvent('fila:abrir'))"); pg.wait_for_selector("[data-testid=minha-fila]")
                 if com:
                     pg.wait_for_selector("[data-testid=fila-resumo]"); t = pg.inner_text("[data-testid=minha-fila]")
                     assert "13" in t and "de 20" in t and "65%" in t and "Computador ativo" in t and "pediu login" in t and "ChatGPT: não achei a caixa" in t and "IA externa (IA do Jusbrasil)" in t, t[:400]
+                    assert pg.locator("[data-testid=comando-retomar]").is_disabled() and pg.locator("[data-testid=comando-pausar]").is_enabled() and pg.locator("[data-testid=comando-repetir_erros]").is_enabled(), "botões conforme o estado"
+                    assert "executado" in pg.inner_text("[data-testid=fila-comandos-lista]") and "Fila pausada." in pg.inner_text("[data-testid=fila-comandos-lista]")
+                    pg.click("[data-testid=comando-repetir_erros]"); pg.wait_for_timeout(400)
+                    assert any(x and '"repetir_erros"' in x for x in cmds), cmds
                     pg.uncheck("text=Um processo parou com erro"); pg.wait_for_timeout(300)
                     assert any(x and '"erro":false' in x for x in posts), posts
                     assert pg.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), "rolagem lateral no celular"
@@ -37,6 +43,17 @@ def main():
                     src = pg.locator("[data-testid=fila-qr] img").get_attribute("src"); assert src.startswith("data:image/png"), src[:30]
                     assert "QR" in pg.inner_text("[data-testid=fila-instalar]") and "?fila=1" in pg.inner_text("[data-testid=fila-qr]")
                 pg.wait_for_timeout(300); pg.screenshot(path=f"/tmp/claude-0/work/teste/fila_{nome}.png"); pg.close()
+            # fila pausada pelo celular: aparece o aviso e só "Retomar" fica ativo; sem sinal do computador, os comandos ficam desligados
+            for nome, est in (("pausada", estado(True, True, True)), ("semsinal", estado(False, True, False))):
+                pg = b.new_page(viewport={"width": 390, "height": 800}); pg.on("pageerror", lambda e: erros.append(str(e)[:200]))
+                pg.route("**/api/fila/minha", (lambda e: (lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(e))))(est))
+                pg.goto("http://127.0.0.1:5198/testes/gigantes/fila.html"); pg.wait_for_timeout(500)
+                pg.evaluate("window.dispatchEvent(new CustomEvent('fila:abrir'))"); pg.wait_for_selector("[data-testid=fila-comandos]")
+                if nome == "pausada":
+                    assert pg.locator("[data-testid=fila-pausada]").is_visible() and pg.locator("[data-testid=comando-retomar]").is_enabled() and pg.locator("[data-testid=comando-pausar]").is_disabled()
+                else:
+                    assert all(pg.locator(f"[data-testid=comando-{c}]").is_disabled() for c in ("pausar", "retomar", "repetir_erros")) and "sem sinal" in pg.inner_text("[data-testid=fila-comandos]")
+                pg.close()
             UAS = {"android": ("Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36", "Instalar no Android", "Instalar app", False),
                    "iphone-safari": ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1", "Instalar no iPhone", "Tela de Início", False),
                    "iphone-chrome": ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/124.0 Mobile/15E148 Safari/604.1", "Instalar no iPhone", "Safari", True)}
