@@ -73,7 +73,7 @@ export const PdfUploadZone: React.FC<PdfUploadZoneProps> = ({
         try {
           const r = await tratarPdfNaExtensao(file, { aoProgresso: (etapa, feitas, total) => setExtractionProgress({ current: feitas, total: total || 1, fileName: file.name, etapa }) });
           const oculto = await textoOcultoDoArquivo(file);      // a proteção contra prompt injection (texto em fonte branca) continua sendo feita aqui
-          const texto = (await limparTextoDaExtensao(r.texto)) + oculto;      // mesma limpeza e anotação de localização do texto lido pelo Studio
+          const texto = (r.quadro || "") + (await limparTextoDaExtensao(r.texto)) + oculto;      // quadro de movimentações (lido da tela do processo) vem antes do texto dos autos      // mesma limpeza e anotação de localização do texto lido pelo Studio
           if (r.pdfComOcr) { URL.revokeObjectURL(blobUrl); blobUrl = URL.createObjectURL(r.pdfComOcr); }      // a visualização passa a ser o PDF COM OCR (texto selecionável)
           const semOcr = Array.from(new Set([...(r.puladas || []), ...(r.vazias || [])])).sort((x, y) => x - y);
           if (semOcr.length) { try { toast(`⚠ Atenção: ${semOcr.length} página(s) de imagem ficaram sem texto reconhecido (pág. ${semOcr.slice(0, 15).join(", ")}${semOcr.length > 15 ? "…" : ""}). Confira no PDF.`, { duration: 15000 }); } catch { /* sem toast */ } }

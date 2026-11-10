@@ -24,7 +24,7 @@ export async function caminhoAtual(esperaMs = 1500): Promise<Caminho> {
   for (;;) { const e = lerEstado(); const c = decidirCaminho(e); if (c !== "instalar" && c !== "atualizar") return c; if (Date.now() - t0 >= esperaMs) return c; await new Promise((ok) => setTimeout(ok, 200)); }
 }
 
-export interface ResultadoExtensao { texto: string; paginas: number; ocr: number; paginasOcr: number[]; puladas: number[]; segundos: number; vazias: number[]; pdfComOcr?: Blob }
+export interface ResultadoExtensao { texto: string; paginas: number; ocr: number; paginasOcr: number[]; puladas: number[]; segundos: number; vazias: number[]; quadro: string; pdfComOcr?: Blob }
 export interface OpcoesExtensao { aoProgresso?: (etapa: string, feitas: number, total: number) => void; sinal?: AbortSignal }
 const PARTE = 1_500_000;      // bytes por pedaço enviado à extensão
 
@@ -73,6 +73,6 @@ export async function tratarPdfNaExtensao(file: File, op: OpcoesExtensao = {}): 
     if (esperadas > 0 && pdfPartes.filter(Boolean).length === esperadas) {
       try { pdfComOcr = new Blob(pdfPartes.map((b) => { const bin = atob(b), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }), { type: "application/pdf" }); } catch { /* fica com o original */ }
     }
-    return { pdfComOcr, vazias: Array.isArray(m.vazias) ? m.vazias : [], texto: String(m.texto || ""), paginas: Number(m.paginas) || 0, ocr: Number(m.ocr) || 0, paginasOcr: Array.isArray(m.paginasOcr) ? m.paginasOcr : [], puladas: Array.isArray(m.puladas) ? m.puladas : [], segundos: Number(m.segundos) || 0 };
+    return { pdfComOcr, quadro: String(m.quadro || ""), vazias: Array.isArray(m.vazias) ? m.vazias : [], texto: String(m.texto || ""), paginas: Number(m.paginas) || 0, ocr: Number(m.ocr) || 0, paginasOcr: Array.isArray(m.paginasOcr) ? m.paginasOcr : [], puladas: Array.isArray(m.puladas) ? m.puladas : [], segundos: Number(m.segundos) || 0 };
   } finally { window.removeEventListener("message", ouvir); if (vigia) clearInterval(vigia); }
 }
