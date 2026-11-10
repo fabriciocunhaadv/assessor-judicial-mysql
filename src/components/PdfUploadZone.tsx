@@ -15,7 +15,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { UploadedPdf } from "../types";
-import { extractTextFromPdf, textoOcultoDoArquivo } from "../utils/pdfExtractor";
+import { extractTextFromPdf, textoOcultoDoArquivo, limparTextoDaExtensao } from "../utils/pdfExtractor";
 import { caminhoAtual, tratarPdfNaExtensao, LINK_EXTENSAO, type Caminho } from "../utils/pdfViaExtensao";
 
 interface PdfUploadZoneProps {
@@ -73,7 +73,7 @@ export const PdfUploadZone: React.FC<PdfUploadZoneProps> = ({
         try {
           const r = await tratarPdfNaExtensao(file, { aoProgresso: (etapa, feitas, total) => setExtractionProgress({ current: feitas, total: total || 1, fileName: file.name, etapa }) });
           const oculto = await textoOcultoDoArquivo(file);      // a proteção contra prompt injection (texto em fonte branca) continua sendo feita aqui
-          const texto = r.texto + oculto;
+          const texto = (await limparTextoDaExtensao(r.texto)) + oculto;      // mesma limpeza e anotação de localização do texto lido pelo Studio
           extraction = { text: texto, pageCount: r.paginas, hasText: texto.length > 30, paginasSemTexto: r.puladas, paginasNaoLidas: [], paginasOcr: r.paginasOcr };
           if (r.ocr > 0) { try { toast.success(`Extensão: ${r.ocr} página(s) de imagem lidas por OCR${r.puladas.length ? `; ${r.puladas.length} não puderam ser lidas` : ""}.`, { duration: 6000 }); } catch { /* sem toast */ } }
         } catch (extErr: any) {

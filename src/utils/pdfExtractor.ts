@@ -664,3 +664,6 @@ export async function textoOcultoDoArquivo(file: File): Promise<string> {
     try { return blocoTextoOculto(await textoOcultoDeDocumento(pdf, pdfjsLib as any)); } finally { try { await (pdf as any).destroy?.(); } catch { /* ignora */ } }
   } catch { return ""; }
 }
+
+/** Texto vindo da extensão (já com OCR): recebe a MESMA limpeza e a mesma anotação de localização (“[Mov. N · Arq. M · Pág. K/T]”, lida do carimbo de cada página) que o texto lido pelo próprio Studio. */
+export const limparTextoDaExtensao = (texto: string): Promise<string> => limparEmPartes(texto, cederAoNavegador);
