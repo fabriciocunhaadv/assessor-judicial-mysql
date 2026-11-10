@@ -6,7 +6,7 @@ import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
 import { calculateCostBrl } from "../src/utils/custoIA";
 
-type Modulo = "minuta" | "turbo" | "lupa_magistrado" | "audiencia" | "outros";
+type Modulo = "minuta" | "turbo" | "lupa_magistrado" | "audiencia" | "ia_externa" | "outros";
 const ROTAS: Record<string, { modulo: Modulo; rotulo: string }> = {
   "/api/generate-minute": { modulo: "minuta", rotulo: "Minuta" },
   "/api/generate-minute-turbo": { modulo: "turbo", rotulo: "Minuta Turbo" },
@@ -40,14 +40,14 @@ const somar = (a: any, uso: UsoExtraido, custo: number) => ({
 });
 
 /** Soma uma execução no registro do gabinete e nos contadores do mês (token_usage). */
-export async function registrarUso(p: { tenant: string; uid: string; email: string; nome: string; modulo: Modulo; rotulo: string; uso: UsoExtraido; nativa: boolean }, bancoDeTeste?: any): Promise<void> {
+export async function registrarUso(p: { tenant: string; uid: string; email: string; nome: string; modulo: Modulo; rotulo: string; uso: UsoExtraido; nativa: boolean; idLog?: string }, bancoDeTeste?: any): Promise<void> {
   if (!bancoDeTeste) await garantirDocs();
   const agora = Date.now(), d = new Date(agora);
   const custo = p.nativa ? calculateCostBrl(p.uso.prompt, p.uso.saida, p.uso.modelo) : 0;
   const colLogs = `gabinetes/${p.tenant}/usageLogs`, colMes = `gabinetes/${p.tenant}/token_usage`;
   const mes = d.toISOString().slice(0, 7), hoje = d.toISOString().slice(0, 10), chave = chaveEmail(p.email);
   const log = {
-    id: `srv-${agora}-${Math.random().toString(36).slice(2, 8)}`, timestamp: d.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" }), timeMs: agora,
+    id: p.idLog || `srv-${agora}-${Math.random().toString(36).slice(2, 8)}`, timestamp: d.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" }), timeMs: agora,
     label: `${p.rotulo}${p.uso.processo ? ` (${p.uso.processo})` : ""}`.slice(0, 160), processNumber: p.uso.processo || "Gabinete TJGO", model: p.uso.modelo,
     promptTokens: p.uso.prompt, outputTokens: p.uso.saida, totalTokens: p.uso.total, costBrl: custo, userId: p.uid, userName: p.nome, userEmail: p.email,
     module: p.modulo, keyType: p.nativa ? "native" : "byok", keyLabel: p.nativa ? "Chave Nativa Corporativa" : "Chave Pessoal", tenantId: p.tenant, tenant: p.tenant, registradoPor: "servidor",
@@ -55,6 +55,7 @@ export async function registrarUso(p: { tenant: string; uid: string; email: stri
   const con: any = await (bancoDeTeste || banco()).getConnection();
   try {
     await con.beginTransaction();
+    if (p.idLog) { const [ja] = await con.query("SELECT 1 FROM docs WHERE col=? AND id=?", [colLogs, log.id]); if (ja[0]) { await con.rollback(); return; } }      // mesma execução avisada duas vezes (nova tentativa de entrega): conta uma só
     await con.query("INSERT INTO docs (col,id,data,updated_at) VALUES (?,?,?,?)", [colLogs, log.id, JSON.stringify(log), agora]);
     const [rows] = await con.query("SELECT data FROM docs WHERE col=? AND id=? FOR UPDATE", [colMes, mes]);
     let doc: any = {};
@@ -111,4 +112,16 @@ export const contarUsoNoServidor = (ehNativa: (req: any) => boolean): RequestHan
     return r;
   };
   next();
+};
+
+/** Minuta feita FORA da IA do Studio (ChatGPT, Gemini, Claude, IA do Jusbrasil ou Agaia, pela esteira da extensão) e entregue ao Studio: conta como uma execução do módulo "IA externa" (sem tokens: o consumo é da conta da pessoa naquele site). */
+export const ORIGENS_EXTERNAS = /^[\p{L}\p{N} .\-]{2,40}$/u;
+export const usoExterno = (): RequestHandler => async (req: any, res: any) => {
+  try {
+    const u = req.usuarioSessao; if (!u) return res.status(401).json({ ok: false });
+    const origem = String(req.body?.origem || "").trim(), processo = String(req.body?.processo || "").slice(0, 60), chave = String(req.body?.chave || "").replace(/[^\w-]/g, "").slice(0, 60);
+    if (!ORIGENS_EXTERNAS.test(origem)) return res.status(400).json({ ok: false, erro: "origem inválida" });
+    await registrarUso({ tenant: u.tenant, uid: u.uid, email: String(u.email || ""), nome: String(u.name || String(u.email || "").split("@")[0] || "Assessor"), modulo: "ia_externa", rotulo: `Minuta feita em ${origem}`, uso: { prompt: 0, saida: 0, total: 0, modelo: origem, processo }, nativa: false, idLog: chave ? `ext-${u.uid}-${chave}` : undefined });
+    res.json({ ok: true });
+  } catch (e: any) { console.error("[uso-externo]", e?.message || e); res.status(500).json({ ok: false }); }
 };

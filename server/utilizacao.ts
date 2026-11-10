@@ -6,7 +6,7 @@ import { garantirDocs } from "./docsRoutes";
 
 export const utilizacaoRouter = express.Router();
 
-const MODULOS = ["minuta", "turbo", "copiloto", "audiencia", "lupa_magistrado", "chat_refino", "outros"] as const;
+const MODULOS = ["minuta", "turbo", "copiloto", "audiencia", "lupa_magistrado", "chat_refino", "ia_externa", "outros"] as const;
 type Modulo = (typeof MODULOS)[number];
 interface Uso { n: number; tokens: number; custo: number }
 interface Linha {

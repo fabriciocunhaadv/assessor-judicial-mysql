@@ -915,6 +915,12 @@ export default function App() {
       let r: { ok: boolean; id?: string; erro?: string };
       try { r = await entradasExternas.receber(d); } catch (e: any) { r = { ok: false, erro: String(e?.message || e) }; }
       try { document.documentElement.dataset.agaiaCadastro = JSON.stringify({ reqId: d.reqId, guardada: r.ok, ...r }); } catch { /* sem dataset */ }
+      if (r.ok) {      // minuta feita fora da IA do Studio (ChatGPT/Gemini/Claude/Agaia): conta como uso no painel Utilização (o servidor evita contar duas vezes a mesma minuta)
+        try {
+          const txt = String(d.minutaTexto || d.minutaHtml || ""); let h = 0; for (let i = 0; i < txt.length; i++) h = (h * 31 + txt.charCodeAt(i)) | 0;
+          void fetch("/api/uso-externo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origem: d.origem || "Agaia", processo: d.processo || "", chave: `${String(d.processo || "").replace(/\D/g, "")}-${txt.length}-${(h >>> 0).toString(36)}` }) }).catch(() => {});
+        } catch { /* contagem nunca atrapalha a entrega */ }
+      }
       if (r.ok) toast(`Chegou ${d.origem && !/agaia/i.test(d.origem) ? `de ${d.origem}` : "do Agaia"}: ${d.processo}. Está sendo gravada no Histórico em segundo plano.`, { icon: "🤖", duration: 4000 });
     };
     window.addEventListener("assessor:cadastrar-minuta", ouvir);

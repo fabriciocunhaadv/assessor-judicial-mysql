@@ -1179,6 +1179,7 @@ export interface InitialPetitionRecord {
 // ==========================================
 
 export type ExecutionModuleType = 
+  | 'ia_externa'       // Minuta feita no ChatGPT/Gemini/Claude/Agaia pela esteira da extensão e entregue ao Studio (sem tokens)
   | 'minuta'           // Geração de Minutas (Sentença, Decisão, Despacho)
   | 'turbo'            // Módulo Turbo Independente (Análise Ágil)
   | 'copiloto'         // Agente Copiloto IA de Gabinete

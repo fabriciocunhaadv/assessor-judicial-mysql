@@ -13,7 +13,7 @@ interface Resposta {
   liberados: { id: string; nome: string; unidade: string; pessoas: { email: string; nome: string; usos: number; ultimoUso: number }[] }[];
 }
 
-const MODULOS: [string, string][] = [["minuta", "Minutas"], ["turbo", "Turbo"], ["lupa_magistrado", "Lupa"], ["audiencia", "Mesa de Audiência"], ["copiloto", "Copiloto"], ["chat_refino", "Chat/Refino"], ["outros", "Outros"]];
+const MODULOS: [string, string][] = [["minuta", "Minutas"], ["turbo", "Turbo"], ["lupa_magistrado", "Lupa"], ["audiencia", "Mesa de Audiência"], ["copiloto", "Copiloto"], ["chat_refino", "Chat/Refino"], ["ia_externa", "IA externa/Agaia"], ["outros", "Outros"]];
 const num = (n: number) => n.toLocaleString("pt-BR");
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const quando = (t: number) => (t ? new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
