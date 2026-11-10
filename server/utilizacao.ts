@@ -12,7 +12,7 @@ interface Uso { n: number; tokens: number; custo: number }
 interface Linha {
   email: string; nome: string; tenant: string; papel: string; status: string; peticao360Liberada: boolean; chaveNativaLiberada: boolean;
   modulos: Record<Modulo, Uso>; execucoes: number; tokens: number; custo: number; chaveNativa: number;
-  minutasSalvas: number; peticoes360: number; ultimoUso: number;
+  minutasSalvas: number; peticoes360: number; ultimoUso: number; extensao: Record<string, number>; extensaoTotal: number;
 }
 const vazio = (): Record<Modulo, Uso> => Object.fromEntries(MODULOS.map((m) => [m, { n: 0, tokens: 0, custo: 0 }])) as Record<Modulo, Uso>;
 const dia = (s: any, fim: boolean, padrao: number) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || "")); return m ? Date.parse(`${m[1]}-${m[2]}-${m[3]}T${fim ? "23:59:59.999" : "00:00:00"}-03:00`) : padrao; };      // dias no horário de Brasília
@@ -34,12 +34,12 @@ utilizacaoRouter.get("/", async (req: any, res) => {
       const email = String(u.email || "").toLowerCase(), extras = json(u.extras);
       const legados: string[] = Array.isArray(extras.uidsAntigos) ? extras.uidsAntigos.map(String) : [];
       porUid.set(String(u.id), email); legados.forEach((x) => porUid.set(x, email));
-      linhas.set(email, { email, nome: u.name || email.split("@")[0], tenant: u.tenant_id || "", papel: u.role, status: u.status, peticao360Liberada: u.role === "super_admin" || extras.peticao360 === true, chaveNativaLiberada: !!u.can_use_native_key || u.role === "super_admin", modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, peticoes360: 0, ultimoUso: 0 });
+      linhas.set(email, { email, nome: u.name || email.split("@")[0], tenant: u.tenant_id || "", papel: u.role, status: u.status, peticao360Liberada: u.role === "super_admin" || extras.peticao360 === true, chaveNativaLiberada: !!u.can_use_native_key || u.role === "super_admin", modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, peticoes360: 0, ultimoUso: 0, extensao: {}, extensaoTotal: 0 });
     }
     const pegar = (email: string, nome = "", tenant = ""): Linha => {
       email = email.toLowerCase();
       let l = linhas.get(email);
-      if (!l) { l = { email, nome: nome || email.split("@")[0] || "(sem identificação)", tenant, papel: "", status: "fora do cadastro", peticao360Liberada: false, chaveNativaLiberada: false, modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, peticoes360: 0, ultimoUso: 0 }; linhas.set(email, l); }
+      if (!l) { l = { email, nome: nome || email.split("@")[0] || "(sem identificação)", tenant, papel: "", status: "fora do cadastro", peticao360Liberada: false, chaveNativaLiberada: false, modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, peticoes360: 0, ultimoUso: 0, extensao: {}, extensaoTotal: 0 }; linhas.set(email, l); }
       return l;
     };
 
@@ -66,6 +66,19 @@ utilizacaoRouter.get("/", async (req: any, res) => {
     }
     });
 
+    // 1b) uso da extensão (contagens por dia e recurso, entregues pelo app)
+    await tentar("uso da extensão", async () => {
+    const [ex] = await banco().query<any[]>("SELECT data FROM docs WHERE col LIKE 'gabinetes/%/usoExtensao' LIMIT 100000");
+    for (const r of ex) {
+      const d = json(r.data), t = Date.parse(`${String(d.dia || "")}T12:00:00-03:00`);
+      if (!(t >= de - 12 * 3600_000 && t <= ate)) continue;
+      const email = String(d.email || porUid.get(String(d.uid || "")) || "").toLowerCase(); if (!email) continue;
+      const l = pegar(email, d.nome, String(d.tenant || ""));
+      for (const [k, n] of Object.entries(d.recursos || {})) { const v = Number(n) || 0; l.extensao[k] = (l.extensao[k] || 0) + v; l.extensaoTotal += v; }
+      l.ultimoUso = Math.max(l.ultimoUso, Number(d.atualizadoEm) || 0);
+    }
+    });
+
     // 2) petições 360° criadas no período
     await tentar("petições 360°", async () => {
     const [pets] = await banco().query<any[]>("SELECT data FROM docs WHERE col='initial_petitions_history' LIMIT 50000");
@@ -89,8 +102,8 @@ utilizacaoRouter.get("/", async (req: any, res) => {
     const usuarios = [...linhas.values()].sort((a, b) => (b.execucoes + b.peticoes360 + b.minutasSalvas) - (a.execucoes + a.peticoes360 + a.minutasSalvas) || a.email.localeCompare(b.email));
     const soma = (f: (l: Linha) => number) => usuarios.reduce((n, l) => n + f(l), 0);
     const totais = {
-      usuariosAtivos: usuarios.filter((l) => l.execucoes + l.peticoes360 + l.minutasSalvas > 0).length, usuariosCadastrados: us.length,
-      execucoes: soma((l) => l.execucoes), tokens: soma((l) => l.tokens), custo: soma((l) => l.custo), minutasSalvas: soma((l) => l.minutasSalvas), peticoes360: soma((l) => l.peticoes360),
+      usuariosAtivos: usuarios.filter((l) => l.execucoes + l.peticoes360 + l.minutasSalvas + l.extensaoTotal > 0).length, usuariosCadastrados: us.length,
+      extensao: soma((l) => l.extensaoTotal), execucoes: soma((l) => l.execucoes), tokens: soma((l) => l.tokens), custo: soma((l) => l.custo), minutasSalvas: soma((l) => l.minutasSalvas), peticoes360: soma((l) => l.peticoes360),
       porModulo: Object.fromEntries(MODULOS.map((m) => [m, { n: soma((l) => l.modulos[m].n), tokens: soma((l) => l.modulos[m].tokens), custo: soma((l) => l.modulos[m].custo) }])),
       semDono,
     };

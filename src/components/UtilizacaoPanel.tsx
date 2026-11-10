@@ -4,16 +4,17 @@ import { BarChart3, RefreshCw, Loader2, Download, Search } from "lucide-react";
 interface Uso { n: number; tokens: number; custo: number }
 interface Linha {
   email: string; nome: string; tenant: string; papel: string; status: string; peticao360Liberada: boolean; chaveNativaLiberada: boolean;
-  modulos: Record<string, Uso>; execucoes: number; tokens: number; custo: number; chaveNativa: number; minutasSalvas: number; peticoes360: number; ultimoUso: number;
+  modulos: Record<string, Uso>; execucoes: number; tokens: number; custo: number; chaveNativa: number; minutasSalvas: number; peticoes360: number; ultimoUso: number; extensao: Record<string, number>; extensaoTotal: number;
 }
 interface Resposta {
   periodo: { de: number; ate: number }; geradoEm: number; avisos?: string[];
-  totais: { usuariosAtivos: number; usuariosCadastrados: number; execucoes: number; tokens: number; custo: number; minutasSalvas: number; peticoes360: number; porModulo: Record<string, Uso>; semDono: number };
+  totais: { extensao: number; usuariosAtivos: number; usuariosCadastrados: number; execucoes: number; tokens: number; custo: number; minutasSalvas: number; peticoes360: number; porModulo: Record<string, Uso>; semDono: number };
   usuarios: Linha[];
   liberados: { id: string; nome: string; unidade: string; pessoas: { email: string; nome: string; usos: number; ultimoUso: number }[] }[];
 }
 
 const MODULOS: [string, string][] = [["minuta", "Minutas"], ["turbo", "Turbo"], ["lupa_magistrado", "Lupa"], ["audiencia", "Mesa de Audiência"], ["copiloto", "Copiloto"], ["chat_refino", "Chat/Refino"], ["ia_externa", "IA externa/Agaia"], ["outros", "Outros"]];
+const ROTULOS_EXT: Record<string, string> = { esteira_analise: "Esteira: análise", esteira_turbo: "Esteira: Turbo", esteira_lupa: "Esteira: Lupa", esteira_mesa: "Esteira: Mesa", esteira_ia: "Esteira: IA externa", esteira_agaia: "Esteira: Agaia", esteira_outro: "Esteira: outros", ocr_processo: "OCR de processos", pdf_para_texto: "PDF para texto", pdf_studio: "PDF tratado para o Studio", baixar_arquivos: "Baixar arquivos (aberturas)" };
 const num = (n: number) => n.toLocaleString("pt-BR");
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const quando = (t: number) => (t ? new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -45,13 +46,13 @@ export function UtilizacaoPanel() {
   useEffect(() => { void carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const atalho = (dias: number | "mes") => { const f = hoje(), i = hoje(); if (dias === "mes") i.setDate(1); else i.setDate(i.getDate() - dias + 1); setDe(iso(i)); setAte(iso(f)); };
-  const visiveis = useMemo(() => (dados?.usuarios || []).filter((l) => (!soAtivos || l.execucoes + l.peticoes360 + l.minutasSalvas > 0) && (!busca.trim() || `${l.nome} ${l.email} ${l.tenant}`.toLowerCase().includes(busca.trim().toLowerCase()))), [dados, busca, soAtivos]);
+  const visiveis = useMemo(() => (dados?.usuarios || []).filter((l) => (!soAtivos || l.execucoes + l.peticoes360 + l.minutasSalvas + l.extensaoTotal > 0) && (!busca.trim() || `${l.nome} ${l.email} ${l.tenant}`.toLowerCase().includes(busca.trim().toLowerCase()))), [dados, busca, soAtivos]);
 
   const exportar = () => {
     if (!dados) return;
-    const cab = ["Nome", "E-mail", "Gabinete", "Execuções de IA", ...MODULOS.map(([, r]) => r), "Minutas salvas", "Petições 360°", "Tokens", "Custo estimado (R$)", "Último uso"];
+    const cab = ["Nome", "E-mail", "Gabinete", "Execuções de IA", ...MODULOS.map(([, r]) => r), "Uso da extensão", "Minutas salvas", "Petições 360°", "Tokens", "Custo estimado (R$)", "Último uso"];
     const aspas = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const linhas = visiveis.map((l) => [l.nome, l.email, l.tenant, l.execucoes, ...MODULOS.map(([m]) => l.modulos[m]?.n || 0), l.minutasSalvas, l.peticoes360, l.tokens, l.custo.toFixed(2).replace(".", ","), quando(l.ultimoUso)]);
+    const linhas = visiveis.map((l) => [l.nome, l.email, l.tenant, l.execucoes, ...MODULOS.map(([m]) => l.modulos[m]?.n || 0), l.extensaoTotal, l.minutasSalvas, l.peticoes360, l.tokens, l.custo.toFixed(2).replace(".", ","), quando(l.ultimoUso)]);
     const csv = "﻿" + [cab, ...linhas].map((r) => r.map(aspas).join(";")).join("\r\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = `utilizacao_${de}_a_${ate}.csv`; a.click(); URL.revokeObjectURL(a.href);
   };
@@ -75,8 +76,8 @@ export function UtilizacaoPanel() {
 
       {dados && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
-            {[["Pessoas que usaram", `${num(dados.totais.usuariosAtivos)} de ${num(dados.totais.usuariosCadastrados)}`], ["Execuções de IA", num(dados.totais.execucoes)], ["Minutas salvas", num(dados.totais.minutasSalvas)], ["Petições 360°", num(dados.totais.peticoes360)], ["Tokens / custo", `${num(dados.totais.tokens)} · ${brl(dados.totais.custo)}`]].map(([t, v]) => (
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5">
+            {[["Pessoas que usaram", `${num(dados.totais.usuariosAtivos)} de ${num(dados.totais.usuariosCadastrados)}`], ["Ações na extensão", num(dados.totais.extensao || 0)], ["Execuções de IA", num(dados.totais.execucoes)], ["Minutas salvas", num(dados.totais.minutasSalvas)], ["Petições 360°", num(dados.totais.peticoes360)], ["Tokens / custo", `${num(dados.totais.tokens)} · ${brl(dados.totais.custo)}`]].map(([t, v]) => (
               <div key={t} className="bg-slate-900 border border-slate-800 rounded-xl p-3"><div className="text-[10px] uppercase font-bold text-slate-400">{t}</div><div className="text-sm font-black text-white mt-0.5">{v}</div></div>
             ))}
           </div>
@@ -105,7 +106,7 @@ export function UtilizacaoPanel() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead><tr><th className={th}>Pessoa</th><th className={th}>Gabinete</th><th className={th}>Execuções IA</th>{MODULOS.map(([m, r]) => <th key={m} className={th}>{r}</th>)}<th className={th}>Minutas salvas</th><th className={th}>Petições 360°</th><th className={th}>Tokens</th><th className={th}>Custo</th><th className={th}>Último uso</th></tr></thead>
+                <thead><tr><th className={th}>Pessoa</th><th className={th}>Gabinete</th><th className={th}>Execuções IA</th>{MODULOS.map(([m, r]) => <th key={m} className={th}>{r}</th>)}<th className={th}>Uso da extensão</th><th className={th}>Minutas salvas</th><th className={th}>Petições 360°</th><th className={th}>Tokens</th><th className={th}>Custo</th><th className={th}>Último uso</th></tr></thead>
                 <tbody>
                   {visiveis.map((l) => (
                     <tr key={l.email} className="border-t border-slate-800" data-testid="linha-utilizacao">
@@ -113,6 +114,7 @@ export function UtilizacaoPanel() {
                       <td className={td}>{l.tenant || "—"}</td>
                       <td className={`${td} font-bold text-amber-300`}>{num(l.execucoes)}</td>
                       {MODULOS.map(([m]) => <td key={m} className={td}>{l.modulos[m]?.n ? num(l.modulos[m].n) : "—"}</td>)}
+                      <td className={td} title={Object.entries(l.extensao || {}).map(([k, n]) => `${ROTULOS_EXT[k] || k}: ${n}`).join("\n")} data-testid="uso-extensao">{l.extensaoTotal ? num(l.extensaoTotal) : "—"}</td>
                       <td className={td}>{l.minutasSalvas ? num(l.minutasSalvas) : "—"}</td>
                       <td className={td}>{l.peticoes360 ? num(l.peticoes360) : "—"}</td>
                       <td className={td}>{l.tokens ? num(l.tokens) : "—"}</td>
@@ -120,7 +122,7 @@ export function UtilizacaoPanel() {
                       <td className={td}>{quando(l.ultimoUso)}</td>
                     </tr>
                   ))}
-                  {visiveis.length === 0 && <tr><td colSpan={12 + MODULOS.length} className="px-2 py-4 text-xs text-slate-500">Nenhuma pessoa com uso neste período.</td></tr>}
+                  {visiveis.length === 0 && <tr><td colSpan={13 + MODULOS.length} className="px-2 py-4 text-xs text-slate-500">Nenhuma pessoa com uso neste período.</td></tr>}
                 </tbody>
               </table>
             </div>

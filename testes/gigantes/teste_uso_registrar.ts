@@ -34,5 +34,13 @@ const pool: any = { getConnection: async () => con, query: async () => [[]] };
   ok(d2.totalTokens === 3000 && d2.requestCount === 4, "IA externa não soma tokens, só execuções");
   const lx = [...mem.entries()].filter(([k]) => k.includes("usageLogs")).map(([, v]) => JSON.parse(v)).filter((l) => l.module === "ia_externa");
   ok(lx.length === 2 && lx[0].userEmail === "fabia@tjgo.jus.br" && lx[0].costBrl === 0, "registro de execução da IA externa");
+  // uso da extensão: soma por dia e recurso; o mesmo lote reenviado não conta duas vezes
+  const { registrarUsoExtensao } = await import("../../server/usoNoServidor");
+  const ue = { tenant: "gabinete_default", uid: "u2", email: "fabia@tjgo.jus.br", nome: "Fábia", lote: "u1abcdef", dias: { "2026-11-10": { esteira_turbo: 3, ocr_processo: 2 } }, versao: "1.0.104" };
+  await registrarUsoExtensao(ue, pool); await registrarUsoExtensao(ue, pool);
+  await registrarUsoExtensao({ ...ue, lote: "u2abcdef", dias: { "2026-11-10": { esteira_turbo: 4 }, "2026-11-11": { pdf_studio: 1 } } }, pool);
+  const e1 = JSON.parse(mem.get("gabinetes/gabinete_default/usoExtensao|u2_2026-11-10")), e2 = JSON.parse(mem.get("gabinetes/gabinete_default/usoExtensao|u2_2026-11-11"));
+  ok(e1.recursos.esteira_turbo === 7 && e1.recursos.ocr_processo === 2, "extensão: soma dos lotes no dia; lote repetido não conta");
+  ok(e2.recursos.pdf_studio === 1 && e1.email === "fabia@tjgo.jus.br" && e1.lotes.length === 2, "extensão: um documento por dia e pessoa");
   process.exit(falhas ? 1 : 0);
 })();

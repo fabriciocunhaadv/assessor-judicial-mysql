@@ -125,3 +125,43 @@ export const usoExterno = (): RequestHandler => async (req: any, res: any) => {
     res.json({ ok: true });
   } catch (e: any) { console.error("[uso-externo]", e?.message || e); res.status(500).json({ ok: false }); }
 };
+
+/** USO DA EXTENSÃO: a extensão (Chrome) soma localmente o que a pessoa fez (processos na esteira por modo, OCR, PDF para texto, baixar arquivos…) e o app entrega aqui, por dia.
+ *  Só contagens: nenhum conteúdo de processo. Cada lote tem um código: o mesmo lote reenviado não soma duas vezes. */
+export async function registrarUsoExtensao(p: { tenant: string; uid: string; email: string; nome: string; lote: string; dias: Record<string, Record<string, number>>; versao?: string }, bancoDeTeste?: any): Promise<number> {
+  if (!bancoDeTeste) await garantirDocs();
+  const col = `gabinetes/${p.tenant}/usoExtensao`, agora = Date.now();
+  const con: any = await (bancoDeTeste || banco()).getConnection();
+  let gravados = 0;
+  try {
+    await con.beginTransaction();
+    for (const [dia, recursos] of Object.entries(p.dias)) {
+      const id = `${p.uid}_${dia}`;
+      const [rows] = await con.query("SELECT data FROM docs WHERE col=? AND id=? FOR UPDATE", [col, id]);
+      let doc: any = {}; try { doc = rows[0] ? JSON.parse(rows[0].data) : {}; } catch { doc = {}; }
+      if (Array.isArray(doc.lotes) && doc.lotes.includes(p.lote)) continue;
+      const rec = { ...(doc.recursos || {}) }; for (const [r, n] of Object.entries(recursos)) rec[r] = (Number(rec[r]) || 0) + n;
+      const novo = { uid: p.uid, email: p.email, nome: p.nome, tenant: p.tenant, dia, recursos: rec, lotes: [...(doc.lotes || []), p.lote].slice(-20), versao: p.versao || doc.versao || "", atualizadoEm: agora };
+      await con.query("INSERT INTO docs (col,id,data,updated_at) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE data=VALUES(data), updated_at=VALUES(updated_at)", [col, id, JSON.stringify(novo), agora]);
+      gravados++;
+    }
+    await con.commit();
+  } catch (e) { try { await con.rollback(); } catch { /* sem transação */ } throw e; }
+  finally { con.release(); }
+  return gravados;
+}
+export const usoExtensao = (): RequestHandler => async (req: any, res: any) => {
+  try {
+    const u = req.usuarioSessao; if (!u) return res.status(401).json({ ok: false });
+    const lote = String(req.body?.lote || "").replace(/[^\w-]/g, "").slice(0, 60); if (lote.length < 6) return res.status(400).json({ ok: false, erro: "lote inválido" });
+    const dias: Record<string, Record<string, number>> = {};
+    for (const [d, rs] of Object.entries(req.body?.dias || {}).slice(0, 14)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !rs || typeof rs !== "object") continue;
+      const o: Record<string, number> = {};
+      for (const [r, n] of Object.entries(rs as any).slice(0, 30)) { const v = Math.floor(Number(n)); if (/^[a-z0-9_]{2,40}$/.test(r) && v > 0 && v <= 100000) o[r] = v; }
+      if (Object.keys(o).length) dias[d] = o;
+    }
+    if (Object.keys(dias).length) await registrarUsoExtensao({ tenant: u.tenant, uid: u.uid, email: String(u.email || ""), nome: String(u.name || String(u.email || "").split("@")[0] || "Assessor"), lote, dias, versao: String(req.body?.versao || "").slice(0, 20) });
+    res.json({ ok: true, lote });
+  } catch (e: any) { console.error("[uso-extensao]", e?.message || e); res.status(500).json({ ok: false }); }
+};

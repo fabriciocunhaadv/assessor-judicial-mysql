@@ -905,6 +905,20 @@ export default function App() {
 
   // Processos gigantes: configuração usada pela leitura em lotes (mesmo prompt, ato e unidade da análise normal)
   // Minuta que veio pronta do Agaia (pela esteira da extensão): guardada no navegador na hora e gravada no Histórico em segundo plano (src/utils/entradaExterna.ts); o resultado volta à extensão por um atributo da página
+  // Uso da extensão: a extensão soma localmente (por dia e recurso) e entrega aqui; o app envia ao servidor e confirma pelo atributo da página (a extensão só zera o que foi confirmado)
+  useEffect(() => {
+    const ouvir = async (ev: Event) => {
+      let d: { lote?: string; dias?: any; versao?: string } | null = null;
+      try { d = JSON.parse(String((ev as CustomEvent).detail || "null")); } catch { d = null; }
+      if (!d?.lote || !d.dias) return;
+      try {
+        const r = await fetch("/api/uso-extensao", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d) });
+        if (r.ok) document.documentElement.dataset.assessorUsoExtensaoAck = d.lote;
+      } catch { /* a extensão tenta de novo depois */ }
+    };
+    window.addEventListener("assessor:uso-extensao", ouvir);
+    return () => window.removeEventListener("assessor:uso-extensao", ouvir);
+  }, []);
   entradasExternas.definirContexto({ unidades: allowedUnits, ativa: activeUnit, user });
   useEffect(() => {
     void entradasExternas.carregar();
