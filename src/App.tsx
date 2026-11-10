@@ -2581,16 +2581,19 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Fica montado mesmo na aba "Texto": se o PDF está sendo tratado pela extensão, a contagem não some ao trocar de aba */}
+                <div className={inputMode === "pdf" ? "" : "hidden"} data-testid="zona-pdf">
+                  <PdfUploadZone
+                    pdfFiles={pdfFiles}
+                    onAddPdf={handleAddPdf}
+                    onUpdatePdf={handleUpdatePdf}
+                    onRemovePdf={handleRemovePdf}
+                    onClearAll={handleClearPdfs}
+                    onOpenAssessorGuide={() => setIsAssessorWorkflowGuideOpen(true)}
+                  />
+                </div>
                 {inputMode === "pdf" ? (
                   <>
-                    <PdfUploadZone
-                      pdfFiles={pdfFiles}
-                      onAddPdf={handleAddPdf}
-                      onUpdatePdf={handleUpdatePdf}
-                      onRemovePdf={handleRemovePdf}
-                      onClearAll={handleClearPdfs}
-                      onOpenAssessorGuide={() => setIsAssessorWorkflowGuideOpen(true)}
-                    />
                     {pdfFiles.length > 0 && extractedMetadata && (
                       <div className="p-3 bg-emerald-50/90 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl space-y-1.5 text-xs text-slate-800 dark:text-slate-200 animate-in fade-in duration-200">
                         <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300">

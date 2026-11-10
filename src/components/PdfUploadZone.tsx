@@ -329,10 +329,13 @@ export const PdfUploadZone: React.FC<PdfUploadZoneProps> = ({
                         ) : null}
                         <span>•</span>
                         {hasText ? (
+                          <>
                           <span className="text-emerald-700 font-semibold flex items-center gap-0.5" title={`${charCount.toLocaleString()} caracteres extraídos dos autos`}>
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                             {Math.round(charCount / 1000)}k caracs. lidos
                           </span>
+                          <span className="text-indigo-700 font-semibold" data-testid="selo-so-texto" title="Para a IA segue somente o texto extraído (com localização Mov./Pág.); o arquivo PDF não é enviado. O cartão fica aqui só para você conferir.">• só o texto vai para a IA</span>
+                          </>
                         ) : (
                           <div className="flex items-center gap-2">
                             <span className="text-amber-800 font-semibold flex items-center gap-0.5" title="Não foi possível extrair texto (PDF digitalizado/imagem sem OCR)">

@@ -8,11 +8,14 @@ const minuta1 = { processNumber: "5129546-88.2025.8.09.0100", author: "Autor", d
 const resposta = (t, usage) => JSON.stringify({ candidates: [{ content: { role: "model", parts: [{ text: t }] }, finishReason: "STOP", index: 0 }], usageMetadata: { promptTokenCount: usage, candidatesTokenCount: 500, totalTokenCount: usage + 500 }, modelVersion: "gemini-3.6-flash" });
 http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/__grounding") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ n: global.__grounding || 0 })); return; }
+  if (req.method === "GET" && req.url === "/__prontidao") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(global.__prontidao || {})); return; }
   let corpo = ""; req.on("data", (c) => (corpo += c));
   req.on("end", () => {
     // fila travada do Google (só em teste): GEMINI_FALSO_TRAVA="modelo1,modelo2" nunca responde para esses modelos
     if (process.env.GEMINI_FALSO_TRAVA && process.env.GEMINI_FALSO_TRAVA.split(",").some((m) => String(req.url).includes("/models/" + m + ":"))) { if (process.env.GEMINI_FALSO_LOG) console.log("trava", req.url); return; }
     let j = {}; try { j = JSON.parse(corpo); } catch {}
+    // teste da calibração: conta, por tipo de chamada, quantas levam a conferência de prontidão do ato
+    { const p = (global.__prontidao ||= {}); const tipo = /CONFERÊNCIA DA PRONTIDÃO DO ATO/.test(corpo) ? "lupa" : /PRONTIDÃO DO ATO — CONFERÊNCIA OBRIGATÓRIA/.test(corpo) ? (/DIRETRIZ DA ETAPA 2/.test(corpo) ? "etapa2" : /DIRETRIZ DA ETAPA 1/.test(corpo) ? "etapa1" : /ANÁLISE JUDICIAL TURBO/.test(corpo) ? "turbo" : "outro") : /\(9\) Em "pendencias" inclua SEMPRE/.test(corpo) ? "mapa" : "sem"; p[tipo] = (p[tipo] || 0) + 1; }
     // pesquisa ao vivo (Grounding): a chamada traz a ferramenta googleSearch; responde com texto e uma fonte, como o Google faria
     if (/"googleSearch"/.test(corpo)) { global.__grounding = (global.__grounding || 0) + 1; res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ candidates: [{ content: { role: "model", parts: [{ text: "STJ, Súmula 297: o Código de Defesa do Consumidor é aplicável às instituições financeiras. https://scon.stj.jus.br/sumula297" }] }, finishReason: "STOP", index: 0, groundingMetadata: { groundingChunks: [{ web: { uri: "https://scon.stj.jus.br/sumula297", title: "STJ Súmula 297" } }] } }], usageMetadata: { promptTokenCount: 50, candidatesTokenCount: 30, totalTokenCount: 80 } })); return; }
     const sis = JSON.stringify(j.systemInstruction || j.config?.systemInstruction || "") + JSON.stringify(j.generationConfig || {});
