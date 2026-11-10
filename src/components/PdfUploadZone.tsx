@@ -64,7 +64,7 @@ export const PdfUploadZone: React.FC<PdfUploadZoneProps> = ({
     setProcessingFilesCount((prev) => prev + 1);
 
     try {
-      const blobUrl = URL.createObjectURL(file);
+      let blobUrl = URL.createObjectURL(file);
 
       // 1. Com a extensão: ela confere página por página, faz OCR nas páginas de imagem e devolve o TEXTO (o PDF não segue para a análise).
       //    Sem a extensão só no celular (onde não dá para instalar): o Studio lê o PDF sozinho, com OCR por IA nas páginas sem texto.
@@ -74,6 +74,9 @@ export const PdfUploadZone: React.FC<PdfUploadZoneProps> = ({
           const r = await tratarPdfNaExtensao(file, { aoProgresso: (etapa, feitas, total) => setExtractionProgress({ current: feitas, total: total || 1, fileName: file.name, etapa }) });
           const oculto = await textoOcultoDoArquivo(file);      // a proteção contra prompt injection (texto em fonte branca) continua sendo feita aqui
           const texto = (await limparTextoDaExtensao(r.texto)) + oculto;      // mesma limpeza e anotação de localização do texto lido pelo Studio
+          if (r.pdfComOcr) { URL.revokeObjectURL(blobUrl); blobUrl = URL.createObjectURL(r.pdfComOcr); }      // a visualização passa a ser o PDF COM OCR (texto selecionável)
+          const semOcr = Array.from(new Set([...(r.puladas || []), ...(r.vazias || [])])).sort((x, y) => x - y);
+          if (semOcr.length) { try { toast(`⚠ Atenção: ${semOcr.length} página(s) de imagem ficaram sem texto reconhecido (pág. ${semOcr.slice(0, 15).join(", ")}${semOcr.length > 15 ? "…" : ""}). Confira no PDF.`, { duration: 15000 }); } catch { /* sem toast */ } }
           extraction = { text: texto, pageCount: r.paginas, hasText: texto.length > 30, paginasSemTexto: r.puladas, paginasNaoLidas: [], paginasOcr: r.paginasOcr };
           if (r.ocr > 0) { try { toast.success(`Extensão: ${r.ocr} página(s) de imagem lidas por OCR${r.puladas.length ? `; ${r.puladas.length} não puderam ser lidas` : ""}.`, { duration: 6000 }); } catch { /* sem toast */ } }
         } catch (extErr: any) {

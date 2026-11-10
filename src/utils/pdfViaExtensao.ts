@@ -24,7 +24,7 @@ export async function caminhoAtual(esperaMs = 1500): Promise<Caminho> {
   for (;;) { const e = lerEstado(); const c = decidirCaminho(e); if (c !== "instalar" && c !== "atualizar") return c; if (Date.now() - t0 >= esperaMs) return c; await new Promise((ok) => setTimeout(ok, 200)); }
 }
 
-export interface ResultadoExtensao { texto: string; paginas: number; ocr: number; paginasOcr: number[]; puladas: number[]; segundos: number }
+export interface ResultadoExtensao { texto: string; paginas: number; ocr: number; paginasOcr: number[]; puladas: number[]; segundos: number; vazias: number[]; pdfComOcr?: Blob }
 export interface OpcoesExtensao { aoProgresso?: (etapa: string, feitas: number, total: number) => void; sinal?: AbortSignal }
 const PARTE = 1_500_000;      // bytes por pedaço enviado à extensão
 
@@ -34,10 +34,11 @@ const paraBase64 = (blob: Blob) => new Promise<string>((ok, no) => { const r = n
 export async function tratarPdfNaExtensao(file: File, op: OpcoesExtensao = {}): Promise<ResultadoExtensao> {
   const id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^\w-]/g, "");
   const origem = window.location.origin;
-  const espera = new Map<string, (m: any) => void>(); let progressoEm = Date.now(), resultado: ((m: any) => void) | null = null, vigia: ReturnType<typeof setInterval> | null = null;
+  const pdfPartes: string[] = []; const espera = new Map<string, (m: any) => void>(); let progressoEm = Date.now(), resultado: ((m: any) => void) | null = null, vigia: ReturnType<typeof setInterval> | null = null;
   const ouvir = (ev: MessageEvent) => {
     const m = ev.data; if (ev.source !== window || !m || m.__projudiResp !== "pdf-tratar" || m.id !== id) return;
     if (m.tipo === "progresso") { progressoEm = Date.now(); op.aoProgresso?.(String(m.etapa || ""), Number(m.feitas) || 0, Number(m.total) || 0); return; }
+    if (m.tipo === "pdf-parte") { progressoEm = Date.now(); pdfPartes[Number(m.n) || 0] = String(m.dados || ""); op.aoProgresso?.("Recebendo o PDF com OCR", pdfPartes.filter(Boolean).length, Number(m.total) || 0); return; }
     if (m.tipo === "resultado") { resultado?.(m); return; }
     const chave = m.tipo === "parte-ok" ? `parte-ok:${m.n}` : m.tipo; espera.get(chave)?.(m); espera.get("erro")?.(m.tipo === "erro" ? m : null);
   };
@@ -67,6 +68,11 @@ export async function tratarPdfNaExtensao(file: File, op: OpcoesExtensao = {}): 
     enviar({ fase: "fim" }); await fim;
     const m = await res;
     if (!m.ok) throw new Error(m.erro || "a extensão não conseguiu tratar o PDF");
-    return { texto: String(m.texto || ""), paginas: Number(m.paginas) || 0, ocr: Number(m.ocr) || 0, paginasOcr: Array.isArray(m.paginasOcr) ? m.paginasOcr : [], puladas: Array.isArray(m.puladas) ? m.puladas : [], segundos: Number(m.segundos) || 0 };
+    let pdfComOcr: Blob | undefined;
+    const esperadas = Number(m.pdfPartes) || 0;
+    if (esperadas > 0 && pdfPartes.filter(Boolean).length === esperadas) {
+      try { pdfComOcr = new Blob(pdfPartes.map((b) => { const bin = atob(b), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }), { type: "application/pdf" }); } catch { /* fica com o original */ }
+    }
+    return { pdfComOcr, vazias: Array.isArray(m.vazias) ? m.vazias : [], texto: String(m.texto || ""), paginas: Number(m.paginas) || 0, ocr: Number(m.ocr) || 0, paginasOcr: Array.isArray(m.paginasOcr) ? m.paginasOcr : [], puladas: Array.isArray(m.puladas) ? m.puladas : [], segundos: Number(m.segundos) || 0 };
   } finally { window.removeEventListener("message", ouvir); if (vigia) clearInterval(vigia); }
 }
