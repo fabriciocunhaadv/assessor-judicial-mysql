@@ -15,7 +15,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { UploadedPdf } from "../types";
-import { extractTextFromPdf } from "../utils/pdfExtractor";
+import { extractTextFromPdf, textoOcultoDoArquivo } from "../utils/pdfExtractor";
+import { caminhoAtual, tratarPdfNaExtensao, LINK_EXTENSAO, type Caminho } from "../utils/pdfViaExtensao";
 
 interface PdfUploadZoneProps {
   pdfFiles: UploadedPdf[];
@@ -46,7 +47,9 @@ export const PdfUploadZone: React.FC<PdfUploadZoneProps> = ({
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [previewPdfName, setPreviewPdfName] = useState<string>("");
   const [processingFilesCount, setProcessingFilesCount] = useState<number>(0);
-  const [extractionProgress, setExtractionProgress] = useState<{ current: number; total: number; fileName: string } | null>(null);
+  const [extractionProgress, setExtractionProgress] = useState<{ current: number; total: number; fileName: string; etapa?: string } | null>(null);
+  // sem a extensão (no computador) o PDF não é aceito: guarda os arquivos para tentar de novo depois da instalação
+  const [bloqueio, setBloqueio] = useState<{ tipo: "instalar" | "atualizar"; arquivos: File[]; aindaNao?: boolean } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = async (file: File) => {
@@ -55,13 +58,29 @@ export const PdfUploadZone: React.FC<PdfUploadZoneProps> = ({
       return;
     }
 
+    const caminho: Caminho = await caminhoAtual();
+    if (caminho === "instalar" || caminho === "atualizar") { setBloqueio((b) => ({ tipo: caminho, arquivos: [...(b?.arquivos || []), file] })); return; }
+
     setProcessingFilesCount((prev) => prev + 1);
 
     try {
       const blobUrl = URL.createObjectURL(file);
 
-      // 1. Extract text from PDF in browser using pdfjs-dist with real-time page progress
-      const extraction = await extractTextFromPdf(file, (current, total) => {
+      // 1. Com a extensão: ela confere página por página, faz OCR nas páginas de imagem e devolve o TEXTO (o PDF não segue para a análise).
+      //    Sem a extensão só no celular (onde não dá para instalar): o Studio lê o PDF sozinho, com OCR por IA nas páginas sem texto.
+      let extraction: Awaited<ReturnType<typeof extractTextFromPdf>> & { paginasOcr?: number[] } | null = null;
+      if (caminho === "extensao") {
+        try {
+          const r = await tratarPdfNaExtensao(file, { aoProgresso: (etapa, feitas, total) => setExtractionProgress({ current: feitas, total: total || 1, fileName: file.name, etapa }) });
+          const oculto = await textoOcultoDoArquivo(file);      // a proteção contra prompt injection (texto em fonte branca) continua sendo feita aqui
+          const texto = r.texto + oculto;
+          extraction = { text: texto, pageCount: r.paginas, hasText: texto.length > 30, paginasSemTexto: r.puladas, paginasNaoLidas: [], paginasOcr: r.paginasOcr };
+          if (r.ocr > 0) { try { toast.success(`Extensão: ${r.ocr} página(s) de imagem lidas por OCR${r.puladas.length ? `; ${r.puladas.length} não puderam ser lidas` : ""}.`, { duration: 6000 }); } catch { /* sem toast */ } }
+        } catch (extErr: any) {
+          try { toast.error(`A extensão não conseguiu tratar este PDF (${String(extErr?.message || extErr)}). O Studio vai ler o arquivo sozinho.`, { duration: 12000 }); } catch { /* sem toast */ }
+        }
+      }
+      if (!extraction) extraction = await extractTextFromPdf(file, (current, total) => {
         setExtractionProgress({ current, total, fileName: file.name });
       });
 
@@ -93,6 +112,7 @@ export const PdfUploadZone: React.FC<PdfUploadZoneProps> = ({
         pageCount: extraction.pageCount,
         paginasSemTexto: extraction.paginasSemTexto,
         paginasNaoLidas: extraction.paginasNaoLidas,
+        paginasOcr: extraction.paginasOcr,
         isExtracting: false,
       };
 
@@ -210,13 +230,40 @@ export const PdfUploadZone: React.FC<PdfUploadZoneProps> = ({
         </div>
       </div>
 
+
+      {bloqueio && (
+        <div className="fixed inset-0 z-[9500] flex items-center justify-center bg-slate-950/70 p-3" role="dialog" aria-label="Instale a extensão" data-testid="aviso-instalar-extensao">
+          <div className="w-full max-w-md bg-white text-slate-800 rounded-2xl shadow-2xl border border-slate-200 p-4 space-y-3">
+            <div className="flex items-start gap-2"><div className="p-2 rounded-xl bg-amber-100 text-amber-700"><AlertCircle className="w-5 h-5" /></div>
+              <div className="flex-1"><h3 className="text-base font-black">{bloqueio.tipo === "atualizar" ? "Atualize a extensão Conclusões Projudi" : "Instale a extensão Conclusões Projudi"}</h3>
+                <p className="text-xs text-slate-600 mt-1">{bloqueio.tipo === "atualizar" ? "A extensão instalada é antiga e ainda não sabe tratar PDFs para o Studio." : "Para analisar o PDF, o Studio usa a extensão: ela lê o processo página por página e faz OCR nas imagens (documentos escaneados, comprovantes, carimbos), no seu computador, sem gastar a cota da IA."}</p></div>
+              <button type="button" onClick={() => setBloqueio(null)} aria-label="Fechar" className="p-1 rounded hover:bg-slate-100"><X className="w-4 h-4" /></button></div>
+            <ol className="list-decimal pl-5 text-xs text-slate-700 space-y-1">
+              <li>Clique em <b>{bloqueio.tipo === "atualizar" ? "Atualizar a extensão" : "Instalar a extensão"}</b> e depois em “Usar no Chrome”.</li>
+              <li><b>Recarregue esta página do Studio</b> (tecla F5).</li>
+              <li>Envie o PDF de novo{bloqueio.arquivos.length ? ` (${bloqueio.arquivos.map((f) => f.name).join(", ").slice(0, 80)})` : ""}.</li>
+            </ol>
+            {bloqueio.aindaNao && <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2" data-testid="extensao-ainda-nao">Ainda não encontrei a extensão nesta página. Depois de instalar, recarregue a página (F5) e envie o PDF de novo.</div>}
+            <div className="flex gap-2 flex-wrap">
+              <a href={LINK_EXTENSAO} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold flex items-center gap-1.5" data-testid="link-instalar-extensao"><ExternalLink className="w-3.5 h-3.5" /> {bloqueio.tipo === "atualizar" ? "Atualizar a extensão" : "Instalar a extensão"}</a>
+              <button type="button" className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold" data-testid="btn-tentar-de-novo" onClick={async () => {
+                const c = await caminhoAtual(800);
+                if (c === "extensao") { const lista = bloqueio.arquivos; setBloqueio(null); for (const f of lista) await processFile(f); }
+                else setBloqueio({ ...bloqueio, aindaNao: true });
+              }}>Já instalei, tentar de novo</button>
+              <button type="button" className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold" onClick={() => window.location.reload()}>Recarregar a página</button>
+            </div>
+            <p className="text-[11px] text-slate-500">Use o Google Chrome ou o Microsoft Edge no computador. No celular, o Studio lê o PDF sozinho.</p>
+          </div>
+        </div>
+      )}
       {/* Extraction Progress Bar */}
       {extractionProgress && (
         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-900 text-xs flex flex-col gap-1.5 shadow-xs animate-pulse">
           <div className="flex items-center justify-between font-semibold">
             <span className="truncate flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-              Lendo autos do processo: {extractionProgress.fileName}
+              {extractionProgress.etapa ? `${extractionProgress.etapa}: ` : "Lendo autos do processo: "}{extractionProgress.fileName}
             </span>
             <span className="shrink-0 text-blue-800">
               {extractionProgress.current} / {extractionProgress.total} págs ({Math.round((extractionProgress.current / Math.max(1, extractionProgress.total)) * 100)}%)

@@ -656,3 +656,11 @@ function formatLine(
     isHeading,
   };
 }
+
+/** Só o texto escondido (fonte branca) do PDF, no formato que entra nos autos: o tratamento pela extensão não passa por aqui, mas a proteção contra prompt injection continua. */
+export async function textoOcultoDoArquivo(file: File): Promise<string> {
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    try { return blocoTextoOculto(await textoOcultoDeDocumento(pdf, pdfjsLib as any)); } finally { try { await (pdf as any).destroy?.(); } catch { /* ignora */ } }
+  } catch { return ""; }
+}
