@@ -26,5 +26,9 @@ try {
   ok(c.juizado, "numa decisão de Juizado recebe a regra de gratuidade e honorários");
   ok(c.indice, "recebe o índice oficial de arquivos por movimentação");
   ok(/Mov\. 24, Arq\. 10, Pág\. 1/.test(r.j.updatedMinute.relatorio), "citação com arquivo inexistente é corrigida pelo nome do documento (Ficha Cadastral = Arq. 10)");
+  const alt = await post({ message: "refaça [[ALT]]", currentMinute: { title: "DECISÃO", processNumber: "1", parties: { author: "A", defendant: "B" }, relatorio: "r", fundamentacao: "f", dispositivo: "d" } });
+  ok(alt.j.hasMinuteUpdate && alt.j.updatedMinute?.relatorio === "Relatório direto." && !/processada com base/.test(alt.j.reply), "se a IA devolve a minuta sem o envelope, a minuta é aplicada (e a resposta diz que foi atualizada)");
+  const vazio = await post({ message: "refaça [[VAZIO]]", currentMinute: { title: "DECISÃO", processNumber: "1", parties: { author: "A", defendant: "B" }, relatorio: "r", fundamentacao: "f", dispositivo: "d" } });
+  ok(!vazio.j.hasMinuteUpdate && /fora do formato/.test(vazio.j.reply), "resposta vazia da IA: aviso claro, sem fingir que processou");
 } finally { for (const p of filhos) { try { process.kill(-p.pid, 9); } catch {} } }
 if (falhas) process.exit(1); console.log("TUDO OK");

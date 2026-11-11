@@ -1025,29 +1025,32 @@ ${REGRA_ESTRUTURA_POR_ATO}${REGRA_DISPOSITIVO_CARTORIO}${REGRAS_MECANICA_JUDICIA
         }
         
         const userPrompt = `${historyPrompt}\nUsuário: ${message}` + await blocoLegislacao([message, currentMinute?.fundamentacao, currentMinute?.dispositivo, originalProcessText]);
+        const lembreteFormato = `\n\n[FORMATO OBRIGATÓRIO DA RESPOSTA] Responda SOMENTE com um objeto JSON {"reply": "...", "hasMinuteUpdate": true|false, "updatedMinute": {"title": "...", "relatorio": "...", "fundamentacao": "...", "dispositivo": "...", "closing": "..."}, "suggestedActions": []}. Se o pedido do usuário muda a minuta, use hasMinuteUpdate=true e devolva em updatedMinute os campos COMPLETOS (nunca só o trecho alterado). Se for só uma dúvida, hasMinuteUpdate=false e responda em "reply".`;
         
         const options = {
             apiKey: apiKey,
             keyPool: extractApiKeyPool(req),
             isNativeAllowed: isRequestNativeAllowed(req),
             res,
-            primaryModel: "gemini-3.1-flash-lite",
-            fallbackModel: "gemini-3.8-flash",
-            customModelQueue: ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"],      // 1º 3.1; reservas: 3.8 e 3.7; por último o latest
+            keepSchema: true,
+            primaryModel: "gemini-3.8-flash",
+            fallbackModel: "gemini-3.1-flash-lite",
+            customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],      // pedido grande (regras comuns + minuta inteira): começa pelo modelo mais capaz
             timeoutMs: 90000,
             maxCycles: 1,
             contents: [
-                { role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }
+                { role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt + lembreteFormato }] }
             ],
             config: {
                 systemInstruction: "Você é um AI judiciário que responde apenas com objetos JSON estritos de acordo com o esquema solicitado.",
                 responseMimeType: "application/json",
-                maxOutputTokens: 16384
+                responseSchema: { type: Type.OBJECT, properties: { reply: { type: Type.STRING }, hasMinuteUpdate: { type: Type.BOOLEAN }, updatedMinute: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, relatorio: { type: Type.STRING }, fundamentacao: { type: Type.STRING }, dispositivo: { type: Type.STRING }, closing: { type: Type.STRING } } }, suggestedActions: { type: Type.ARRAY, items: { type: Type.STRING } } }, required: ["reply", "hasMinuteUpdate"] },
+                maxOutputTokens: 32768
             }
         };
 
         const response: any = claude
-            ? await gerarComClaude({ chave: claude.chave, modelo: claude.modelo, system: "Você é um AI judiciário que responde apenas com objetos JSON estritos de acordo com o esquema solicitado, sem texto fora do JSON.", prompt: systemPrompt + "\n\n" + userPrompt, maxTokens: 16000 })
+            ? await gerarComClaude({ chave: claude.chave, modelo: claude.modelo, system: "Você é um AI judiciário que responde apenas com objetos JSON estritos de acordo com o esquema solicitado, sem texto fora do JSON.", prompt: systemPrompt + "\n\n" + userPrompt + lembreteFormato, maxTokens: 16000 })
             : await generateWithFallbackAndRetry(options);
         const responseText = response.text || "";
         
@@ -1064,6 +1067,16 @@ ${REGRA_ESTRUTURA_POR_ATO}${REGRA_DISPOSITIVO_CARTORIO}${REGRAS_MECANICA_JUDICIA
             return res.json({ reply: "A resposta gerada não pôde ser lida adequadamente. Tente novamente.", hasMinuteUpdate: false });
         }
         
+        // a IA às vezes devolve a minuta direto (sem o envelope) ou outro nome de campo: aceita essas formas em vez de dizer "processada" sem mudar nada
+        if (data && typeof data === 'object' && !data.updatedMinute) {
+            const alt = data.minute || data.minuta || data.updated_minute || ((data.relatorio || data.fundamentacao || data.dispositivo) ? data : null);
+            if (alt && typeof alt === 'object') { data.updatedMinute = alt === data ? { ...data } : alt; data.hasMinuteUpdate = true; }
+        }
+        if (!data?.reply && !data?.updatedMinute) {
+            console.warn("[chat-agaia] resposta sem 'reply' nem minuta; chaves:", Object.keys(data || {}), String(cleanJson).slice(0, 300));
+            return res.json({ reply: "A IA não devolveu a alteração pedida (a resposta veio fora do formato). Nada foi mudado na minuta: tente de novo ou reformule o pedido.", hasMinuteUpdate: false, suggestedActions: [] });
+        }
+        if (!data.reply) data.reply = "Minuta atualizada conforme o seu pedido.";
         let finalUpdatedMinute = undefined;
         if (data.updatedMinute && typeof data.updatedMinute === 'object') {
             finalUpdatedMinute = { ...currentMinute, ...data.updatedMinute };
