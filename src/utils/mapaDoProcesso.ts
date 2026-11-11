@@ -123,8 +123,8 @@ export function conferirComMapa(minuta: string, m: MapaProcesso | null | undefin
   if (ultima > 0 && maiorCitada > 0 && ultima - maiorCitada >= 10 && recentesNaoCitados.length)      // só quando há ato decisório do mapa depois do último que a minuta cita
     out.push({ codigo: "cobertura", texto: `Os autos vão até a Mov. ${ultima}, mas a minuta cita só até a Mov. ${maiorCitada}. O mapa registra ato(s) decisório(s) posterior(es) (Mov. ${[...new Set(recentesNaoCitados)].slice(0, 6).join(", ")}); confira se algum precisa ser considerado.` });
   const sent = m.faseAtual?.sentencaMov;
-  if (sent && /^[\s\S]{0,400}SENTEN[ÇC]A/i.test(t) && /JULGO\s+(?:PROCEDENTE|IMPROCEDENTE|PARCIALMENTE|EXTINTO)/i.test(t) && !new RegExp(`Mov\\.?\\s*${sent}\\b`, "i").test(t))
-    out.push({ codigo: "fase", texto: `O mapa indica que o processo já foi sentenciado (Mov. ${sent}), e esta minuta parece uma nova sentença que não menciona a anterior. Confira se o ato cabível agora não é a decisão sobre o que veio depois da sentença.` });
+  if (sent && /^[\s\S]{0,400}SENTEN[ÇC]A/i.test(t) && /JULGO\s+(?:PROCEDENTE|IMPROCEDENTE|PARCIALMENTE|EXTINTO)/i.test(t))
+    out.push({ codigo: "fase", texto: `O mapa indica que o processo já foi sentenciado (Mov. ${sent}), e esta minuta é uma NOVA sentença que volta a julgar o mérito. Depois da sentença o ato cabível costuma ser a decisão sobre o que veio depois (cumprimento de sentença, recurso, embargos). Confira se não é o caso de refazer como decisão.` });
   const q = m.estadoAtual.questaoAtual;
   if (q) {
     const chaves = [...new Set(q.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter((w) => w.length >= 6))].slice(0, 12);

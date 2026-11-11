@@ -1,3 +1,4 @@
+import { lerAutosPdf } from '../utils/lerAutosPdf';
 import { avisarSegundoPlano } from "./AvisoSegundoPlano";
 import { getCabinetTeses } from "../utils/tesesDb";
 import { getKnowledgeDocs } from "../utils/knowledgeDb";
@@ -193,7 +194,7 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
 
     setIsExtractingPdf(true);
     try {
-      const extraction = await extractTextFromPdf(file);
+      const extraction = await lerAutosPdf(file, undefined, { exigirExtensao: false });
       setPdfFile({
         file,
         name: file.name,
@@ -232,7 +233,7 @@ export const TurboModuleModal: React.FC<TurboModuleModalProps> = ({
 
     setIsExtractingPdf(true);
     try {
-      const extraction = await extractTextFromPdf(file);
+      const extraction = await lerAutosPdf(file, undefined, { exigirExtensao: false });
       setPdfFile({
         file,
         name: file.name,

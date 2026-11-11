@@ -1,0 +1,17 @@
+import { fichaParaTexto, normalizarFicha } from '../src/utils/gigantes/lotes';
+import { lerFicha } from '../src/utils/fichaTolerante';
+import { conferirComMapa } from '../src/utils/mapaDoProcesso';
+const ok = (c: boolean, t: string) => { if (!c) { console.error('FALHOU:', t); process.exit(1); } console.log('ok:', t); };
+const f = lerFicha(JSON.stringify({ cronologia: ['a'], situacaoFinal: ['Mov. 38: autos conclusos; fase: cumprimento definitivo de sentença; pendente decidir o pedido da Mov. 36 (Arq. 1, Pág. 1)'] })).ficha!;
+ok(f.situacaoFinal?.length === 1, 'a ficha lê a situação final do trecho');
+ok(/SITUAÇÃO DO PROCESSO NO FIM DESTE TRECHO/.test(fichaParaTexto(f)) && normalizarFicha(f).situacaoFinal.length === 1, 'a situação final aparece no texto do dossiê');
+const mapa: any = { movimentacoes: { movs: 38, ultima: 38 }, eventos: [], faseAtual: { fase: 'cumprimento', sentencaMov: 28, atoEsperado: 'decisão', naoRepetir: [] }, estadoAtual: { questaoAtual: '', pendencias: [], vigentes: [], ligacoes: [] } };
+const novaSentenca = 'SENTENÇA\nI - RELATÓRIO ... Sobreveio sentença de procedência (Mov. 28)...\nIII - DISPOSITIVO\n1. JULGO PROCEDENTE o pedido de cumprimento de sentença...';
+ok(conferirComMapa(novaSentenca, mapa).some((a) => a.codigo === 'fase'), 'avisa nova sentença em processo já sentenciado, mesmo citando a sentença anterior (Mov. 28)');
+const decisao = 'DECISÃO\nRecebo o pedido de cumprimento definitivo de sentença (Mov. 36) e determino a intimação para pagar em 15 dias.';
+ok(!conferirComMapa(decisao, mapa).some((a) => a.codigo === 'fase'), 'decisão sobre o cumprimento não gera o aviso');
+const quadro = '[QUADRO DE MOVIMENTAÇÕES DO PROJUDI — processo X]\nMov. 1 · 01/01 · Petição\n';
+const txt = quadro + '[Página 1 de 3]\ncorpo';
+const i0 = txt.search(/\[P[áa]gina\s+\d/); const pre = i0 > 0 ? txt.slice(0, i0) : '';
+ok(/QUADRO DE MOVIMENTA/i.test(pre) && pre.includes('Mov. 1'), 'o quadro antes da 1ª página é separado do texto das páginas');
+console.log('TUDO OK');

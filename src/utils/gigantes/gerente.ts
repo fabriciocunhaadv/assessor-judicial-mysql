@@ -1,6 +1,8 @@
-import { extractTextFromPdf } from "../pdfExtractor";
+import { lerAutosPdf } from "../lerAutosPdf";
+import { blocoIndiceArquivos } from "../localizacaoAutos";
 import { getApiHeaders } from "../apiKeyManager";
 import { prepararMapaDoProcesso } from "../mapaDoProcessoCliente";
+import { conferirComMapa } from "../mapaDoProcesso";
 import { recordApiExecution } from "../apiUsageTracker";
 import { getCabinetTeses } from "../tesesDb";
 import { getKnowledgeDocs } from "../knowledgeDb";
@@ -83,7 +85,7 @@ class Gerente {
 
   /** Cria o trabalho e devolve na hora; a leitura dos PDFs e o processamento seguem em segundo plano. */
   async iniciar(arquivos: File[], config: ConfigGigante): Promise<string> {
-    return this.criar(arquivos.map((f) => ({ nome: f.name, arquivo: async () => f, ler: async (onProg: (c: number, t: number) => void) => { const ex = await extractTextFromPdf(f, onProg, { fullSequential: true }); return { text: ex.text, pageCount: ex.pageCount, semTexto: ex.paginasSemTexto || [], naoLidas: ex.paginasNaoLidas || [] }; } })), config);
+    return this.criar(arquivos.map((f) => ({ nome: f.name, arquivo: async () => f, ler: async (onProg: (c: number, t: number) => void) => { const ex = await lerAutosPdf(f, (_e, c, t) => onProg(c, t), { exigirExtensao: false, sequencial: true }); return { text: ex.text, pageCount: ex.pageCount, semTexto: ex.paginasSemTexto || [], naoLidas: ex.paginasNaoLidas || [] }; } })), config);
   }
 
   /** Aproveita o texto que o app já extraiu dos PDFs anexados (não lê os arquivos de novo). */
@@ -134,6 +136,7 @@ class Gerente {
         job.etapa = `Lendo ${fontes[a].nome} (${a + 1}/${fontes.length})…`; this.avisar();
         const ex = await fontes[a].ler((c, t) => { job.progresso = { feitas: c, total: t }; this.avisar(); });
         if (job.config.direto) textoOriginal += (textoOriginal ? "\n" : "") + ex.text;
+        if (!job.quadro) { const i0 = ex.text.search(/\[P[áa]gina\s+\d/); const pre = i0 > 0 ? ex.text.slice(0, i0) : ""; if (/QUADRO DE MOVIMENTA/i.test(pre)) job.quadro = pre.trim(); }      // o quadro de movimentações (da extensão) vem ANTES da 1ª página: guardado à parte para entrar no dossiê e no mapa
         const pags = dividirPaginas(ex.text, ex.pageCount);
         const baseN = job.arquivos.reduce((t, x) => t + (x.paginas || 0), 0), ini = fontes[a].paginaInicial || 1;       // numeração = posição física da página no processo
         if (job.config.ocr !== false && fontes[a].arquivo) {
@@ -512,8 +515,10 @@ class Gerente {
     const faixaTxt = (ns: number[]) => { const v = [...ns].sort((a, b) => a - b); const o: string[] = []; let i = 0; while (i < v.length) { let j = i; while (j + 1 < v.length && v[j + 1] === v[j] + 1) j++; o.push(j > i ? `${v[i]}-${v[j]}` : `${v[i]}`); i = j + 1; } return o.join(", "); };
     const semLeitura = job.arquivos.map((a) => ({ nome: a.nome, ns: [...a.semTexto, ...a.naoLidas] })).filter((x) => x.ns.length > 0);
     const avisoLeitura = semLeitura.length ? `\n[PÁGINAS SEM LEITURA (sem texto nem OCR): ${semLeitura.map((x) => `${x.nome}: págs. ${faixaTxt(x.ns)}`).join("; ")}. Não afirme ausência de prova que possa estar nelas.]\n` : "";
-    const processText =
-      avisoLeitura + `[DOSSIÊ DO PROCESSO — os autos têm ${job.totalPaginas} páginas e foram lidos em ${job.lotes.length} lote(s); abaixo estão as fichas estruturadas (cada item cita o arquivo/página) e, em seguida, as peças essenciais na íntegra. REGRA: este texto é um resumo estruturado dos autos; não afirme que um documento ou prova "não existe" só porque não aparece aqui, e cite a página quando útil]\n\n${dossie}` +
+    const ultima = fichas.length ? fichas[fichas.length - 1] : null;
+    const situacaoAtual = ultima && Array.isArray(ultima.situacaoFinal) && ultima.situacaoFinal.length ? `\n\n[SITUAÇÃO ATUAL DO PROCESSO (lida do ÚLTIMO trecho dos autos; é o estado mais recente: decida o que cabe AGORA nesta fase e não refaça o que já foi decidido)]\n${ultima.situacaoFinal.map((x: string) => `- ${x}`).join("\n")}` : "";
+    const processText = (job.quadro ? job.quadro + "\n\n" : "") +
+      avisoLeitura + `[DOSSIÊ DO PROCESSO — os autos têm ${job.totalPaginas} páginas e foram lidos em ${job.lotes.length} lote(s); abaixo estão as fichas estruturadas (cada item cita o arquivo/página) e, em seguida, as peças essenciais na íntegra. REGRA: este texto é um resumo estruturado dos autos; não afirme que um documento ou prova "não existe" só porque não aparece aqui, e cite a página quando útil]\n\n${dossie}${situacaoAtual}` +
       (escolhidas.length ? `\n\n[PEÇAS ESSENCIAIS NA ÍNTEGRA — ${escolhidas.length} página(s)]\n\n` + escolhidas.map((p) => `[Arquivo ${p.arquivo + 1}: ${nomes[p.arquivo] || ""}]\n[Página ${p.pagina} de ${totais[p.arquivo] || p.pagina}]\n${p.texto.slice(0, 6000)}`).join("\n\n") : "");
     return { processText, escolhidas, dossieAbreviado, nomes };
   }
@@ -580,9 +585,14 @@ class Gerente {
     const unidadeDosAutos = job.capa?.judicialUnit || "";      // o juízo da capa vale mais que a unidade escolhida no painel
     // amarração: o mapa do processo (estado atual, fase, o que está em vigor) é montado a partir do dossiê e acompanha a minuta; se falhar, segue sem ele
     job.etapa = "Montando o mapa do processo (estado atual e fase)…"; this.avisar();
-    const mapaExec = await prepararMapaDoProcesso(processText, `mapa-${job.id}`, { forcar: true });
+    // o mapa (fase atual, o que já foi decidido) precisa dos AUTOS COMPLETOS com os carimbos Mov./Arq./Pág., não do dossiê resumido: com o dossiê ele errava a fase e a minuta voltava a sentenciar processo já sentenciado
+    let autosCompletos = processText;
+    if (!direto) { const todasP = await lerPaginas(job.id, 1, 99_999_999); autosCompletos = (job.quadro ? job.quadro + "\n\n" : "") + todasP.map((p) => `[Página ${p.n} de ${job.totalPaginas}]\n${p.texto}`).join("\n"); }
+    const mapaExec = await prepararMapaDoProcesso(autosCompletos, `mapa-${job.id}`, { forcar: true });
+    const indiceArquivosCompleto = blocoIndiceArquivos(autosCompletos);      // índice real de arquivos por movimentação (o dossiê só tem parte dos carimbos)
     const corpo = {
       mapaProcesso: mapaExec?.bloco,
+      indiceArquivosCompleto,
       processText, pdfFiles: [], knowledgePdfs: baseConhecimento, customPromptText: cfg.promptText || "", activePromptTitle: cfg.promptTitle || "",
       cabinetTesesText: tesesTxt, isTesesEnabled: Boolean(tesesTxt),
       paradigmModelText: cfg.paradigmText || "", paradigmModelTitle: cfg.paradigmTitle || "", isParadigmEnabled: Boolean(cfg.paradigmText),
@@ -591,14 +601,26 @@ class Gerente {
       coberturaLeitura: { escolha: direto ? "completa" : "gigante", paginasOcr: 0, arquivos: job.arquivos.map((a) => arquivoParaServidor(a)) },
       ...(direto ? { aceitaSegundoPlano: true } : {}),
     };
-    const data = await this.chamar(job.id, "/api/generate-minute", corpo);
+    let data = await this.chamar(job.id, "/api/generate-minute", corpo);
     if (!data?.minute) throw new Error("A IA não devolveu uma minuta válida a partir do dossiê.");
+    // TRAVA DE FASE: se o mapa diz que o processo JÁ foi sentenciado e a minuta voltou a julgar o mérito (nova sentença), refaz UMA vez como decisão sobre o que veio depois
+    let refeitaPorFase = false;
+    const textoMinuta = (m: any) => [m?.relatorio, m?.fundamentacao, m?.dispositivo, m?.fullFormattedText].filter(Boolean).join("\n");
+    const voltouASentenciar = (d: any) => !!mapaExec && conferirComMapa(textoMinuta(d?.minute), mapaExec.mapa as any).some((a) => a.codigo === "fase");
+    if (voltouASentenciar(data)) {
+      job.etapa = "A minuta voltou a sentenciar um processo já sentenciado: refazendo como decisão sobre o que veio depois…"; this.avisar();
+      try {
+        const sentMov = (mapaExec!.mapa as any)?.faseAtual?.sentencaMov;
+        const d2 = await this.chamar(job.id, "/api/generate-minute", { ...corpo, actType: "decisao", specificInstructions: [corpo.specificInstructions, `[CORREÇÃO OBRIGATÓRIA DE FASE]: o processo JÁ FOI SENTENCIADO${sentMov ? ` (Mov. ${sentMov})` : ""}. NÃO profira nova sentença, NÃO volte a julgar o mérito nem a condenar de novo. O ato é uma DECISÃO sobre o que veio DEPOIS da sentença (cumprimento de sentença, recurso, embargos ou outro pedido posterior: veja a SITUAÇÃO ATUAL e o MAPA). Relate a sentença e o trânsito em julgado, identifique o pedido posterior e decida só ele, com a estrutura própria desse ato.`].filter(Boolean).join("\n\n") });
+        if (d2?.minute && !voltouASentenciar(d2)) { data = d2; refeitaPorFase = true; }
+      } catch (e) { console.warn("[Gigantes] refazer por fase falhou (mantida a minuta original, com aviso do mapa):", e); }
+    }
     let verificacaoAusencia: any[] = [];
     if (!direto) try {
       const conf = await conferirAusencias(job.id, data.minute);
       verificacaoAusencia = conf.map((c) => ({ ...c, paginas: c.paginas.map((p) => ({ arquivo: job.arquivos[p.arquivo]?.nome || `arquivo ${p.arquivo + 1}`, pagina: p.pagina, trecho: p.trecho })) }));
     } catch (e) { console.warn("[Gigantes] conferência de ausência de prova falhou (ignorada):", e); }
-    const info = { paginas: job.totalPaginas, lotes: job.lotes.length, niveis: job.nivelAtual, essenciaisIntegra: escolhidas.length, omitidas: job.triagem.omitidas, abreviadas: job.triagem.abreviadas, dossieAbreviado, parte: cfg.parte, ocrPaginas: job.ocr ? job.ocr.feitas - job.ocr.falhas : 0, verificacaoAusencia };
+    const info = { paginas: job.totalPaginas, lotes: job.lotes.length, niveis: job.nivelAtual, essenciaisIntegra: escolhidas.length, omitidas: job.triagem.omitidas, abreviadas: job.triagem.abreviadas, dossieAbreviado, parte: cfg.parte, semMapa: !mapaExec, refeitaPorFase, ocrPaginas: job.ocr ? job.ocr.feitas - job.ocr.falhas : 0, verificacaoAusencia };
     const alertaInjecao = job.injecao.verificado ? job.injecao : data.alertaInjecao;
     const analysisId = data.analysisId || (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `gig-${Date.now()}`);
     // O número do processo que vale é o dos AUTOS (lido do texto ao enviar), não o que a IA devolve: ela pode citar outro processo e a minuta ficaria arquivada sob o número errado (a esteira e o Histórico não a achariam).

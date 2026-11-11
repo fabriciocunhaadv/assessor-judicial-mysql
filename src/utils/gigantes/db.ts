@@ -46,6 +46,8 @@ export interface JobGig {
   ocr?: { total: number; feitas: number; falhas: number; motivo?: string };
   ocrFeito?: boolean;
   ocrIgnorado?: string;
+  /** Quadro de movimentações do Projudi (lido pela extensão): vem antes da 1ª página e entra no dossiê. */
+  quadro?: string;
   serieRaiz?: string;                    // minuta única que une as partes de um processo: id da 1ª parte
   erro?: string;
   historicoId?: string;

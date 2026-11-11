@@ -1,3 +1,4 @@
+import { lerAutosPdf } from '../utils/lerAutosPdf';
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { globalTenantId } from "../lib/firestoreUtils";
 import { fetchRecuperavel } from "../utils/fetchRecuperavel";
@@ -370,7 +371,7 @@ export const MinuteAuditorModal: React.FC<MinuteAuditorModalProps> = ({
       if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) continue;
 
       try {
-        const extraction = await extractTextFromPdf(file);
+        const extraction = await lerAutosPdf(file, undefined, { exigirExtensao: false });
         const newPdf: UploadedPdf = {
           id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
           name: file.name,
@@ -400,7 +401,7 @@ export const MinuteAuditorModal: React.FC<MinuteAuditorModalProps> = ({
         const file = files[i];
         if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) continue;
 
-        const extraction = await extractTextFromPdf(file);
+        const extraction = await lerAutosPdf(file, undefined, { exigirExtensao: false });
         const newPdf: UploadedPdf = {
           id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
           name: file.name,

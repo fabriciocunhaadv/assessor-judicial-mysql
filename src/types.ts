@@ -239,6 +239,8 @@ export interface GenerationResult {
     niveis: number;
     essenciaisIntegra: number;
     dossieAbreviado?: boolean;
+    semMapa?: boolean;
+    refeitaPorFase?: boolean;
     parte?: { indice: number; total: number; de: number; ate: number; totalPaginas: number };
     ocrPaginas?: number;
     verificacaoAusencia?: { trecho: string; termo: string; total: number; paginas: { arquivo: string; pagina: number; trecho: string }[] }[];

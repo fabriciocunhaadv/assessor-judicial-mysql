@@ -54,6 +54,14 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
     ) });
   }
 
+  if (result?.gigante?.refeitaPorFase) itens.push({ id: "refeita-fase", tom: "info", rotulo: "🔁 Minuta refeita pela fase do processo", conteudo: (
+    <div data-testid="aviso-refeita-fase" className="max-w-4xl mx-auto rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">A primeira versão voltou a sentenciar um processo que já tinha sentença. O sistema refez a minuta como <strong>decisão sobre o que veio depois da sentença</strong>. Confira se é o ato que você queria.</div>
+  ) });
+  if (result?.gigante?.semMapa) itens.push({ id: "sem-mapa", tom: "atencao", rotulo: "🗺️ Sem mapa do processo — confira o ato", conteudo: (
+    <div data-testid="aviso-sem-mapa" className="max-w-4xl mx-auto rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <strong>Não foi possível montar o mapa do processo</strong> (fase atual e o que já foi decidido). Esta minuta foi redigida só com o dossiê: <strong>confira se o ato cabível agora é mesmo este</strong> (por exemplo, se o processo já foi sentenciado, o ato costuma ser a decisão sobre o que veio depois) e se as citações Mov./Arq./Pág. batem com o Projudi.
+    </div>
+  ) });
   if (result?.gigante) itens.push({ id: "gigante", tom: "info", rotulo: "📚 Processo gigante", conteudo: <AvisoGigante info={result.gigante} /> });
   if (result?.autosReduzidos) { const perdeu = (result.autosReduzidos.omitidas?.length || 0) + (result.autosReduzidos.abreviadas?.length || 0) > 0; itens.push({ id: "reduzidos", tom: perdeu ? "atencao" : "ok", rotulo: perdeu ? "✂️ Autos reduzidos" : "✔ Autos compactados (nenhuma página omitida)", conteudo: <AvisoAutosReduzidos info={result.autosReduzidos} /> }); }
 

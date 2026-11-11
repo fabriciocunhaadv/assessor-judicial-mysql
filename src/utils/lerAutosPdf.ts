@@ -10,9 +10,10 @@ export class ExtensaoNecessaria extends Error {
 }
 export type AutosLidos = Awaited<ReturnType<typeof extractTextFromPdf>> & { paginasOcr?: number[] };
 
-export async function lerAutosPdf(file: File, aoProgresso: (texto: string, feitas: number, total: number) => void = () => {}): Promise<AutosLidos> {
+/** exigirExtensao=false (Turbo, Lupa, painel Gigantes): usa a extensão (OCR + quadro de movimentações) quando existir; sem ela, lê no próprio Studio em vez de bloquear. */
+export async function lerAutosPdf(file: File, aoProgresso: (texto: string, feitas: number, total: number) => void = () => {}, opcoes: { exigirExtensao?: boolean; sequencial?: boolean } = {}): Promise<AutosLidos> {
   const caminho = await caminhoAtual();
-  if (caminho === "instalar" || caminho === "atualizar") throw new ExtensaoNecessaria(caminho);
+  if ((caminho === "instalar" || caminho === "atualizar") && opcoes.exigirExtensao !== false) throw new ExtensaoNecessaria(caminho);
   if (caminho === "extensao") {
     try {
       const r = await tratarPdfNaExtensao(file, { aoProgresso: (etapa, feitas, total) => aoProgresso(etapa, feitas, total || 0) });
@@ -23,5 +24,5 @@ export async function lerAutosPdf(file: File, aoProgresso: (texto: string, feita
       console.warn("[autos] a extensão não conseguiu tratar o PDF; o Studio lê sozinho:", e?.message || e);
     }
   }
-  return extractTextFromPdf(file, (c, t) => aoProgresso("Lendo o PDF", c, t));
+  return extractTextFromPdf(file, (c, t) => aoProgresso("Lendo o PDF", c, t), opcoes.sequencial ? { fullSequential: true } : undefined);
 }

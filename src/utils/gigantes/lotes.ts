@@ -37,10 +37,10 @@ export function montarLotes(paginas: PaginaGig[], nomes: string[], totais: numbe
   return lotes;
 }
 
-const LISTAS = ["cronologia", "partes", "pedidos", "alegacoesAutor", "alegacoesReu", "provas", "decisoes", "valores", "pontosControvertidos", "lacunas"] as const;
+const LISTAS = ["cronologia", "partes", "pedidos", "alegacoesAutor", "alegacoesReu", "provas", "decisoes", "valores", "pontosControvertidos", "situacaoFinal", "lacunas"] as const;
 const ROTULOS: Record<string, string> = {
   cronologia: "CRONOLOGIA", partes: "PARTES", pedidos: "PEDIDOS", alegacoesAutor: "ALEGAÇÕES DO AUTOR", alegacoesReu: "DEFESA E ALEGAÇÕES DO RÉU",
-  provas: "PROVAS E DOCUMENTOS", decisoes: "DECISÕES E DESPACHOS", valores: "VALORES E CÁLCULOS", pontosControvertidos: "PONTOS CONTROVERTIDOS", lacunas: "LACUNAS DE LEITURA",
+  provas: "PROVAS E DOCUMENTOS", decisoes: "DECISÕES E DESPACHOS", valores: "VALORES E CÁLCULOS", pontosControvertidos: "PONTOS CONTROVERTIDOS", situacaoFinal: "SITUAÇÃO DO PROCESSO NO FIM DESTE TRECHO", lacunas: "LACUNAS DE LEITURA",
 };
 
 export function normalizarFicha(f: any): Record<string, string[]> {

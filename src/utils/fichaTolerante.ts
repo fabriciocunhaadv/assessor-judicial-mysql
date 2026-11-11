@@ -1,7 +1,7 @@
 // Leitura tolerante da FICHA que a IA devolve para cada trecho de um processo gigante.
 // A IA às vezes devolve o JSON cortado (resposta longa demais), com aspas internas sem escape ou com texto antes/depois; o JSON.parse comum falha e o lote parava com
 // "A IA não devolveu a ficha do trecho em formato válido". Aqui o JSON é lido direto e, se falhar, os campos são recuperados um a um.
-export const CHAVES_FICHA = ["cronologia", "partes", "pedidos", "alegacoesAutor", "alegacoesReu", "provas", "decisoes", "valores", "pontosControvertidos", "lacunas"];
+export const CHAVES_FICHA = ["cronologia", "partes", "pedidos", "alegacoesAutor", "alegacoesReu", "provas", "decisoes", "valores", "pontosControvertidos", "situacaoFinal", "lacunas"];
 
 const desfazerEscapes = (v: string) => v.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
 
