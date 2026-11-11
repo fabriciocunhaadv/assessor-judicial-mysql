@@ -200,6 +200,14 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
   // Versions management
   const baseOriginalMinute = result?.originalMinute || result?.minute;
   const [adaptarAberto, setAdaptarAberto] = useState(false);      // ganchos ficam ANTES de qualquer 'return' antecipado (senão: erro React #310 ao carregar uma minuta)
+  const idAtualRef = useRef<string | null>(currentAnalysisId || null);      // a resposta do chat compara com este id: se a tela já mostra OUTRO processo, não a sobrescreve
+  idAtualRef.current = currentAnalysisId || null;
+  // Sinal para a esteira da extensão: enquanto a pessoa conversa com o chat (digitando ou aguardando a resposta) ou adapta a minuta a um paradigma, a esteira ESPERA para não trocar o processo na tela
+  const ocupadoComMinuta = isChatSending || chatInput.trim().length > 0 || adaptarAberto;
+  useEffect(() => {
+    try { if (ocupadoComMinuta) document.documentElement.dataset.assessorOcupado = "1"; else delete document.documentElement.dataset.assessorOcupado; } catch { /* sem documento */ }
+    return () => { try { delete document.documentElement.dataset.assessorOcupado; } catch { /* sem documento */ } };
+  }, [ocupadoComMinuta]);
   const [versions, setVersions] = useState<MinuteVersion[]>(() => {
     if (Array.isArray(result?.versions) && result.versions.length > 0) {
       return result.versions;
@@ -1044,6 +1052,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
     setIsChatSending(true);
 
     try {
+      const idDoPedido = currentAnalysisId || null;      // o processo ao qual este pedido pertence
       // RESUMO EXECUTIVO: consome ~85% menos tokens que reenviar todo o processo bruto em PDF
       const compactExecutiveSummary = (result as any)?.holisticSynopsis
         ? (result as any).holisticSynopsis
@@ -1111,7 +1120,11 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
       const msgId = `agaia-${Date.now()}`;
 
       let nextVersionsList = versions;
-      if (data.hasMinuteUpdate && data.updatedMinute) {
+      const telaMudou = (idAtualRef.current || null) !== idDoPedido;      // a esteira ou outra ação trocou o processo na tela enquanto a IA respondia
+      if (telaMudou && data.hasMinuteUpdate && data.updatedMinute) {
+        try { toast(`O chat terminou, mas a tela já mostra outro processo. A minuta do processo ${minute?.processNumber || ""} foi atualizada no Histórico; não mexi na tela atual.`, { duration: 9000, icon: "ℹ️" }); } catch { /* sem aviso */ }
+      }
+      if (data.hasMinuteUpdate && data.updatedMinute && !telaMudou) {
         onUpdateMinute(data.updatedMinute);
         minuteWasUpdated = true;
         setUpdateNotification("Minuta judicial reescrita e atualizada com sucesso pelo Assessor Judicial!");
@@ -1158,17 +1171,17 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
       };
 
       const updatedHistory = [...chatMessages, userMsg, replyMsg];
-      setChatMessages(updatedHistory);
+      if (!telaMudou) setChatMessages(updatedHistory);
 
-      if (currentAnalysisId) {
+      if (idDoPedido) {
         updateAnalysisChatAndMinute(
-          currentAnalysisId,
+          idDoPedido,
           updatedHistory,
           data.hasMinuteUpdate && data.updatedMinute ? data.updatedMinute : undefined,
-          data.hasMinuteUpdate && data.updatedMinute ? nextVersionsList : undefined
+          data.hasMinuteUpdate && data.updatedMinute && !telaMudou ? nextVersionsList : undefined
         );
       }
-      if (onChatMessagesUpdated) {
+      if (onChatMessagesUpdated && !telaMudou) {
         onChatMessagesUpdated(
           updatedHistory,
           data.hasMinuteUpdate && data.updatedMinute ? data.updatedMinute : undefined
