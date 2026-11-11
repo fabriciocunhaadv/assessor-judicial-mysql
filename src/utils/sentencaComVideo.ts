@@ -14,7 +14,7 @@ import { resolverUnidade } from "./minutaExterna";
 import { organizarMinutaExterna } from "./organizarMinutaExterna";
 import { avisarHistoricoMudou } from "./historyDb";
 
-export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; pdf: File; videos: File[] }
+export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; pdf: File; videos: File[] }
 export type ResultadoSentencaVideo = { ok: true; minuta: string; transcricao: string; processo: string; autor: string; reu: string; historicoId: string; fontes?: any; aviso?: string } | { ok: false; erro: string; semRetry?: boolean };
 
 const limpar = (t: string) => String(t || "").replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\t/g, "    ").replace(/^"|"$/g, "").trim();
@@ -60,6 +60,7 @@ export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento
     fd.append("ataText", limpar(ata.ataText || "")); fd.append("pdfText", texto); fd.append("processNumber", processo);
     fd.append("customInstruction", ""); fd.append("customPromptTemplate", p.promptTexto || "");
     fd.append("promptTitle", p.promptTitulo || ""); fd.append("promptCategory", p.promptCategoria || "");
+    if (p.degravacaoPronta) fd.append("degravacaoPronta", p.degravacaoPronta);      // degravação já feita nestes mesmos vídeos: o servidor não recebe nem ouve a mídia de novo
     fd.append("unidadeNome", p.serventia || ""); fd.append("autor", ata.author || ""); fd.append("reu", ata.defendant || "");
     if (teses.isEnabled) { fd.append("cabinetTesesText", teses.text || ""); fd.append("isTesesEnabled", "true"); } else fd.append("isTesesEnabled", "false");
     if (base.length) fd.append("knowledgePdfs", JSON.stringify(base));
@@ -161,7 +162,7 @@ export function instalarPonteSentencaVideo(): () => void {
         if (!pdf || videos.some((v) => !v)) { resp(d.reqId, { tipo: "resultado", ok: false, erro: "o Studio não recebeu os arquivos completos (envie de novo)" }); recebidos.delete(d.reqId); return; }
         resp(d.reqId, { tipo: "iniciado" });
         filaSentencaVideo.atualizar(d.reqId, { processo: String(d.processo || ""), texto: "Começando…", estado: "rodando" });
-        const res = await executarSentencaComVideo({ reqId: d.reqId, processo: String(d.processo || ""), promptTitulo: String(d.promptTitulo || ""), promptTexto: String(d.promptTexto || ""), promptCategoria: String(d.promptCategoria || ""), serventia: String(d.serventia || ""), pdf, videos: videos as File[] },
+        const res = await executarSentencaComVideo({ reqId: d.reqId, processo: String(d.processo || ""), promptTitulo: String(d.promptTitulo || ""), promptTexto: String(d.promptTexto || ""), promptCategoria: String(d.promptCategoria || ""), serventia: String(d.serventia || ""), degravacaoPronta: String(d.degravacaoPronta || ""), pdf, videos: videos as File[] },
           (texto, pct) => { filaSentencaVideo.atualizar(d.reqId, { texto, pct: pct || 0 }); resp(d.reqId, { tipo: "andamento", texto, pct }); }, () => r.cancelar);
         filaSentencaVideo.atualizar(d.reqId, res.ok ? { estado: "ok", texto: "Sentença pronta e salva no Histórico", pct: 100, fim: Date.now(), processo: res.processo || String(d.processo || "") } : { estado: "erro", erro: (res as any).erro, texto: "Falhou", fim: Date.now() });
         resp(d.reqId, { tipo: "resultado", ...res }); recebidos.delete(d.reqId);

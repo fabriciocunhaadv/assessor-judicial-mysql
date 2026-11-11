@@ -2770,13 +2770,15 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
         iniciar();
 
         // 1) e 2) cada mídia: montada das partes (ou vinda inteira no formulário, se pequena), enviada à IA pela API de arquivos e DEGRAVADA à parte
+        const degravacaoPronta = String(req.body.degravacaoPronta || "").trim();
         const fontes: { caminho: string; mime: string; nome: string }[] = [];
         for (const m of midias) { const mm = montarArquivo(uid, m.midiaId, m.partes, m.tamanho); fontes.push({ caminho: mm.caminho, mime: mimeDaMidia(m.nomeMidia, m.mimeMidia), nome: m.nomeMidia || `mídia ${fontes.length + 1}` }); }
         if (!fontes.length && req.file?.buffer) { const c = path.join(os.tmpdir(), `mutirao_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.bin`); fs.writeFileSync(c, req.file.buffer); temporarios.push(c); fontes.push({ caminho: c, mime: mimeDaMidia(req.file.originalname || "", req.file.mimetype), nome: req.file.originalname || "mídia" }); }
         let transcricao = "", tokens = { prompt: 0, saida: 0, total: 0 }, modelo = "";
         const somar = (r: any) => { const u = r?.usageMetadata || {}; tokens.prompt += Number(u.promptTokenCount) || 0; tokens.saida += Number(u.candidatesTokenCount) || 0; tokens.total += Number(u.totalTokenCount) || 0; modelo = r?.modelVersion || modelo; };
         andamento(fontes.length ? "Mídia recebida; enviando à IA…" : "Redigindo a sentença…", 5);
-        if (fontes.length) {
+        if (degravacaoPronta.length > 40) { transcricao = degravacaoPronta; andamento("Reaproveitando a degravação já feita…", 60); }
+        else if (fontes.length) {
             const ai = new GoogleGenAI({ apiKey: chaveUsada });
             const partesDeg: string[] = [];
             for (let k = 0; k < fontes.length; k++) {
