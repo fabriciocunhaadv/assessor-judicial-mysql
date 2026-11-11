@@ -34,6 +34,7 @@ import { lerAutosPdf, ExtensaoNecessaria } from '../utils/lerAutosPdf';
 import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { enviarMidiaEmPartes } from '../utils/enviarMidia';
+import { useSessao, sessaoMutirao } from '../utils/mutiraoSessao';
 import { getKnowledgeDocs } from '../utils/knowledgeDb';
 import { getCabinetTeses } from '../utils/tesesDb';
 
@@ -141,29 +142,30 @@ const ForenseSentenceDocument: React.FC<{
 
 export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps> = ({ onOpenHistory }) => {
   const { user, userProfile } = useAuth();
-  const [step, setStep] = useState<'upload' | 'ata' | 'sentence'>('upload');
+  const [step, setStep] = useSessao<'upload' | 'ata' | 'sentence'>('step');
   const [prompts, setPrompts] = useState<CustomPrompt[]>([]);
-  const [selectedPromptId, setSelectedPromptId] = useState<string>('');
+  const [selectedPromptId, setSelectedPromptId] = useSessao<string>('selectedPromptId');
   const [isSaving, setIsSaving] = useState(false);
-  const [ataMobileTab, setAtaMobileTab] = useState<'media' | 'ata'>('media');
-  const [sentenceMobileTab, setSentenceMobileTab] = useState<'sentence' | 'transcription'>('sentence');
+  const [ataMobileTab, setAtaMobileTab] = useSessao<'media' | 'ata'>('ataMobileTab');
+  const [sentenceMobileTab, setSentenceMobileTab] = useSessao<'sentence' | 'transcription'>('sentenceMobileTab');
   const [viewMode, setViewMode] = useState<'formatted' | 'editor'>('formatted');
 
   useEffect(() => {
     const cached = getLocalCachedPrompts().filter(p => p.id !== "prompt-padrao" && p.title !== "Prompt Padrão");
     setPrompts(cached);
-    setSelectedPromptId("");
   }, []);
+  // volta de onde parou (troca de aba, janela fechada ou página recarregada)
+  useEffect(() => { void sessaoMutirao.carregar(String(user?.uid || user?.email || '')).then((aviso) => { if (aviso) toast.success(aviso, { duration: 6000 }); }); }, [user?.uid, user?.email]);
 
-  const [isProcessingPdf, setIsProcessingPdf] = useState(false);
-  const [isProcessingVideo, setIsProcessingVideo] = useState(false);
+  const [isProcessingPdf, setIsProcessingPdf] = useSessao<boolean>('isProcessingPdf');
+  const [isProcessingVideo, setIsProcessingVideo] = useSessao<boolean>('isProcessingVideo');
   
-  const [processInfo, setProcessInfo] = useState({ processNumber: '', author: '', defendant: '' });
-  const [ataText, setAtaText] = useState('');
-  const [sentenceText, setSentenceText] = useState('');
-  const [transcription, setTranscription] = useState('');
-  const [videoFiles, setVideoFiles] = useState<File[]>([]);      // às vezes há um vídeo por testemunha: aceita vários
-  const [pdfFullText, setPdfFullText] = useState('');
+  const [processInfo, setProcessInfo] = useSessao<{ processNumber: string; author: string; defendant: string }>('processInfo');
+  const [ataText, setAtaText] = useSessao<string>('ataText');
+  const [sentenceText, setSentenceText] = useSessao<string>('sentenceText');
+  const [transcription, setTranscription] = useSessao<string>('transcription');
+  const [videoFiles, setVideoFiles] = useSessao<File[]>('videoFiles');      // às vezes há um vídeo por testemunha: aceita vários
+  const [pdfFullText, setPdfFullText] = useSessao<string>('pdfFullText');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -300,10 +302,10 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
     }
   };
 
-  const [bloqueioExt, setBloqueioExt] = useState<{ tipo: 'instalar' | 'atualizar'; arquivo: File; aindaNao?: boolean } | null>(null);
-  const [progressoPdf, setProgressoPdf] = useState('');
-  const [progressoMidia, setProgressoMidia] = useState('');
-  const [sentencasDaSessao, setSentencasDaSessao] = useState(0);
+  const [bloqueioExt, setBloqueioExt] = useSessao<{ tipo: 'instalar' | 'atualizar'; arquivo: File; aindaNao?: boolean } | null>('bloqueioExt');
+  const [progressoPdf, setProgressoPdf] = useSessao<string>('progressoPdf');
+  const [progressoMidia, setProgressoMidia] = useSessao<string>('progressoMidia');
+  const [sentencasDaSessao, setSentencasDaSessao] = useSessao<number>('sentencasDaSessao');
   /** Pauta com várias audiências: guarda a que acabou (já foi salva no Histórico) e volta ao começo, mantendo o prompt escolhido */
   const proximoProcesso = () => {
     setProcessInfo({ processNumber: '', author: '', defendant: '' }); setAtaText(''); setSentenceText(''); setTranscription(''); setVideoFiles([]); setPdfFullText('');
