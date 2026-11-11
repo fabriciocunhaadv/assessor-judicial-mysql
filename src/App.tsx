@@ -34,7 +34,6 @@ import { HistoryModal } from "./components/HistoryModal";
 import { ApiCreditsModal } from "./components/ApiCreditsModal";
 import { CabinetTesesModal } from "./components/CabinetTesesModal";
 import { CabinetCalendarModal } from "./components/CabinetCalendarModal";
-import { ParadigmSelector } from "./components/ParadigmSelector";
 import { ProjudiGuideModal } from "./components/ProjudiGuideModal";
 import { SystemManualModal } from "./components/SystemManualModal";
 import { SuperAdminPanel } from "./components/SuperAdminPanel";
@@ -2449,31 +2448,7 @@ export default function App() {
               />
               </div>
 
-              {/* Paradigm Selector (Casos Idênticos / Modelos do Juiz) */}
-              {isAdvancedMode && (
-                <ParadigmSelector
-                  isParadigmEnabled={isParadigmEnabled}
-                  setIsParadigmEnabled={setIsParadigmEnabled}
-                  selectedParadigmId={selectedParadigmId}
-                  setSelectedParadigmId={setSelectedParadigmId}
-                  customParadigmText={customParadigmText}
-                  setCustomParadigmText={setCustomParadigmText}
-                  onOpenCabinetModal={() => setIsTesesModalOpen(true)}
-                  detectedMatch={topDetectedParadigmMatch}
-                  detectedMatches={detectedParadigmMatches}
-                  onApplySuggestedParadigm={(match) => {
-                    setIsParadigmEnabled(true);
-                    setSelectedParadigmId(match.paradigm.id);
-                    setCustomParadigmText(match.paradigm.fullText);
-                    setAutoExecutePending(true);
-                  }}
-                  onDismissSuggestion={() => {
-                    if (topDetectedParadigmMatch) {
-                      setDismissedParadigmId(topDetectedParadigmMatch.paradigm.id);
-                    }
-                  }}
-                />
-              )}
+              {/* O paradigma (modelo do juiz) NÃO entra mais na geração: é aplicado depois, com o botão "Adaptar a paradigma" da minuta pronta. */}
 
               {/* PDF Ingestion Zone & Mode Switcher */}
               <div id="tour-input-panel" className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3.5">
@@ -3018,15 +2993,9 @@ export default function App() {
         }}
         tesesData={tesesData}
         onTesesUpdated={setTesesData}
-        onInjectDirectParadigm={(text, title, modelId) => {
-          if (modelId) {
-            setSelectedParadigmId(modelId);
-            setCustomParadigmText(text);
-          } else {
-            setSelectedParadigmId(null);
-            setCustomParadigmText(text);
-          }
-          setIsParadigmEnabled(true);
+        onInjectDirectParadigm={() => {
+          // o modelo do juiz agora é aplicado DEPOIS da minuta pronta (botão "Adaptar a paradigma"), não mais na geração
+          toast("O modelo do juiz agora é aplicado depois: gere a minuta e use o botão “Adaptar a paradigma” no resultado.", { icon: "ℹ️", duration: 7000 });
           setIsTesesModalOpen(false);
         }}
         initialParadigmDraft={initialParadigmDraft}

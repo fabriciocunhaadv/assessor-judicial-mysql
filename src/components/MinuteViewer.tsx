@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { getHistory, marcarLancadoProjudi, HISTORICO_MUDOU } from "../utils/historyDb";
 import { idsDoMesmoProcesso } from "../utils/lancadoProcesso";
 import { AvisosDaMinuta } from "./AvisosDaMinuta";
+import { AdaptarParadigmoModal } from "./AdaptarParadigmoModal";
 import ReactMarkdown from "react-markdown";
 import { organizarTextoDaMinuta } from "../utils/organizarTextoDaMinuta";
 import { MinutaSecaoEditavel } from "./MinutaSecaoEditavel";
@@ -662,6 +663,17 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
     }
   };
 
+  const [adaptarAberto, setAdaptarAberto] = useState(false);
+  const aplicarParadigmo = async (nova: MinuteData, tituloModelo: string, avisos: string[]) => {
+    onUpdateMinute(nova);
+    const nv: MinuteVersion = { id: `v-${Date.now()}-paradigma`, versionNumber: versions.length + 1, label: `Adaptada ao paradigma: ${tituloModelo}`, timestamp: Date.now(), minute: nova, source: "editor", author: "Assessor Judicial", changeSummary: `Estrutura reorganizada conforme o modelo “${tituloModelo}”${avisos.length ? ` (${avisos.length} ponto(s) para conferir)` : ""}` };
+    const atualizadas = [nv, ...versions]; setVersions(atualizadas);
+    if (currentAnalysisId) { try { await updateAnalysisChatAndMinute(currentAnalysisId, chatMessages, nova, atualizadas); } catch (e) { console.warn("Não gravou a minuta adaptada:", e); } }
+    setActiveTab("formatted");
+    setUpdateNotification(`Minuta adaptada ao modelo “${tituloModelo}”. A anterior continua nas versões.`);
+    setTimeout(() => setUpdateNotification(null), 6000);
+  };
+
   const handlePrint = () => {
     printFormattedMinute(minute);
   };
@@ -1265,6 +1277,14 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
               <span>Salvar Tese</span>
             </button>
           )}
+          <button
+            onClick={() => setAdaptarAberto(true)}
+            className="px-2.5 py-1 border border-amber-300 bg-white hover:bg-amber-50 text-amber-900 font-bold rounded flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+            title="Reorganizar esta minuta conforme um modelo (paradigma) do juiz, sem reler os autos"
+            data-testid="btn-adaptar-paradigma"
+          >
+            <span>Adaptar a paradigma</span>
+          </button>
           {/* Raio-X da Minuta */}
           {onOpenXRay && (
             <button
@@ -1680,6 +1700,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             onInjectAsParadigm={handleTriggerInjectParadigm}
           />
         )}
+        <AdaptarParadigmoModal aberto={adaptarAberto} aoFechar={() => setAdaptarAberto(false)} minuta={minute} aoAplicar={aplicarParadigmo} />
         {/* Tab 1: Formatted Document View */}
         {activeTab === "formatted" && (
           <div className="space-y-4">

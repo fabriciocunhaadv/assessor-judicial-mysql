@@ -2693,6 +2693,62 @@ const uploadMedia = multer({
     limits: { fileSize: 60 * 1024 * 1024, fieldSize: 60 * 1024 * 1024 }      // arquivo pequeno inteiro; os grandes vão em partes (/api/mutirao-midia/parte). fieldSize: os autos seguem como campo de texto
 });
 
+// ====== ADAPTAR A MINUTA PRONTA A UM PARADIGMA (modelo do juiz): só muda a ESTRUTURA e o estilo; o conteúdo do processo fica ======
+const itensDeConteudo = (t: string) => {
+    const x = String(t || "");
+    return {
+        valores: [...new Set((x.match(/R\$\s?[\d.]+(?:,\d{2})?/g) || []).map((v) => v.replace(/\s/g, "")))],
+        datas: [...new Set(x.match(/\b\d{2}\/\d{2}\/\d{4}\b/g) || [])],
+        citacoes: [...new Set((x.match(/Mov\.?\s*\d{1,4}\s*,\s*Arq\.?\s*\d{1,3}/gi) || []).map((v) => v.replace(/\s+/g, " ").toLowerCase()))],
+    };
+};
+app.post("/api/reestruturar-minuta", async (req, res) => {
+    try {
+        const apiKey = extractApiKey(req);
+        if (!apiKey) return res.status(401).json({ error: "Chave da API Gemini ausente." });
+        const m = req.body?.minute || {};
+        const modelo = String(req.body?.paradigmText || "").trim().slice(0, 60000);
+        const tituloModelo = String(req.body?.paradigmTitle || "Modelo do juiz").slice(0, 200);
+        const originalTxt = [m.title, m.relatorio, m.fundamentacao, m.dispositivo, m.closing].filter(Boolean).join("\n\n");
+        if (modelo.length < 200) return res.status(400).json({ error: "O modelo escolhido está vazio ou é curto demais para servir de molde." });
+        if (originalTxt.length < 200) return res.status(400).json({ error: "A minuta está vazia." });
+        const sistema = `Você reorganiza minutas judiciais já prontas. Recebe (A) um MODELO DE REFERÊNCIA do magistrado e (B) uma MINUTA PRONTA. Reescreva a minuta B seguindo a ESTRUTURA e o ESTILO do modelo A: ordem das seções, títulos, modo de redigir o relatório, modo de enfrentar preliminares e mérito, fórmula do dispositivo, intimações e fecho.
+REGRAS INEGOCIÁVEIS:
+1. CONTEÚDO DA MINUTA B INTACTO: nada pode ser perdido, alterado ou inventado: partes, números, datas, valores, prazos, decisões, resultado (procedência, improcedência, recebimento etc.), comandos do dispositivo, artigos de lei, súmulas, citações Mov./Arq./Pág. e transcrições entre aspas permanecem exatamente como estão.
+2. O MODELO A É SÓ MOLDE: NÃO copie dele nomes, números, datas, valores, fatos nem fundamentos do processo dele. Se o modelo tem uma seção que não se aplica à minuta B, omita-a; se a minuta B tem conteúdo que o modelo não prevê, mantenha-o no lugar mais natural.
+3. NÃO RESUMA nem corte análise: a minuta B inteira permanece, apenas reorganizada e reescrita no estilo do modelo.
+4. Só use títulos que o MODELO usa. Não crie títulos sobre a dinâmica de análise.
+5. Mantenha o texto em português claro, corrido e pronto para uso.
+Responda SOMENTE com JSON válido: {"title": "...", "relatorio": "...", "fundamentacao": "...", "dispositivo": "...", "closing": "...", "fullFormattedText": "..."}. "fullFormattedText" é o documento COMPLETO (cabeçalho ao fecho) na estrutura do modelo; "relatorio", "fundamentacao" e "dispositivo" são as partes correspondentes desse documento (se o modelo não as separa, divida do modo mais natural: o que antecede a decisão em relatorio/fundamentacao e os comandos finais em dispositivo).`;
+        const usuario = `[MODELO DE REFERÊNCIA A — ${tituloModelo}]\n${modelo}\n[FIM DO MODELO]\n\n[MINUTA PRONTA B — A REORGANIZAR]\nCABEÇALHO: ${m.header || ""}\nTÍTULO: ${m.title || ""}\nPROCESSO: ${m.processNumber || ""}\nPARTES: ${m.parties?.author || ""} x ${m.parties?.defendant || ""}\n\nRELATÓRIO:\n${m.relatorio || ""}\n\nFUNDAMENTAÇÃO:\n${m.fundamentacao || ""}\n\nDISPOSITIVO:\n${m.dispositivo || ""}\n\nFECHO:\n${m.closing || ""}`;
+        const response = await generateWithFallbackAndRetry({
+            apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res,
+            contents: [{ role: "user", parts: [{ text: usuario }] }],
+            config: { systemInstruction: sistema, temperature: 0.2, maxOutputTokens: 32000, responseMimeType: "application/json" },
+            timeoutMs: 240000,
+        } as any);
+        const p: any = safeParseObj(response.text || "{}") || {};
+        const nova = { title: String(p.title || m.title || ""), relatorio: String(p.relatorio || ""), fundamentacao: String(p.fundamentacao || ""), dispositivo: String(p.dispositivo || ""), closing: String(p.closing || m.closing || ""), fullFormattedText: String(p.fullFormattedText || "") };
+        if (!nova.fullFormattedText && !(nova.relatorio || nova.fundamentacao || nova.dispositivo)) return res.status(502).json({ error: "A IA não devolveu a minuta reorganizada. Tente de novo." });
+        // conferência por código (sem IA): o que existia na minuta original e sumiu; o que apareceu e é do modelo
+        const antes = itensDeConteudo(originalTxt), depois = itensDeConteudo([nova.title, nova.relatorio, nova.fundamentacao, nova.dispositivo, nova.closing, nova.fullFormattedText].join("\n\n")), doModelo = itensDeConteudo(modelo);
+        const avisos: string[] = [];
+        const sumiu = (a: string[], b: string[]) => a.filter((x) => !b.includes(x));
+        const v = sumiu(antes.valores, depois.valores), d = sumiu(antes.datas, depois.datas), c = sumiu(antes.citacoes, depois.citacoes);
+        if (v.length) avisos.push(`Valores da minuta original que não aparecem na reorganizada: ${v.slice(0, 8).join(", ")}.`);
+        if (d.length) avisos.push(`Datas da minuta original que não aparecem na reorganizada: ${d.slice(0, 8).join(", ")}.`);
+        if (c.length) avisos.push(`Citações da minuta original que não aparecem na reorganizada: ${c.slice(0, 6).join("; ")}.`);
+        const vazou = [...depois.valores.filter((x) => !antes.valores.includes(x) && doModelo.valores.includes(x)), ...depois.datas.filter((x) => !antes.datas.includes(x) && doModelo.datas.includes(x))];
+        if (vazou.length) avisos.push(`Apareceram dados que são do MODELO e não da minuta original: ${vazou.slice(0, 8).join(", ")}. Confira.`);
+        const t0 = originalTxt.length, t1 = [nova.relatorio, nova.fundamentacao, nova.dispositivo].join("").length || nova.fullFormattedText.length;
+        if (t1 < t0 * 0.7) avisos.push(`A minuta reorganizada ficou bem menor (${Math.round((t1 / t0) * 100)}% do tamanho original): confira se algo foi condensado.`);
+        return res.json({ success: true, minute: nova, avisos, usage: response.usageMetadata || {}, modelUsed: (response as any).modelVersion || "" });
+    } catch (err: any) {
+        console.error("Erro em /api/reestruturar-minuta:", err);
+        return res.status(500).json({ error: formatGeminiError(err) || "Falha ao reorganizar a minuta." });
+    }
+});
+
 app.post("/api/mutirao-extract-ata", async (req, res) => {
     try {
         const apiKey = extractApiKey(req);
