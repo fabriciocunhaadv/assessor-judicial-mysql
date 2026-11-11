@@ -961,7 +961,7 @@ app.post("/api/chat-agaia", async (req, res) => {
         const { message, conversationHistory, currentMinute, auditAnalysis, originalProcessText, executiveSummary, customPromptText, cabinetTesesText, isTesesEnabled, paradigmModelText, paradigmModelTitle, isParadigmEnabled } = req.body;
         
         // RESUMO EXECUTIVO: consome ~85% menos tokens que despejar dezenas de milhares de caracteres dos autos
-        const processExecutiveSummary = executiveSummary || (originalProcessText ? originalProcessText.substring(0, 1500) + '...' : 'Autos do processo judicial');
+        const processExecutiveSummary = executiveSummary || (originalProcessText ? String(originalProcessText).substring(0, 60000) : 'Autos do processo judicial');
 
         const systemPrompt = `Você é o Assessor Especialista de Gabinete do Magistrado, responsável pelo refinamento técnico, correções e redação de minutas judiciais oficiais.
 Sua redação deve ser culta, formal, profunda e tecnicamente impecável, em estrita conformidade com o CPC, as leis vigentes e a jurisprudência aplicável.
@@ -973,12 +973,13 @@ ${processExecutiveSummary}
 - Título Atual: ${currentMinute?.title || 'Minuta'}
 - Processo: ${currentMinute?.processNumber || 'Autos'}
 - Relatório Atual:
-${currentMinute?.relatorio ? currentMinute.relatorio.substring(0, 1500) : 'Conforme autos'}
+${currentMinute?.relatorio ? currentMinute.relatorio : 'Conforme autos'}
 - Fundamentação Atual:
 ${currentMinute?.fundamentacao || 'Não informada'}
 - Dispositivo Atual:
 ${currentMinute?.dispositivo || 'Não informado'}
-${cabinetTesesText ? `\n# CADERNO DE TESES E DIRETRIZES DO GABINETE:\n${cabinetTesesText.substring(0, 1200)}` : ''}
+${blocoCadernoDeTesesTurbo(cabinetTesesText || "", isTesesEnabled !== false)}
+${customPromptText ? `\n# PROMPT DO GABINETE PARA ESTA MATÉRIA (estilo e regras próprias; siga-o):\n${String(customPromptText).slice(0, 60000)}\n` : ""}
 
 # DIRETRIZES MANDATÓRIAS DE RIGOR E EXAUSTIVIDADE JURÍDICA:
 1. PROIBIÇÃO ABSOLUTA DE RESPOSTAS SUCINTAS OU DE UM PARÁGRAFO:
@@ -989,16 +990,20 @@ ${cabinetTesesText ? `\n# CADERNO DE TESES E DIRETRIZES DO GABINETE:\n${cabinetT
      * Atualize 'title' para "DECISÃO INTERLOCUTÓRIA".
      * Redija 'relatorio' narrando pormenorizadamente a petição inicial, os fatos alegados e o pedido de tutela provisória deduzido.
      * Na 'fundamentacao', examine detidamente e com fundamentação jurídica completa:
-       a) O juízo de admissibilidade e o pedido de gratuidade da justiça (arts. 98 e 99 do CPC).
+       a) O juízo de admissibilidade e o pedido de gratuidade da justiça (arts. 98 e 99 do CPC), salvo nos Juizados Especiais (gratuidade não analisada em 1º grau).
        b) A probabilidade do direito (fumus boni iuris) com exame do acervo probatório anexado.
        c) O perigo de dano ou risco ao resultado útil do processo (periculum in mora).
        d) A reversibilidade da medida (§ 3º do art. 300 do CPC).
        e) As diretrizes do Caderno de Teses do Gabinete aplicáveis.
      * No 'dispositivo', ordene os comandos claros:
        a) Deferimento, deferimento parcial ou indeferimento da tutela, com prazo para cumprimento e astreintes/multa diária se for obrigação de fazer/não fazer.
-       b) Deferimento/indeferimento da gratuidade da justiça.
+       b) Deferimento/indeferimento da gratuidade da justiça (fora dos Juizados Especiais).
        c) Ordem de citação da parte demandada para cumprimento e intimação para audiência de conciliação (art. 334 do CPC), com prazo de contestação (art. 335 do CPC).
-3. ESTRUTURAÇÃO DO JSON DE RESPOSTA:
+3. REGRAS COMUNS A TODAS AS MINUTAS (valem para qualquer reescrita):
+   - Ao reescrever, devolva SEMPRE o texto COMPLETO de 'relatorio', 'fundamentacao' e 'dispositivo' (nunca só o trecho alterado) e preserve tudo o que o pedido do usuário não mandou mudar: fatos, partes, datas, valores, citações Mov./Arq./Pág. e comandos.
+   - Em decisão de Juizado Especial, NÃO analise gratuidade da justiça nem honorários de sucumbência: registre em um parágrafo curto que não se aplicam no 1º grau (perfil da matéria abaixo). O item de gratuidade da conversão acima vale só fora dos Juizados.
+${REGRA_ESTRUTURA_POR_ATO}${REGRA_DISPOSITIVO_CARTORIO}${REGRAS_MECANICA_JUDICIAL}${indiceDoPedido(req, String(originalProcessText || ""))}${blocoPerfilMateria({ titulo: String(req.body?.promptTitle || ""), categoria: String(req.body?.promptCategory || ""), unidade: `${currentMinute?.judicialUnit || ""} ${currentMinute?.header || ""}` })}
+4. ESTRUTURAÇÃO DO JSON DE RESPOSTA:
    Retorne estritamente o JSON no seguinte formato:
    {
      "reply": "Explicação técnica clara e cortês sobre as modificações realizadas na decisão para o assessor/juiz.",
@@ -1029,7 +1034,7 @@ ${cabinetTesesText ? `\n# CADERNO DE TESES E DIRETRIZES DO GABINETE:\n${cabinetT
             primaryModel: "gemini-3.1-flash-lite",
             fallbackModel: "gemini-3.8-flash",
             customModelQueue: ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"],      // 1º 3.1; reservas: 3.8 e 3.7; por último o latest
-            timeoutMs: 45000,
+            timeoutMs: 90000,
             maxCycles: 1,
             contents: [
                 { role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }
@@ -1071,6 +1076,7 @@ ${cabinetTesesText ? `\n# CADERNO DE TESES E DIRETRIZES DO GABINETE:\n${cabinetT
             const fund = finalUpdatedMinute.fundamentacao || currentMinute?.fundamentacao || '';
             const disp = finalUpdatedMinute.dispositivo || currentMinute?.dispositivo || '';
             const clos = finalUpdatedMinute.closing || currentMinute?.closing || 'Juiz(a) de Direito';
+            try { if (originalProcessText) corrigirCitacoesDaMinuta(finalUpdatedMinute, String(originalProcessText)); } catch { /* sem correção */ }
             finalUpdatedMinute.fullFormattedText = `${h}\nProcesso nº: ${proc}\nPromovente: ${aut}\nPromovido: ${reu}\n\n${t}\n\nI - RELATÓRIO\n\n${rel}\n\nII - FUNDAMENTAÇÃO\n\n${fund}\n\nIII - DISPOSITIVO\n\n${disp}\n\n${clos}`;
         }
 

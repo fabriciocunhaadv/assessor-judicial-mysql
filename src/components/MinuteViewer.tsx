@@ -1046,10 +1046,10 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
     try {
       // RESUMO EXECUTIVO: consome ~85% menos tokens que reenviar todo o processo bruto em PDF
       const compactExecutiveSummary = (result as any)?.holisticSynopsis
-        ? (result as any).holisticSynopsis.substring(0, 3500)
+        ? (result as any).holisticSynopsis
         : (originalProcessText && originalProcessText.trim().length > 30
-            ? originalProcessText.trim().substring(0, 1200)
-            : (minute.relatorio ? minute.relatorio.substring(0, 1200) : "Processo sob análise do gabinete."));
+            ? originalProcessText.trim().substring(0, 60000)
+            : (minute.relatorio ? minute.relatorio : "Processo sob análise do gabinete."));
 
       const response = await fetch("/api/chat-agaia", {
         method: "POST",
@@ -1064,12 +1064,14 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             processNumber: minute.processNumber,
             judicialUnit: minute.judicialUnit,
             parties: minute.parties,
-            relatorio: minute.relatorio?.substring(0, 1200),
+            relatorio: minute.relatorio,
+            closing: minute.closing,
             fundamentacao: minute.fundamentacao,
             dispositivo: minute.dispositivo,
           },
-          customPromptText: customPromptText ? customPromptText.substring(0, 400) : "",
-          cabinetTesesText: isTesesEnabled && cabinetTesesText ? cabinetTesesText.substring(0, 600) : "",
+          customPromptText: customPromptText || "",
+          cabinetTesesText: isTesesEnabled && cabinetTesesText ? cabinetTesesText : "",
+          originalProcessText: originalProcessText ? originalProcessText.substring(0, 400000) : "",      // só para conferir o índice de arquivos e as citações Mov./Arq./Pág. no servidor
           isTesesEnabled: isTesesEnabled,
           paradigmModelTitle: isParadigmEnabled ? paradigmModelTitle : undefined,
           isParadigmEnabled: isParadigmEnabled,
