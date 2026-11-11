@@ -2822,13 +2822,13 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
             const ri = detectarInjecao(autos); if (ri.verificado) alertaInjM = ri; if (ri.total > 0) defesaInjM = instrucaoDefesaInjecao(ri);
         } catch (e: any) { console.warn("[mutirao] base de conferência indisponível:", e?.message || e); }
         // MOTOR PRINCIPAL: a degravação vira prova oral e a sentença sai pelas 2 etapas do estúdio. Se falhar, segue para o caminho curto abaixo (reserva).
-        let resultadoMotor: any = null;
+        let resultadoMotor: any = null, erroMotor = "";
         if (String(req.body.motorPrincipal || "true") !== "false") {
             try {
                 const partesU = String(req.body.unidadeNome || "").split(/\s+-\s+/).map((x: string) => x.trim()).filter((x: string) => x && !/^[A-Z]{2}$/.test(x));
                 const comarca = partesU[0] ? `Comarca de ${partesU[0]} - TJGO` : "Comarca", vara = partesU[1] || "Vara";
                 const blocoAudiencia = (transcricao ? `[DEGRAVAÇÃO DA AUDIÊNCIA DE INSTRUÇÃO E JULGAMENTO — PROVA ORAL (lida do vídeo; cada vídeo costuma ser o depoimento de uma pessoa)]\n${transcricao}\n[FIM DA DEGRAVAÇÃO]\n\n` : "") + (ataText ? `[TERMO/ATA PRÉVIA DA AUDIÊNCIA]\n${String(ataText).slice(0, 30000)}\n[FIM DO TERMO]\n\n` : "");
-                const instr = "SENTENÇA DE MÉRITO APÓS AUDIÊNCIA DE INSTRUÇÃO E JULGAMENTO. A DEGRAVAÇÃO DA AUDIÊNCIA é PROVA ORAL: use-a para fundamentar a decisão (resuma o que cada depoente disse, com a marcação [mm:ss], e confronte com a prova documental e pericial dos autos). NÃO copie a degravação na minuta. A minuta deve ser COMPLETA e analítica, no padrão do prompt do gabinete: relatório com todo o andamento (citando as movimentações), fundamentação em tópicos (questões preliminares, prova documental, perícia, prova oral, requisitos legais, correção monetária e juros conforme a tese aplicável) e dispositivo completo com todos os comandos.";
+                const instr = "SENTENÇA DE MÉRITO APÓS AUDIÊNCIA DE INSTRUÇÃO E JULGAMENTO — minuta COMPLETA, EXTENSA e ANALÍTICA, no padrão da esteira principal (nunca resumida). OBRIGATÓRIO: (1) RELATÓRIO: percorra TODAS as movimentações do QUADRO DE MOVIMENTAÇÕES, da primeira à ÚLTIMA (cite Mov. e data de cada ato relevante: petição inicial, decisões, citação, contestação, perícia, intimações, juntada de rol de testemunhas, audiência e a mídia publicada), com pedidos, defesa e réplica. (2) FUNDAMENTAÇÃO em tópicos: questões preliminares/prejudiciais; PROVA DOCUMENTAL analisada arquivo por arquivo (nome do arquivo, Mov., Arq., Pág.) e o que cada um prova; PERÍCIA (conclusões e quesitos); PROVA ORAL: resuma o depoimento de CADA testemunha e das partes, com a marcação [mm:ss] da DEGRAVAÇÃO, confrontando-o com a prova documental e justificando a procedência ou a improcedência; requisitos legais com a LEGISLAÇÃO aplicável (artigos), súmulas, teses e jurisprudência (somente as conferidas); consectários (correção monetária e juros conforme a tese aplicável). (3) DISPOSITIVO completo com todos os comandos (tutela, prazos, custas, honorários, remessa necessária, intimações). A DEGRAVAÇÃO é prova oral: use-a para fundamentar, mas NÃO a copie na minuta.";
                 let conhecimentoM: any[] = []; try { const k = JSON.parse(String(req.body.knowledgePdfs || "[]")); if (Array.isArray(k)) conhecimentoM = k; } catch { /* sem base */ }
                 const teseTxt = req.body.isTesesEnabled === "false" ? "" : String(req.body.cabinetTesesText || "");
                 const comum = {
@@ -2849,8 +2849,12 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
                     const e2 = await chamarMotorPrincipal(req, { ...comum, executionStage: 2, stage1Snapshot: snap, mapaProcesso: e1?.mapaProcesso?.bloco, groundingReuso: e1?.groundingTexto ? { texto: e1.groundingTexto, fontes: e1.groundingSources || [] } : undefined });
                     somar({ usageMetadata: { promptTokenCount: e2?.usage?.promptTokenCount, candidatesTokenCount: e2?.usage?.candidatesTokenCount, totalTokenCount: e2?.usage?.totalTokenCount }, modelVersion: e2?.modelUsed });
                     resultadoMotor = { ...e2, autosReduzidos: e2?.autosReduzidos || e1?.autosReduzidos, mapaProcesso: e2?.mapaProcesso || e1?.mapaProcesso };
-                } catch (e: any) { console.warn("[mutirao] 2ª etapa do motor falhou; usa a 1ª:", e?.message || e); }
-            } catch (e: any) { console.warn("[mutirao] motor principal indisponível; usa o caminho curto:", e?.message || e); resultadoMotor = null; }
+                } catch (e: any) { console.warn("[mutirao] 2ª etapa do motor falhou:", e?.message || e); erroMotor = "a 2ª etapa (juiz revisor) falhou: " + String(e?.message || e); resultadoMotor = null; }      // a 1ª etapa é só a minuta preliminar: não é entregue como sentença final
+            } catch (e: any) { console.warn("[mutirao] motor principal indisponível:", e?.message || e); erroMotor = "a 1ª etapa falhou: " + String(e?.message || e); resultadoMotor = null; }
+        }
+        if (!resultadoMotor && erroMotor && String(req.body.permitirReserva || "false") !== "true") {
+            // a degravação (a parte cara) volta junto: a nova tentativa a reaproveita e só refaz o motor principal
+            return responder(200, { success: false, error: `O motor principal de minutas não concluiu (${erroMotor}). A degravação da audiência foi guardada: use “Tentar de novo” (ela será reaproveitada).`, data: { transcription: transcricao } });
         }
         if (resultadoMotor?.minute) {
             const mm = resultadoMotor.minute, texto = String(mm.fullFormattedText || [mm.relatorio, mm.fundamentacao, mm.dispositivo].filter(Boolean).join("\n\n"));

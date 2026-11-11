@@ -785,7 +785,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                 return (
                   <div
                     key={dossier.id}
-                    className={`px-2.5 py-2 rounded-lg border hover:border-indigo-300 hover:shadow-sm transition group ${aberta ? "ring-2 ring-indigo-500 border-indigo-500 bg-indigo-50" : latestAct?.lancadoProjudi ? "bg-emerald-50/60 border-emerald-300" : "bg-white border-slate-200"}`}
+                    className={`px-2.5 py-2 rounded-lg border hover:border-indigo-300 hover:shadow-sm transition group ${dossier.analyses.some((x: any) => origemVideo(x)) && !aberta ? "border-l-4 border-l-violet-500 bg-violet-50/70" : ""} ${aberta ? "ring-2 ring-indigo-500 border-indigo-500 bg-indigo-50" : latestAct?.lancadoProjudi ? "bg-emerald-50/60 border-emerald-300" : "bg-white border-slate-200"}`}
                     data-testid="dossie-linha"
                     data-aberta={aberta ? "1" : undefined}
                   >
@@ -891,7 +891,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       if (modoSelecao) { alternarSelecao(item.id); return; }      // em modo de seleção o clique marca em vez de abrir
                       if (await abrirAto(item)) onClose();
                     }}
-                    className={`relative bg-white p-4 rounded-2xl border shadow-2xs hover:border-indigo-300 hover:shadow-md transition cursor-pointer group flex flex-col justify-between space-y-3 ${modoSelecao && selecionados.has(item.id) ? "border-indigo-400 ring-2 ring-indigo-200" : "border-slate-200"}`}
+                    className={`relative ${origemVideo(item) ? "bg-violet-50/70 border-l-4 border-l-violet-500" : "bg-white"} p-4 rounded-2xl border shadow-2xs hover:border-indigo-300 hover:shadow-md transition cursor-pointer group flex flex-col justify-between space-y-3 ${modoSelecao && selecionados.has(item.id) ? "border-indigo-400 ring-2 ring-indigo-200" : "border-slate-200"}`}
                   >
                     {modoSelecao && <input type="checkbox" className="absolute top-2 left-2 w-4 h-4 cursor-pointer accent-indigo-600" checked={selecionados.has(item.id)} onChange={() => alternarSelecao(item.id)} onClick={(e) => e.stopPropagation()} aria-label="Marcar este ato" data-testid="marcar-ato" />}
                     <div>

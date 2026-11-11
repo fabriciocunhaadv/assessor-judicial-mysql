@@ -9,23 +9,30 @@ import { getKnowledgeDocs } from "./knowledgeDb";
 import { getCabinetTeses } from "./tesesDb";
 import { saveToHistory } from "./historyDb";
 import type { SavedAnalysis } from "../types";
+import { registrarOperacao } from "./monitorOperacao";
 import { entradasExternas } from "./entradaExterna";
 import { resolverUnidade } from "./minutaExterna";
 import { organizarMinutaExterna } from "./organizarMinutaExterna";
-import { avisarHistoricoMudou } from "./historyDb";
 
-export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; pdf: File; videos: File[] }
-export type ResultadoSentencaVideo = { ok: true; minuta: string; transcricao: string; processo: string; autor: string; reu: string; historicoId: string; fontes?: any; aviso?: string } | { ok: false; erro: string; semRetry?: boolean };
+export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; quadro?: string; pdf: File; videos: File[] }
+export type ResultadoSentencaVideo = { ok: true; minuta: string; transcricao: string; processo: string; autor: string; reu: string; historicoId: string; fontes?: any; aviso?: string } | { ok: false; erro: string; semRetry?: boolean; transcricao?: string };
 
 const limpar = (t: string) => String(t || "").replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\t/g, "    ").replace(/^"|"$/g, "").trim();
 const novoId = () => globalThis.crypto?.randomUUID?.() || `sv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento: (t: string, pct?: number) => void = () => {}, cancelado: () => boolean = () => false): Promise<ResultadoSentencaVideo> {
+/** O ato do Histórico guarda só o que a pessoa usa: tira do resultado do motor os blocos pesados (texto reduzido dos autos, mapa, pesquisa ao vivo, resumo da 1ª etapa). */
+export function enxugarResultado(r: any): any {
+  const o = { ...r };
+  for (const k of ["autosReduzidos", "mapaProcesso", "groundingTexto", "groundingSources", "stage1Snapshot", "holisticSynopsis", "coberturaLeitura"]) delete o[k];
+  return o;
+}
+
+async function executarSentencaComVideoInterno(p: PedidoSentencaVideo, andamento: (t: string, pct?: number) => void = () => {}, cancelado: () => boolean = () => false): Promise<ResultadoSentencaVideo> {
   try {
     // 1) autos
     andamento("Lendo os autos…", 3);
     const lido = await lerAutosPdf(p.pdf, (etapa, f, t) => andamento(`Autos: ${etapa}${t ? ` ${f}/${t}` : ""}`, 3));
-    const texto = lido.text || "";
+    const texto = (p.quadro || "") + (lido.text || "");      // o quadro de movimentações (cronologia oficial, inclusive movimentos sem arquivo) vem antes dos autos
     if (texto.replace(/\s|\[Página[^\]]*\]/g, "").length < 200) return { ok: false, erro: "não consegui extrair texto do PDF dos autos (o OCR pode não ter funcionado)", semRetry: true };
     if (cancelado()) return { ok: false, erro: "cancelado" };
 
@@ -71,7 +78,7 @@ export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento
     try { resp = await fetchRecuperavel("/api/mutirao-video", { method: "POST", headers: { "x-progresso-id": progId, ...(chave ? { "x-gemini-api-key": chave } : {}) }, body: fd }, { esperaMaxMs: 25 * 60_000 }); } finally { clearInterval(vigia); }
     const corpo = await resp.text();
     try { r = JSON.parse(corpo); } catch { throw Object.assign(new Error(`O servidor não devolveu a resposta da análise (código ${resp.status}${/<html|<!doctype/i.test(corpo) ? ", página de erro da hospedagem" : ""}). Provável causa: o servidor foi reiniciado ou a conexão caiu no meio da degravação.`), { tentarDeNovo: true }); }
-    if (!resp.ok || r.success === false) throw new Error(r.error || "Erro ao processar a mídia");
+    if (!resp.ok || r.success === false) throw Object.assign(new Error(r.error || "Erro ao processar a mídia"), { transcricao: String(r?.data?.transcription || "") });
     sentenca = limpar(r.data?.sentenceText || r.resultado?.minute?.fullFormattedText || ""), degravacao = limpar(r.data?.transcription || "");
     if (!sentenca) throw new Error("A IA não devolveu a sentença.");
 
@@ -88,7 +95,7 @@ export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento
     let resultado: any;
     if (r.resultado?.minute) {
       const m = { ...r.resultado.minute }; if (!m.judicialUnit) m.judicialUnit = un.name || p.serventia || "";
-      resultado = { ...r.resultado, minute: m, origemVideo };
+      resultado = enxugarResultado({ ...r.resultado, minute: m, origemVideo });
     } else {
       const org = organizarMinutaExterna(sentenca, "");
       resultado = { minute: { title: org.titulo || "SENTENÇA", header: `${un.name || p.serventia || ""}\nPROCESSO Nº ${cnj}`, processNumber: cnj, judicialUnit: un.name || p.serventia || "", parties: { author: org.autor || ata.author || "", defendant: org.reu || ata.defendant || "" }, relatorio: org.relatorio || "", fundamentacao: org.fundamentacao || "", dispositivo: org.dispositivo || "", closing: org.closing || "Documento assinado digitalmente.", fullFormattedText: sentenca }, auditAnalysis: { fatoVsProva: [], regularidadeDocumental: {}, competenciaCheck: {}, normasAplicadas: [], alertasProcessuais: [] }, origemVideo };
@@ -101,11 +108,23 @@ export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento
     } as any;
     const salvo = await saveToHistory(analise).catch((e: any) => ({ ok: false, erro: String(e?.message || e) }));
     if (!salvo.ok) console.warn("[sentença com vídeo] não gravou no Histórico:", salvo.erro);
-    for (const t of [3000, 10000]) setTimeout(avisarHistoricoMudou, t);      // o Histórico aberto atualiza a lista sem precisar recarregar a página
     return { ok: true, aviso: salvo.ok ? undefined : `A sentença foi gerada, mas NÃO foi gravada no Histórico (${salvo.erro || "erro"}). Copie o texto daqui.`, minuta: sentenca, transcricao: degravacao, processo: cnj, autor: ata.author || "", reu: ata.defendant || "", historicoId: id, fontes: r.fontesConsultadas };
   } catch (e: any) {
-    return { ok: false, erro: String(e?.message || e) };
+    return { ok: false, erro: String(e?.message || e), transcricao: String(e?.transcricao || "") };
   }
+}
+
+/** Roda a sentença com vídeo e REGISTRA a operação no monitor do Super Admin (quem fez, qual prompt, qual unidade, quanto tempo, se deu certo). */
+export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento: (t: string, pct?: number) => void = () => {}, cancelado: () => boolean = () => false): Promise<ResultadoSentencaVideo> {
+  const t0 = Date.now();
+  const res = await executarSentencaComVideoInterno(p, andamento, cancelado);
+  try {
+    if (!(res.ok === false && res.erro === "cancelado")) {
+      const ctx = entradasExternas.contexto(), un = resolverUnidade(p.serventia || "", ctx?.unidades || [], ctx?.ativa);
+      void registrarOperacao({ modulo: "sentenca_video", origem: "esteira", unitId: un.id, unitName: un.name || p.serventia || "", promptTitle: p.promptTitulo, promptCategory: p.promptCategoria, processo: res.ok ? res.processo : p.processo, resultado: res.ok ? "ok" : "erro", erro: res.ok ? "" : (res as any).erro, duracaoMs: Date.now() - t0 });
+    }
+  } catch { /* o monitor nunca atrapalha */ }
+  return res;
 }
 
 // ---------- andamento visível no Studio (a fila roda sem tela: este quadro mostra o que está acontecendo) ----------
@@ -162,7 +181,7 @@ export function instalarPonteSentencaVideo(): () => void {
         if (!pdf || videos.some((v) => !v)) { resp(d.reqId, { tipo: "resultado", ok: false, erro: "o Studio não recebeu os arquivos completos (envie de novo)" }); recebidos.delete(d.reqId); return; }
         resp(d.reqId, { tipo: "iniciado" });
         filaSentencaVideo.atualizar(d.reqId, { processo: String(d.processo || ""), texto: "Começando…", estado: "rodando" });
-        const res = await executarSentencaComVideo({ reqId: d.reqId, processo: String(d.processo || ""), promptTitulo: String(d.promptTitulo || ""), promptTexto: String(d.promptTexto || ""), promptCategoria: String(d.promptCategoria || ""), serventia: String(d.serventia || ""), degravacaoPronta: String(d.degravacaoPronta || ""), pdf, videos: videos as File[] },
+        const res = await executarSentencaComVideo({ reqId: d.reqId, processo: String(d.processo || ""), promptTitulo: String(d.promptTitulo || ""), promptTexto: String(d.promptTexto || ""), promptCategoria: String(d.promptCategoria || ""), serventia: String(d.serventia || ""), degravacaoPronta: String(d.degravacaoPronta || ""), quadro: String(d.quadro || ""), pdf, videos: videos as File[] },
           (texto, pct) => { filaSentencaVideo.atualizar(d.reqId, { texto, pct: pct || 0 }); resp(d.reqId, { tipo: "andamento", texto, pct }); }, () => r.cancelar);
         filaSentencaVideo.atualizar(d.reqId, res.ok ? { estado: "ok", texto: "Sentença pronta e salva no Histórico", pct: 100, fim: Date.now(), processo: res.processo || String(d.processo || "") } : { estado: "erro", erro: (res as any).erro, texto: "Falhou", fim: Date.now() });
         resp(d.reqId, { tipo: "resultado", ...res }); recebidos.delete(d.reqId);

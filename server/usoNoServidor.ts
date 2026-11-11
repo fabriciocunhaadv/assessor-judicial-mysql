@@ -6,13 +6,13 @@ import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
 import { calculateCostBrl } from "../src/utils/custoIA";
 
-type Modulo = "minuta" | "turbo" | "lupa_magistrado" | "audiencia" | "ia_externa" | "outros";
+type Modulo = "minuta" | "turbo" | "lupa_magistrado" | "audiencia" | "ia_externa" | "sentenca_video" | "outros";
 const ROTAS: Record<string, { modulo: Modulo; rotulo: string }> = {
   "/api/generate-minute": { modulo: "minuta", rotulo: "Minuta" },
   "/api/generate-minute-turbo": { modulo: "turbo", rotulo: "Minuta Turbo" },
   "/api/audit-assessor-draft": { modulo: "lupa_magistrado", rotulo: "Auditoria: Lupa do Magistrado" },
   "/api/hearing-copilot": { modulo: "audiencia", rotulo: "Mesa de Audiência" },
-  "/api/mutirao-video": { modulo: "audiencia", rotulo: "Mutirão Expresso (degravação e sentença)" },
+  "/api/mutirao-video": { modulo: "sentenca_video", rotulo: "Sentença com vídeo da audiência (degravação + motor principal)" },
   "/api/mapa-processo": { modulo: "outros", rotulo: "Mapa do processo (leitura completa dos autos)" },
   "/api/advogado-peticao/auto-extract-evidence": { modulo: "outros", rotulo: "Petição 360°: leitura dos autos e provas" },
   "/api/advogado-peticao/generate-full-petition": { modulo: "outros", rotulo: "Petição 360°: redação da peça" },

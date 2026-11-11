@@ -11,7 +11,7 @@ import type { AnomaliaOperacao, GravidadeAnomalia, ResultadoOperacao } from "./o
 export { areaDoTexto, detectarAnomalias };
 export type { AnomaliaOperacao, GravidadeAnomalia, ResultadoOperacao };
 
-export type ModuloOperacao = "normal" | "turbo" | "gigante" | "mapa" | "retomada";
+export type ModuloOperacao = "normal" | "turbo" | "gigante" | "mapa" | "retomada" | "sentenca_video";
 export interface OperacaoRegistrada {
   id: string;
   tenantId: string;

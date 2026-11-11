@@ -6,7 +6,7 @@ type Sub = "motores" | "gabinetes" | "extensao";
 const quando = (t: number) => (t ? new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "nunca");
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const seg = (ms: number) => (ms >= 60_000 ? `${(ms / 60_000).toFixed(1)} min` : `${(ms / 1000).toFixed(1)} s`);
-const ROT_MODULO: Record<string, string> = { minuta: "Análise", turbo: "Turbo", copiloto: "Audiência", audiencia: "Audiência", lupa_magistrado: "Lupa", chat_refino: "Refino", ia_externa: "IA externa", outros: "Outros" };
+const ROT_MODULO: Record<string, string> = { minuta: "Análise", turbo: "Turbo", copiloto: "Audiência", audiencia: "Audiência", lupa_magistrado: "Lupa", chat_refino: "Refino", ia_externa: "IA externa", sentenca_video: "Sentença c/ vídeo", outros: "Outros" };
 
 function useRota<T>(url: string) {
   const [d, setD] = useState<T | null>(null), [erro, setErro] = useState(""), [carregando, setCarregando] = useState(false);

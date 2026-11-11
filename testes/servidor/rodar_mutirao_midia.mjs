@@ -64,6 +64,17 @@ try {
   ok(/roça desde os doze anos/.test(j6.data.transcription) && !/roça desde os doze anos/.test(j6.data.sentenceText || ""), "a degravação vai à parte; não é copiada para a sentença");
   const bm = (await (await fetch("http://127.0.0.1:8994/__midia")).json());
   ok(bm.sentencas >= 1 && j6.data.sentenceText.length > 100, "sentença com texto próprio do motor");
+  // motor principal falha: NÃO entrega a minuta preliminar como se fosse a sentença; devolve erro claro + a degravação (para reaproveitar na nova tentativa)
+  const fd7 = new FormData(); fd7.append("midias", JSON.stringify([{ ...(await enviarMidiaEmPartes(v1, () => {}, fetchComSessao)), nomeMidia: "t1.mp4", mimeMidia: "video/mp4" }]));
+  fd7.append("ataText", "ATA"); fd7.append("pdfText", "Petição inicial de auxílio. ".repeat(60)); fd7.append("processNumber", "5129546-88.2025.8.09.0100"); fd7.append("customPromptTemplate", "FALHAR-MOTOR");
+  const r7 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd7 }); const j7 = JSON.parse(await r7.text());
+  ok(j7.success === false && /motor principal/.test(j7.error || "") && /roça desde os doze anos/.test(j7.data?.transcription || ""), "motor falhou: erro claro e a degravação volta para ser reaproveitada (não entrega a 1ª etapa como sentença)");
+  // com a degravação pronta o servidor não precisa de mídia nenhuma
+  const fd8 = new FormData(); fd8.append("degravacaoPronta", j7.data.transcription); fd8.append("ataText", "ATA"); fd8.append("pdfText", "Petição inicial. ".repeat(60)); fd8.append("processNumber", "5129546-88.2025.8.09.0100");
+  const antesArq = (await (await fetch("http://127.0.0.1:8994/__midia")).json()).arquivos;
+  const r8 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd8 }); const j8 = JSON.parse(await r8.text());
+  const depoisArq = (await (await fetch("http://127.0.0.1:8994/__midia")).json()).arquivos;
+  ok(j8.success && j8.motor === "principal" && depoisArq === antesArq, "degravação pronta: refaz só a sentença, sem enviar nem ouvir a mídia de novo");
   // mídia que não chegou
   const fd2 = new FormData(); fd2.append("midiaId", "naoexiste123"); fd2.append("partes", "2"); fd2.append("pdfText", "x");
   const r2 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd2 }); const j2 = JSON.parse(await r2.text());

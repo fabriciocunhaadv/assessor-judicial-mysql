@@ -35,6 +35,7 @@ import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { enviarMidiaEmPartes } from '../utils/enviarMidia';
 import { entradasExternas } from '../utils/entradaExterna';
+import { enxugarResultado } from '../utils/sentencaComVideo';
 import { resolverUnidade } from '../utils/minutaExterna';
 import { organizarMinutaExterna } from '../utils/organizarMinutaExterna';
 import { fetchRecuperavel } from '../utils/fetchRecuperavel';
@@ -533,7 +534,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
       const ctxE = entradasExternas.contexto(); const un = resolverUnidade('', ctxE?.unidades || [], ctxE?.ativa);
       const origemVideo = { videos: videoFiles.map((f) => f.name), degravacaoChars: genTranscription.length, em: Date.now() };
       let resultado: any;
-      if (result.resultado?.minute) resultado = { ...result.resultado, minute: { ...result.resultado.minute, judicialUnit: result.resultado.minute.judicialUnit || un.name }, origemVideo };
+      if (result.resultado?.minute) resultado = { ...enxugarResultado(result.resultado), minute: { ...result.resultado.minute, judicialUnit: result.resultado.minute.judicialUnit || un.name }, origemVideo };
       else {
         const org = organizarMinutaExterna(genSentence, '');
         resultado = { minute: { title: org.titulo || activeTitle, header: `${un.name || 'PODER JUDICIÁRIO'}\nPROCESSO Nº ${processInfo.processNumber || ''}`, processNumber: processInfo.processNumber || 'Processo s/ nº', judicialUnit: un.name, parties: { author: org.autor || processInfo.author || 'Parte Autora', defendant: org.reu || processInfo.defendant || 'Parte Ré' }, relatorio: org.relatorio || '', fundamentacao: org.fundamentacao || '', dispositivo: org.dispositivo || '', closing: org.closing || 'Documento assinado digitalmente.', fullFormattedText: genSentence }, auditAnalysis: {} as any, origemVideo };

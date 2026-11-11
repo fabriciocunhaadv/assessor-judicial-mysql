@@ -13,8 +13,8 @@ interface Resposta {
   liberados: { id: string; nome: string; unidade: string; pessoas: { email: string; nome: string; usos: number; ultimoUso: number }[] }[];
 }
 
-const MODULOS: [string, string][] = [["minuta", "Minutas"], ["turbo", "Turbo"], ["lupa_magistrado", "Lupa"], ["audiencia", "Mesa de Audiência"], ["copiloto", "Copiloto"], ["chat_refino", "Chat/Refino"], ["ia_externa", "IA externa/Agaia"], ["outros", "Outros"]];
-const ROTULOS_EXT: Record<string, string> = { esteira_analise: "Esteira: análise", esteira_turbo: "Esteira: Turbo", esteira_lupa: "Esteira: Lupa", esteira_mesa: "Esteira: Mesa", esteira_ia: "Esteira: IA externa", esteira_agaia: "Esteira: Agaia", esteira_outro: "Esteira: outros", ocr_processo: "OCR de processos", pdf_para_texto: "PDF para texto", pdf_studio: "PDF tratado para o Studio", baixar_arquivos: "Baixar arquivos (aberturas)" };
+const MODULOS: [string, string][] = [["minuta", "Minutas"], ["turbo", "Turbo"], ["lupa_magistrado", "Lupa"], ["audiencia", "Mesa de Audiência"], ["copiloto", "Copiloto"], ["chat_refino", "Chat/Refino"], ["ia_externa", "IA externa/Agaia"], ["sentenca_video", "Sentença c/ vídeo"], ["outros", "Outros"]];
+const ROTULOS_EXT: Record<string, string> = { esteira_analise: "Esteira: análise", esteira_turbo: "Esteira: Turbo", esteira_lupa: "Esteira: Lupa", esteira_mesa: "Esteira: Mesa", esteira_ia: "Esteira: IA externa", esteira_agaia: "Esteira: Agaia", esteira_video: "Esteira: sentença com vídeo", esteira_outro: "Esteira: outros", ocr_processo: "OCR de processos", pdf_para_texto: "PDF para texto", pdf_studio: "PDF tratado para o Studio", baixar_arquivos: "Baixar arquivos (aberturas)" };
 const num = (n: number) => n.toLocaleString("pt-BR");
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const quando = (t: number) => (t ? new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");

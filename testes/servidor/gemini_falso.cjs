@@ -28,6 +28,7 @@ http.createServer((req, res) => {
     // fila travada do Google (só em teste): GEMINI_FALSO_TRAVA="modelo1,modelo2" nunca responde para esses modelos
     if (process.env.GEMINI_FALSO_TRAVA && process.env.GEMINI_FALSO_TRAVA.split(",").some((m) => String(req.url).includes("/models/" + m + ":"))) { if (process.env.GEMINI_FALSO_LOG) console.log("trava", req.url); return; }
     let j = {}; try { j = JSON.parse(corpo); } catch {}
+    if (/FALHAR-MOTOR/.test(corpo) && !/DEGRAVAÇÃO FIEL do áudio/.test(corpo)) { res.writeHead(500, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { code: 500, message: "falha simulada do motor", status: "INTERNAL" } })); return; }
     if (/CADERNO DE TESES E DIRETRIZES VINCULANTES/.test(corpo)) global.__comTesesTotal = (global.__comTesesTotal || 0) + 1;
     // teste da calibração: conta, por tipo de chamada, quantas levam a conferência de prontidão do ato
     { const p = (global.__prontidao ||= {}); const tipo = /CONFERÊNCIA DA PRONTIDÃO DO ATO/.test(corpo) ? "lupa" : /PRONTIDÃO DO ATO — CONFERÊNCIA OBRIGATÓRIA/.test(corpo) ? (/DIRETRIZ DA ETAPA 2/.test(corpo) ? "etapa2" : /DIRETRIZ DA ETAPA 1/.test(corpo) ? "etapa1" : /ANÁLISE JUDICIAL TURBO/.test(corpo) ? "turbo" : "outro") : /\(9\) Em "pendencias" inclua SEMPRE/.test(corpo) ? "mapa" : "sem"; p[tipo] = (p[tipo] || 0) + 1; }

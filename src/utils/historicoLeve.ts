@@ -32,6 +32,7 @@ export function resumoLeve(a: any, fonte?: string): any {
       dispositivo: typeof min.dispositivo === "string" ? min.dispositivo.slice(0, 400) : undefined,
     },
     ...(a?.result?.paradigmUsed?.title ? { paradigmUsed: { title: a.result.paradigmUsed.title } } : {}),
+    ...(a?.result?.origemVideo ? { origemVideo: { videos: (Array.isArray(a.result.origemVideo.videos) ? a.result.origemVideo.videos : []).slice(0, 12).map((v: any) => String(v).slice(0, 80)), em: Number(a.result.origemVideo.em) || 0 } } : {}),
     ...(a?.result?.origemExterna ? { origemExterna: { sistema: String(a.result.origemExterna.sistema || "").slice(0, 40), promptAgaia: String(a.result.origemExterna.promptAgaia || "").slice(0, 200), aproximado: String(a.result.origemExterna.aproximado || "").slice(0, 300) } } : {}),      // etiqueta “Agaia” da lista (sem o html original, que é pesado)
   };
   out.chatCount = Array.isArray(a?.chatMessages) ? a.chatMessages.length : 0;
