@@ -46,6 +46,8 @@ export function corrigirCitacoes(texto: string, mapa: Map<number, Loc>): { texto
   const out = texto.replace(CITACAO, (cit, mov, arq, p1, p2) => {
     const tot = totais.get(`${mov}|${arq}`);
     if (tot !== undefined && +p1 <= tot && (!p2 || +p2 <= tot)) return cit;      // já é arquivo e página que existem
+    const maxTot = Math.max(0, ...[...mapa.values()].filter((l) => l.mov === +mov).map((l) => l.tot));
+    if (tot === undefined && +p1 <= maxTot) return cit;      // o arquivo citado não existe, mas a página cabe dentro de arquivos da movimentação: não dá para provar que é "página global"; fica o aviso de citação
     const a = mapa.get(+p1), b = p2 ? mapa.get(+p2) : a;
     if (!a || !b || a.mov !== +mov || b.mov !== +mov) return cit;      // os carimbos não provam: fica como a IA escreveu (e o aviso de citação mostra)
     trocas++;
@@ -62,7 +64,9 @@ export function corrigirCitacoesDaMinuta(minuta: any, autos: string): number {
   let total = 0;
   for (const k of Object.keys(minuta)) {
     if (typeof minuta[k] !== "string") continue;
-    const r = corrigirCitacoes(minuta[k], mapa);
+    const r2 = repararCitacoesPorNome(minuta[k], autos);      // 1º: arquivo que a movimentação não tem -> acha pelo nome do documento citado (evidência mais forte)
+    if (r2.trocas) { minuta[k] = r2.texto; total += r2.trocas; }
+    const r = corrigirCitacoes(minuta[k], mapa);      // 2º: página global do PDF usada no lugar da página do arquivo
     if (r.trocas) { minuta[k] = r.texto; total += r.trocas; }
   }
   return total;
@@ -83,4 +87,51 @@ export function citacoesInexistentes(minuta: string, autos: string): Array<{ cit
     else if (p1 > tot || (p2 && p2 > tot)) { vistas.add(cit); out.push({ citacao: cit, motivo: `o Arq. ${arq} da Mov. ${mov} tem só ${tot} página(s)` }); }
   }
   return out.slice(0, 8);
+}
+
+
+// ---------- ÍNDICE DE ARQUIVOS (prevenção) e reparo por nome do arquivo ----------
+const CARIMBO_NOME = /Movimenta[cç][aã]o\s+(\d{1,4})\s*:[^\n]*\n?\s*Arquivo\s+(\d{1,3})\s*:\s*([^\n]*?)\s*-\s*Pag\.\s*(\d{1,4})\s*\/\s*(\d{1,4})/gi;
+const semAc = (t: string) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/** mov -> arq -> {nome, tot}, lido dos carimbos das páginas (a única fonte válida de Arq.). */
+export function arquivosPorMovimentacao(autos: string): Map<number, Map<number, { nome: string; tot: number }>> {
+  const m = new Map<number, Map<number, { nome: string; tot: number }>>();
+  for (const c of String(autos || "").matchAll(CARIMBO_NOME)) {
+    const mov = +c[1], arq = +c[2];
+    const arqs = m.get(mov) || m.set(mov, new Map()).get(mov)!;
+    if (!arqs.has(arq)) arqs.set(arq, { nome: c[3].trim(), tot: +c[5] });
+  }
+  return m;
+}
+
+/** Bloco para o pedido da IA: quais arquivos (e quantas páginas) cada movimentação TEM de verdade, com o nome. Evita citar "Arq. 27" numa movimentação que só tem 23. */
+export function blocoIndiceArquivos(autos: string, maxChars = 24000): string {
+  const m = arquivosPorMovimentacao(autos); if (!m.size) return "";
+  const linhas: string[] = [];
+  for (const mov of [...m.keys()].sort((a, b) => a - b)) {
+    const arqs = m.get(mov)!;
+    linhas.push(`Mov. ${mov} (${arqs.size} arquivo${arqs.size > 1 ? "s" : ""}): ` + [...arqs.entries()].sort((a, b) => a[0] - b[0]).map(([a, v]) => `Arq. ${a} = ${v.nome.slice(0, 60)} (${v.tot} pág.)`).join("; "));
+  }
+  let txt = linhas.join("\n"); if (txt.length > maxChars) txt = txt.slice(0, maxChars) + "\n[... índice cortado ...]";
+  return `\n\n[ÍNDICE OFICIAL DE ARQUIVOS POR MOVIMENTAÇÃO (lido dos carimbos das páginas; é a ÚNICA fonte válida do número do arquivo)]\nRegra: em "Mov. N, Arq. M, Pág. K", o ARQUIVO M é o número do arquivo DENTRO da movimentação N e a PÁGINA K é a página DENTRO desse arquivo (de 1 ao total dele). NUNCA cite um arquivo que não esteja neste índice para a movimentação, nem página além do total do arquivo. Para citar um documento, ache o nome dele aqui e use o número do arquivo correspondente.\n${txt}\n[FIM DO ÍNDICE]\n`;
+}
+
+/** Citação com arquivo que a movimentação NÃO tem: tenta achar o arquivo certo pelo nome (palavras do arquivo que aparecem logo antes da citação). Só troca se um único arquivo se destaca. */
+export function repararCitacoesPorNome(texto: string, autos: string): { texto: string; trocas: number } {
+  const idx = arquivosPorMovimentacao(autos); if (typeof texto !== "string" || !texto || !idx.size) return { texto, trocas: 0 };
+  let trocas = 0;
+  const out = texto.replace(CITACAO, (cit, mov, arq, p1, p2, pos: number, todo: string) => {
+    const arqs = idx.get(+mov); if (!arqs) return cit;
+    const ok = arqs.get(+arq); if (ok && +p1 <= ok.tot && (!p2 || +p2 <= ok.tot)) return cit;      // existe: nada a reparar
+    const antes = semAc(todo.slice(Math.max(0, pos - 220), pos));
+    const pontos = [...arqs.entries()].map(([a, v]) => {
+      const palavras = semAc(v.nome).replace(/\.[a-z0-9]{2,4}$/i, "").split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !/^(sign|assinado|pdf|doc|docx)$/.test(w) && !/^\d+$/.test(w));
+      return { a, v, n: palavras.filter((w) => antes.includes(w)).length };
+    }).sort((x, y) => y.n - x.n);
+    const [m1, m2] = pontos; if (!m1 || m1.n < 2 || (m2 && m2.n === m1.n)) return cit;
+    if (+p1 > m1.v.tot || (p2 && +p2 > m1.v.tot)) return `Mov. ${mov}, Arq. ${m1.a}, Pág. 1`;      // a página citada não cabe no arquivo certo: aponta o início dele
+    trocas++; return cit.replace(/Arq\.?\s*\d{1,3}/i, `Arq. ${m1.a}`);
+  });
+  return { texto: out, trocas };
 }
