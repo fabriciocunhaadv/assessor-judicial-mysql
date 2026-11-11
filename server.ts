@@ -38,6 +38,8 @@ import { montarCobertura } from './server/coberturaLeitura';
 import { textoOcultoDeDocumento, blocoTextoOculto } from './src/utils/pdfTextoOculto';
 import fs from 'fs';
 import os from 'os';
+import http from 'http';
+import { Duplex } from 'stream';
 import { blocoPerfilMateria } from './src/utils/perfisMateria';
 import { REGRA_ESTRUTURA_POR_ATO } from './src/utils/estruturaDoAto';
 import { REGRA_COBERTURA_DOS_AUTOS } from './src/utils/coberturaDosAutos';
@@ -297,14 +299,40 @@ async function blocoLegislacao(textos: any[], max = 8, timeoutMs = 6000): Promis
 
 /** Chama o MOTOR PRINCIPAL de minutas (/api/generate-minute) de dentro do servidor, com a mesma sessão e chaves de quem fez o pedido. Usado pela sentença com vídeo: a degravação entra como prova oral e a
  *  minuta sai pelas duas etapas do estúdio (prontidão do ato, legislação, precedentes, conferência de citações, juiz revisor), no mesmo formato das demais minutas. */
+/** Entrega um pedido ao próprio app EM MEMÓRIA, sem abrir conexão de rede: em hospedagens que escondem a porta do Node (proxy/Passenger) a chamada a 127.0.0.1 falhava com "fetch failed". */
+function despacharNoApp(url: string, headers: Record<string, string>, corpo: any, limiteMs: number): Promise<{ status: number; texto: string }> {
+    const payload = Buffer.from(JSON.stringify(corpo));
+    const socket: any = new Duplex({ read() { /* sem rede */ }, write(_c, _e, cb) { cb(); } });
+    socket.remoteAddress = "127.0.0.1"; socket.encrypted = false;
+    for (const m of ["setTimeout", "setKeepAlive", "setNoDelay", "ref", "unref", "setEncoding"]) socket[m] = () => socket;      // o motor mexe nestes métodos do socket (tempo limite etc.)
+    const req: any = new http.IncomingMessage(socket);
+    req.method = "POST"; req.url = url; req.originalUrl = url;
+    req.headers = { ...Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])), "content-length": String(payload.length), host: "127.0.0.1" };
+    req.push(payload); req.push(null);
+    const res: any = new http.ServerResponse(req);
+    try { res.assignSocket(socket); } catch { /* sem socket: segue */ }
+    const partes: Buffer[] = [];
+    return new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("o motor principal demorou demais")), limiteMs);
+        res.write = (c: any, ...a: any[]) => { if (c && typeof c !== "function") partes.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c))); const cb = a.find((x) => typeof x === "function"); if (cb) cb(); return true; };
+        res.end = (c?: any, ...a: any[]) => { if (c && typeof c !== "function") res.write(c); clearTimeout(t); resolve({ status: res.statusCode || 200, texto: Buffer.concat(partes).toString("utf8") }); return res; };
+        try { (app as any).handle(req, res, (err: any) => { clearTimeout(t); reject(err || new Error("rota do motor principal não encontrada")); }); } catch (e) { clearTimeout(t); reject(e); }
+    });
+}
+
 async function chamarMotorPrincipal(req: any, corpo: any, limiteMs = 25 * 60_000): Promise<any> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     for (const [k, v] of Object.entries(req.headers || {})) { if (/^x-/i.test(k) && !/^x-(uso-no-servidor|progresso-id|forwarded-.*|real-ip)$/i.test(k) && typeof v === "string") headers[k] = v; }
     if (typeof req.headers?.authorization === "string") headers["authorization"] = req.headers.authorization;
-    const r = await fetch(`http://127.0.0.1:${PORT}/api/generate-minute`, { method: "POST", headers, body: JSON.stringify(corpo), signal: AbortSignal.timeout(limiteMs) });
-    const t = await r.text(); let j: any;
-    try { j = JSON.parse(t.trim()); } catch { throw new Error(`o motor principal devolveu uma resposta inválida (código ${r.status})`); }
-    if (!r.ok || j?.error) throw new Error(String(j?.error || `o motor principal falhou (código ${r.status})`));
+    let r: { status: number; texto: string };
+    try { r = await despacharNoApp("/api/generate-minute", headers, corpo, limiteMs); }
+    catch (e1: any) {      // a entrega em memória falhou (não é erro do motor): tenta pela rede local antes de desistir
+        try { const f = await fetch(`http://127.0.0.1:${PORT}/api/generate-minute`, { method: "POST", headers, body: JSON.stringify(corpo), signal: AbortSignal.timeout(limiteMs) }); r = { status: f.status, texto: await f.text() }; }
+        catch (e2: any) { throw new Error(`não consegui chamar o motor principal (${String(e1?.message || e1)}; rede local: ${String(e2?.message || e2)})`); }
+    }
+    let j: any;
+    try { j = JSON.parse(r.texto.trim()); } catch { throw new Error(`o motor principal devolveu uma resposta inválida (código ${r.status})`); }
+    if (r.status >= 400 || j?.error) throw new Error(String(j?.error || `o motor principal falhou (código ${r.status})`));
     return j;
 }
 

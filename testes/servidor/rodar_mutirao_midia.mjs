@@ -60,7 +60,7 @@ try {
   const fd6 = new FormData(); fd6.append("midias", JSON.stringify([{ ...(await enviarMidiaEmPartes(v1, () => {}, fetchComSessao)), nomeMidia: "testemunha1.mp4", mimeMidia: "video/mp4" }]));
   fd6.append("ataText", "ATA"); fd6.append("pdfText", "Petição inicial de auxílio por incapacidade. Movimentacao 1 : Petição Arquivo 1: inicial.pdf - Pag.1/1. ".repeat(30)); fd6.append("processNumber", "5129546-88.2025.8.09.0100"); fd6.append("promptTitle", "Previdenciário"); fd6.append("unidadeNome", "Montes Claros de Goiás - Vara das Fazendas Públicas - GO");
   const r6 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd6 }); const j6 = JSON.parse(await r6.text());
-  ok(j6.success && j6.motor === "principal" && j6.resultado?.minute, "a sentença sai pelo motor principal (resultado completo no formato das demais minutas)");
+  if (!j6.success) console.log("ERRO6:", j6.error); ok(j6.success && j6.motor === "principal" && j6.resultado?.minute, "a sentença sai pelo motor principal (resultado completo no formato das demais minutas)");
   ok(/roça desde os doze anos/.test(j6.data.transcription) && !/roça desde os doze anos/.test(j6.data.sentenceText || ""), "a degravação vai à parte; não é copiada para a sentença");
   const bm = (await (await fetch("http://127.0.0.1:8994/__midia")).json());
   ok(bm.sentencas >= 1 && j6.data.sentenceText.length > 100, "sentença com texto próprio do motor");
