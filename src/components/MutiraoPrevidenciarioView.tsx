@@ -34,6 +34,7 @@ import { lerAutosPdf, ExtensaoNecessaria } from '../utils/lerAutosPdf';
 import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { enviarMidiaEmPartes } from '../utils/enviarMidia';
+import { executarSentencaComVideo } from '../utils/sentencaComVideo';
 import { assinaturaDosVideos, degravacaoGuardada, guardarDegravacao } from '../utils/degravacaoGuardada';
 import { entradasExternas } from '../utils/entradaExterna';
 import { enxugarResultado } from '../utils/sentencaComVideo';
@@ -572,70 +573,23 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
 
     setIsProcessingVideo(true);
     try {
-      // a mídia vai em partes (arquivos de audiência passam de centenas de MB); o servidor junta, envia à IA, degrava e redige
-      const enviadas: { midiaId: string; partes: number; tamanho: number; nomeMidia: string; mimeMidia: string }[] = [];
+      // MESMO caminho de código da sentença com vídeo pela extensão (executarSentencaComVideo): mesma ata, mesmas teses/base, mesmo motor principal, mesmo Histórico.
       const assinVideos = assinaturaDosVideos(videoFiles), degrPronta = degravacaoGuardada(assinVideos);
       if (degrPronta) toast('Estes vídeos já foram ouvidos: reaproveitando a degravação (não serão enviados de novo).', { duration: 6000 });
-      for (let k = 0; k < (degrPronta ? 0 : videoFiles.length); k++) {
-        const f = videoFiles[k], pre = videoFiles.length > 1 ? `Mídia ${k + 1} de ${videoFiles.length}: ` : '';
-        setProgressoMidia(`${pre}enviando…`);
-        const env = await enviarMidiaEmPartes(f, (fe, t) => setProgressoMidia(`${pre}enviando parte ${fe} de ${t}`));
-        enviadas.push({ ...env, nomeMidia: f.name, mimeMidia: f.type || '' });
-      }
-      setProgressoMidia('A IA está ouvindo a audiência e redigindo (pode levar alguns minutos)…');
-      const formData = new FormData();
-      formData.append('midias', JSON.stringify(enviadas));
-      if (degrPronta) formData.append('degravacaoPronta', degrPronta);
-      // mesma base do estúdio principal: teses do gabinete, base de conhecimento e matéria do prompt escolhido
-      try { const teses = await getCabinetTeses(); if (teses.isEnabled) { formData.append('cabinetTesesText', teses.text || ''); formData.append('isTesesEnabled', 'true'); } else formData.append('isTesesEnabled', 'false'); } catch { /* sem teses */ }
-      try { const docs = (await getKnowledgeDocs()).filter((d) => d.isActive); if (docs.length) formData.append('knowledgePdfs', JSON.stringify(docs)); } catch { /* sem base */ }
-      formData.append('promptTitle', selectedPrompt?.title || ''); formData.append('promptCategory', (selectedPrompt as any)?.category || (selectedPrompt as any)?.categoria || '');
-      formData.append('autor', processInfo.author || ''); formData.append('reu', processInfo.defendant || '');
-      formData.append('ataText', ataText);
-      formData.append('pdfText', pdfFullText);
-      formData.append('processNumber', processInfo.processNumber);
-      
-      if (selectedPrompt) {
-        formData.append('customInstruction', selectedPrompt.description || '');
-        formData.append('customPromptTemplate', selectedPrompt.promptText || '');
-      }
-
-      const customKey = getCustomApiKey();
-      if (customKey) {
-        formData.append('customApiKey', customKey);
-      }
-      
-      // a análise continua no servidor mesmo que o proxy da hospedagem corte a espera (erro 524/504): o resultado fica guardado e a tela o busca (fetchRecuperavel)
-      const progId = (globalThis.crypto?.randomUUID?.() || `m-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-      sessaoMutirao.definir('progIdSentenca', progId);      // se a página recarregar durante a análise, o resultado guardado no servidor é buscado ao voltar
-      const acompanhar = setInterval(async () => {
-        try { const a = await (await fetch(`/api/progresso/${encodeURIComponent(progId)}`, { cache: 'no-store' })).json(); if (a?.texto) setProgressoMidia(`${a.texto}${a.decorridoSeg ? ` (${Math.floor(a.decorridoSeg / 60)} min ${a.decorridoSeg % 60} s)` : ''}`); } catch { /* sem andamento agora */ }
-      }, 5000);
-      let response: Response;
-      try {
-        response = await fetchRecuperavel('/api/mutirao-video', {
-          method: 'POST',
-          headers: {
-            'x-progresso-id': progId,
-            ...(customKey ? { 'x-gemini-api-key': customKey } : {}),
-          },
-          body: formData
-        }, { esperaMaxMs: 25 * 60_000 });
-      } finally { clearInterval(acompanhar); }
-
-      let result: any = {};
-      try {
-        const responseText = await response.text();
-        result = JSON.parse(responseText);
-      } catch (e) {
-        throw new Error("A conexão com o servidor foi interrompida ou a IA retornou um formato inválido.");
-      }
-
-      guardarDegravacao(assinVideos, String(result?.data?.transcription || ''));      // a degravação fica guardada mesmo se a sentença falhar
-      if (!response.ok) throw new Error(result.error || 'Erro ao processar mídia');
-      if (result.success === false && result.error) throw new Error(result.error);
-
-      aplicarResultadoSentenca(result);
+      const ctxE = entradasExternas.contexto(); const un = resolverUnidade('', ctxE?.unidades || [], ctxE?.ativa);
+      setProgressoMidia('Preparando a sentença…');
+      const r = await executarSentencaComVideo({
+        reqId: `mutirao-${Date.now()}`, processo: processInfo.processNumber || '', promptTitulo: selectedPrompt?.title || '', promptTexto: selectedPrompt?.promptText || '',
+        promptCategoria: (selectedPrompt as any)?.category || (selectedPrompt as any)?.categoria || '', serventia: un.name || '', degravacaoPronta: degrPronta || undefined,
+        textoAutos: pdfFullText, ataPronta: { ataText, processNumber: processInfo.processNumber, author: processInfo.author, defendant: processInfo.defendant }, videos: videoFiles,
+        aoIniciarAnalise: (progId) => sessaoMutirao.definir('progIdSentenca', progId),      // se a página recarregar durante a análise, o resultado guardado no servidor é buscado ao voltar
+      }, (texto) => setProgressoMidia(texto));
+      guardarDegravacao(assinVideos, r.transcricao || '');      // a degravação fica guardada mesmo se a sentença falhar
+      if (!r.ok) throw new Error((r as any).erro || 'Erro ao processar mídia');
+      setTranscription(r.transcricao || 'Sem transcrição disponível.'); setSentenceText(r.minuta);
+      setStep('sentence'); setSentenceMobileTab('sentence'); setViewMode('formatted');
+      setSentencasDaSessao((n) => n + 1);
+      if (r.aviso) toast.error(r.aviso, { duration: 12000 }); else toast.success('Sentença de audiência gerada com sucesso!');
     } catch (err: any) {
       toast.error(err.message || "Falha ao processar vídeo/áudio.");
     } finally {

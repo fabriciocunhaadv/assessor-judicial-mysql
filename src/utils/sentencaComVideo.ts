@@ -14,7 +14,9 @@ import { entradasExternas } from "./entradaExterna";
 import { resolverUnidade } from "./minutaExterna";
 import { organizarMinutaExterna } from "./organizarMinutaExterna";
 
-export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; quadro?: string; pdf: File; videos: File[] }
+export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; quadro?: string; pdf?: File; videos: File[];
+  /** Mutirão Expresso manual: os autos (já com o quadro) e a ata prévia já foram lidos na tela; usa os mesmos, sem ler de novo. */ textoAutos?: string; ataPronta?: { ataText: string; processNumber?: string; author?: string; defendant?: string };
+  /** avisa o id da análise guardada no servidor (a tela usa para recuperar o resultado se a página recarregar) */ aoIniciarAnalise?: (progId: string) => void }
 export type ResultadoSentencaVideo = { ok: true; minuta: string; transcricao: string; processo: string; autor: string; reu: string; historicoId: string; fontes?: any; aviso?: string } | { ok: false; erro: string; semRetry?: boolean; transcricao?: string };
 
 const limpar = (t: string) => String(t || "").replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\t/g, "    ").replace(/^"|"$/g, "").trim();
@@ -31,7 +33,7 @@ async function executarSentencaComVideoInterno(p: PedidoSentencaVideo, andamento
   try {
     // 1) autos
     andamento("Lendo os autos…", 3);
-    const lido = await lerAutosPdf(p.pdf, (etapa, f, t) => andamento(`Autos: ${etapa}${t ? ` ${f}/${t}` : ""}`, 3));
+    const lido = p.textoAutos ? { text: p.textoAutos } : await lerAutosPdf(p.pdf as File, (etapa, f, t) => andamento(`Autos: ${etapa}${t ? ` ${f}/${t}` : ""}`, 3));
     const texto = (p.quadro || "") + (lido.text || "");      // o quadro de movimentações (cronologia oficial, inclusive movimentos sem arquivo) vem antes dos autos
     if (texto.replace(/\s|\[Página[^\]]*\]/g, "").length < 200) return { ok: false, erro: "não consegui extrair texto do PDF dos autos (o OCR pode não ter funcionado)", semRetry: true };
     if (cancelado()) return { ok: false, erro: "cancelado" };
@@ -40,9 +42,12 @@ async function executarSentencaComVideoInterno(p: PedidoSentencaVideo, andamento
     andamento("Montando a ata prévia…", 12);
     let teses: any = { isEnabled: false, text: "" }; try { teses = await getCabinetTeses(); } catch { /* sem teses */ }
     let base: any[] = []; try { base = (await getKnowledgeDocs()).filter((d: any) => d.isActive); } catch { /* sem base */ }
-    const ataRes = await fetch("/api/mutirao-extract-ata", { method: "POST", headers: getApiHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ pdfText: texto, cabinetTesesText: teses.isEnabled ? teses.text || "" : "", knowledgePdfs: base }) });
-    if (!ataRes.ok) throw new Error("Erro ao montar a ata prévia (" + ataRes.status + ")");
-    const ata = (await ataRes.json())?.data || {};
+    let ata: any = p.ataPronta || null;
+    if (!ata) {
+      const ataRes = await fetch("/api/mutirao-extract-ata", { method: "POST", headers: getApiHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ pdfText: texto, cabinetTesesText: teses.isEnabled ? teses.text || "" : "", knowledgePdfs: base }) });
+      if (!ataRes.ok) throw new Error("Erro ao montar a ata prévia (" + ataRes.status + ")");
+      ata = (await ataRes.json())?.data || {};
+    }
     const processo = ata.processNumber || p.processo || "";
     if (cancelado()) return { ok: false, erro: "cancelado" };
 
@@ -73,6 +78,7 @@ async function executarSentencaComVideoInterno(p: PedidoSentencaVideo, andamento
     if (base.length) fd.append("knowledgePdfs", JSON.stringify(base));
     const chave = getCustomApiKey(); if (chave) fd.append("customApiKey", chave);
     const progId = novoId();
+    try { p.aoIniciarAnalise?.(progId); } catch { /* aviso da tela nunca atrapalha */ }
     const vigia = setInterval(async () => { try { const a = await (await fetch(`/api/progresso/${encodeURIComponent(progId)}`, { cache: "no-store" })).json(); if (a?.texto) andamento(`${a.texto}${a.decorridoSeg ? ` (${Math.floor(a.decorridoSeg / 60)} min)` : ""}`, 40 + Math.min(55, Number(a.pct) || 0)); } catch { /* sem andamento */ } }, 5000);
     let resp: Response;
     try { resp = await fetchRecuperavel("/api/mutirao-video", { method: "POST", headers: { "x-progresso-id": progId, ...(chave ? { "x-gemini-api-key": chave } : {}) }, body: fd }, { esperaMaxMs: 25 * 60_000 }); } finally { clearInterval(vigia); }
