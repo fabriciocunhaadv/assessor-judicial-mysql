@@ -135,20 +135,7 @@ const chaveAutor = (it: any): string => {
   return it?.createdBy && it.createdBy !== "anonymous" ? String(it.createdBy) : "__sem__";
 };
 
-/** Minutas que vieram prontas de fora do Studio (Agaia ou coladas à mão): a etiqueta do Histórico mostra de onde veio. */
-const origemExterna = (a: any): { rotulo: string; dica: string } | null => {
-  const o = a?.result?.origemExterna; if (!o) return null;
-  const colada = /colada/i.test(String(o.sistema || ""));
-  const sistema = String(o.sistema || "Agaia"), agaia = /agaia/i.test(sistema);
-  return { rotulo: colada ? "✍ Colada" : `🤖 ${sistema.slice(0, 18)}`, dica: colada ? "Minuta feita fora do Studio e colada à mão no Histórico" : agaia ? `Analisado pelo Agaia${o.promptAgaia ? ` (prompt “${o.promptAgaia}”)` : ""}: a minuta não foi gerada pelo Studio` : `Analisada em ${sistema} (IA externa), com o prompt do Studio${o.promptAgaia ? ` “${o.promptAgaia}”` : ""}: a minuta não foi gerada pelo Studio` };
-};
-
-/** Sentença feita pela esteira da extensão com o VÍDEO da audiência: etiqueta própria no Histórico. */
-const origemVideo = (a: any): { rotulo: string; dica: string } | null => {
-  const o = a?.result?.origemVideo; if (!o) return null;
-  const n = Array.isArray(o.videos) ? o.videos.length : 0;
-  return { rotulo: "🎙 Sentença c/ vídeo", dica: `Sentença feita com o vídeo da audiência (${n} mídia(s): ${(o.videos || []).join(", ").slice(0, 160)}). A degravação foi usada como prova oral e não está na minuta.` };
-};
+import { origemExterna, origemVideo } from "../utils/origemDaMinuta";
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
   isOpen,

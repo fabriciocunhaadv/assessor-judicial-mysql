@@ -28,6 +28,14 @@ import { ProcessDossier, SavedAnalysis, MinuteData } from "../types";
 import { auth } from "../lib/firebase";
 import { podeExcluirAto } from "../utils/historyDb";
 import { detectPromptCategory } from "../utils/promptCategoryHelper";
+import { origemDoAto } from "../utils/origemDaMinuta";
+
+const ESTILO_ORIGEM: Record<string, { barra: string; fundo: string; selo: string; numero: string }> = {
+  agaia: { barra: "border-l-4 border-l-teal-500", fundo: "bg-teal-50/60", selo: "bg-teal-100 text-teal-900 border-teal-400", numero: "bg-teal-600 text-white border-teal-700 ring-4 ring-teal-100" },
+  colada: { barra: "border-l-4 border-l-teal-400", fundo: "bg-teal-50/40", selo: "bg-teal-50 text-teal-800 border-teal-300", numero: "bg-teal-500 text-white border-teal-600 ring-4 ring-teal-100" },
+  video: { barra: "border-l-4 border-l-violet-500", fundo: "bg-violet-50/70", selo: "bg-violet-100 text-violet-900 border-violet-400", numero: "bg-violet-600 text-white border-violet-700 ring-4 ring-violet-100" },
+  studio: { barra: "border-l-4 border-l-indigo-500", fundo: "bg-white", selo: "bg-indigo-100 text-indigo-900 border-indigo-400", numero: "bg-indigo-600 text-white border-indigo-700 ring-4 ring-indigo-100" },
+};
 
 interface ProcessTimelineModalProps {
   isOpen: boolean;
@@ -166,6 +174,13 @@ export const ProcessTimelineModal: React.FC<ProcessTimelineModalProps> = ({
         {/* Content Body: Timeline List & Preview Split (if act preview is selected) */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-50/60">
           
+          <div className="mb-3 flex items-center gap-2 flex-wrap text-[10px] text-slate-600" data-testid="legenda-origem">
+            <span className="font-bold text-slate-700">Origem da minuta:</span>
+            <span className="px-1.5 py-0.5 rounded-md border bg-indigo-100 text-indigo-900 border-indigo-400 font-extrabold">✨ Studio</span>
+            <span className="px-1.5 py-0.5 rounded-md border bg-teal-100 text-teal-900 border-teal-400 font-extrabold">🤖 Agaia / colada (feita fora do Studio)</span>
+            <span className="px-1.5 py-0.5 rounded-md border bg-violet-100 text-violet-900 border-violet-400 font-extrabold">🎙 Sentença c/ vídeo</span>
+          </div>
+
           <div className="space-y-6">
             {dossier.analyses.map((act, index) => {
               const actNumber = index + 1;
@@ -176,6 +191,7 @@ export const ProcessTimelineModal: React.FC<ProcessTimelineModalProps> = ({
               const dateStr = new Date(act.date).toLocaleDateString("pt-BR");
               const timeStr = new Date(act.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
               const paradigmUsed = act.result?.paradigmUsed;
+              const origem = origemDoAto(act), est = ESTILO_ORIGEM[origem.tipo];
               const nChat = (act as any).chatCount ?? act.chatMessages?.length ?? 0;
               const hasChat = nChat > 0;
               const hasVersions = ((act as any).versoesCount ?? Math.max(act.versions?.length || 0, act.result?.versions?.length || 0)) > 1;
@@ -187,9 +203,9 @@ export const ProcessTimelineModal: React.FC<ProcessTimelineModalProps> = ({
                   <div className="flex flex-col items-center shrink-0">
                     <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-bold text-xs flex items-center justify-center shadow-xs border transition ${
                       isLast
-                        ? "bg-indigo-600 text-white border-indigo-700 ring-4 ring-indigo-100"
+                        ? est.numero
                         : "bg-white text-slate-700 border-slate-300"
-                    }`}>
+                    }`} title={origem.dica}>
                       {actNumber}
                     </div>
                     {!isLast && (
@@ -198,10 +214,11 @@ export const ProcessTimelineModal: React.FC<ProcessTimelineModalProps> = ({
                   </div>
 
                   {/* Right Card: Act Details */}
-                  <div className="flex-1 bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200 shadow-2xs hover:border-indigo-300 hover:shadow-md transition min-w-0">
+                  <div className={`flex-1 ${est.fundo} ${est.barra} p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200 shadow-2xs hover:border-indigo-300 hover:shadow-md transition min-w-0`} data-testid={`ato-origem-${origem.tipo}`}>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 sm:pb-3 border-b border-slate-100">
                       <div>
                         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border whitespace-nowrap ${est.selo}`} title={origem.dica} data-testid="etiqueta-origem">{origem.rotulo}</span>
                           <span className="px-2 sm:px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 font-mono text-xs font-bold">
                             {actTitle}
                           </span>
