@@ -1287,6 +1287,11 @@ app.post("/api/generate-minute-turbo", async (req, res) => {
         let alertaInjecaoT: any = null, defesaInjecaoT = "";
         try { const r = detectarInjecao(accumulatedText); if (r.verificado) alertaInjecaoT = r; if (r.total > 0) { defesaInjecaoT = instrucaoDefesaInjecao(r); console.log(`[Prompt Injection][turbo] ${r.total} indício(s) nos autos.`); } } catch { /* ignora */ }
 
+        // DESCUMPRIMENTO DE DETERMINAÇÃO COM ADVERTÊNCIA (igual à análise principal): detecção só por texto; se o ato estiver em "auto" e os autos provarem o descumprimento, o ato é SENTENÇA
+        let descumprimentoT: ReturnType<typeof detectarDescumprimento> = null;
+        try { descumprimentoT = detectarDescumprimento(accumulatedText); if (descumprimentoT) console.log(`[Assessor Judicial][turbo] Descumprimento de determinação detectado: ${descumprimentoT.motivo} (decide: ${descumprimentoT.decide})`); } catch { /* a detecção nunca derruba a análise */ }
+        const actTypeEfetivo = ((!actType || actType === "auto") && descumprimentoT?.decide) ? "sentenca" : actType;
+
         // Configuração defensiva de batimento cardíaco (anti-timeout do Cloud Run e mobile)
         if (!res.headersSent) {
             res.writeHead(200, {
@@ -1306,11 +1311,11 @@ app.post("/api/generate-minute-turbo", async (req, res) => {
             }, 2500);
         }
 
-        const actInstruction = actType === "sentenca"
+        const actInstruction = actTypeEfetivo === "sentenca"
             ? "O ato deve ser categoricamente uma SENTENÇA COMPLETA (com I - Relatório circunstanciado retratando a marcha processual, II - Fundamentação detalhada com enfrentamento de todas as teses e provas e III - Dispositivo claro com resolução do mérito nos termos do art. 487 do CPC, honorários e custas)."
-            : actType === "decisao"
+            : actTypeEfetivo === "decisao"
             ? "O ato deve ser uma DECISÃO INTERLOCUTÓRIA FUNDAMENTADA (com breve relatório fático da marcha, fundamentação analítica examinando o histórico prévio e os requisitos legais da matéria pendente e dispositivo operacional mandamental claro)."
-            : actType === "despacho"
+            : actTypeEfetivo === "despacho"
             ? "O ato deve ser um DESPACHO MOTIVADO de expediente ou determinação pontual de emenda (art. 321 do CPC) ou providência do cartório com prazo certo."
             : "Identifique automaticamente se o estágio processual comporta SENTENÇA, DECISÃO INTERLOCUTÓRIA ou DESPACHO, fundamentando com rigor técnico e perfeita coerência com a marcha processual.";
 
@@ -1431,7 +1436,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
                 { role: "user", parts: [{ text: userPrompt }, ...cobT.partes] }
             ],
             config: {
-                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, accumulatedText) + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoCadernoDeTesesTurbo(cabinetTesesText, isTesesEnabled) + blocoBaseConhecimentoTurbo(knowledgePdfs) + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
+                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, accumulatedText) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoT ? blocoDescumprimentoDetectado(descumprimentoT) : "") + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoCadernoDeTesesTurbo(cabinetTesesText, isTesesEnabled) + blocoBaseConhecimentoTurbo(knowledgePdfs) + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
                 temperature: 0.1,
                 maxOutputTokens: 16384,      // era 8192, e parte dele era gasta repetindo o texto inteiro em fullFormattedText
                 responseMimeType: "application/json",
@@ -1637,6 +1642,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
         };
 
         if (alertaInjecaoT) (payload as any).alertaInjecao = alertaInjecaoT;
+        if (descumprimentoT) (payload as any).avisoDescumprimento = { ...descumprimentoT, minutaSentenciou: /SENTEN[ÇC]A/i.test(String((payload as any).minute?.title || "")) };      // mesmo aviso da análise principal
         try {
             const trocas = corrigirCitacoesDaMinuta((payload as any).minute, accumulatedText); if (trocas) (payload as any).citacoesCorrigidas = trocas;      // página global/arquivo errado -> o que o carimbo prova
             Object.assign(payload as any, conferenciasMecanica(payload, accumulatedText));
