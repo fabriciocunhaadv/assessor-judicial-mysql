@@ -587,7 +587,12 @@ class Gerente {
     job.etapa = "Montando o mapa do processo (estado atual e fase)…"; this.avisar();
     // o mapa (fase atual, o que já foi decidido) precisa dos AUTOS COMPLETOS com os carimbos Mov./Arq./Pág., não do dossiê resumido: com o dossiê ele errava a fase e a minuta voltava a sentenciar processo já sentenciado
     let autosCompletos = processText;
-    if (!direto) { const todasP = await lerPaginas(job.id, 1, 99_999_999); autosCompletos = (job.quadro ? job.quadro + "\n\n" : "") + todasP.map((p) => `[Página ${p.n} de ${job.totalPaginas}]\n${p.texto}`).join("\n"); }
+    if (!direto) {
+      // o 1º passo (tentativa direta) já montou o mapa do texto ORIGINAL dos autos: usa o MESMO texto, para reaproveitar esse mapa pronto (o gerente de mapas reconhece pelo texto) em vez de montar um segundo, igual, do mesmo processo
+      const original = (await lerPaginas(job.id, 0, 0))[0]?.texto || "";
+      if (original.length > 2000) autosCompletos = original;
+      else { const todasP = await lerPaginas(job.id, 1, 99_999_999); autosCompletos = (job.quadro ? job.quadro + "\n\n" : "") + todasP.map((p) => `[Página ${p.n} de ${job.totalPaginas}]\n${p.texto}`).join("\n"); }
+    }
     const mapaExec = await prepararMapaDoProcesso(autosCompletos, `mapa-${job.id}`, { forcar: true });
     const indiceArquivosCompleto = blocoIndiceArquivos(autosCompletos);      // índice real de arquivos por movimentação (o dossiê só tem parte dos carimbos)
     const corpo = {
