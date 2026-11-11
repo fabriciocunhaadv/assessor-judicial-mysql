@@ -7,9 +7,9 @@ type Dados = Record<string, any>;
 const INICIAL: Dados = {
   step: "upload", selectedPromptId: "", ataMobileTab: "media", sentenceMobileTab: "sentence",
   isProcessingPdf: false, isProcessingVideo: false, progressoPdf: "", progressoMidia: "", processInfo: { processNumber: "", author: "", defendant: "" },
-  ataText: "", sentenceText: "", transcription: "", videoFiles: [], pdfFullText: "", sentencasDaSessao: 0, bloqueioExt: null, pdfNome: "",
+  ataText: "", sentenceText: "", transcription: "", videoFiles: [], pdfFullText: "", sentencasDaSessao: 0, bloqueioExt: null, pdfNome: "", progIdSentenca: "",
 };
-const PERSISTIR = ["step", "selectedPromptId", "processInfo", "ataText", "sentenceText", "transcription", "videoFiles", "pdfFullText", "sentencasDaSessao", "pdfNome"];
+const PERSISTIR = ["step", "selectedPromptId", "processInfo", "ataText", "sentenceText", "transcription", "videoFiles", "pdfFullText", "sentencasDaSessao", "pdfNome", "progIdSentenca"];
 let dados: Dados = { ...INICIAL };
 const ouvintes = new Set<() => void>();
 let chaveUsuario = "", carregadoPara = "", recuperou: string | null = null, tempo: ReturnType<typeof setTimeout> | null = null;

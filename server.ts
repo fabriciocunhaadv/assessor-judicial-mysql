@@ -2778,6 +2778,22 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
         // 3) sentença: autos (começo e fim, até 400 mil caracteres) + ata + degravação
         let autos = typeof pdfText === "string" ? pdfText : "";
         if (autos.length > 400000) autos = autos.slice(0, 200000) + "\n\n[... MEIO DOS AUTOS OMITIDO PELO TAMANHO ...]\n\n" + autos.slice(-200000);
+        // MESMA BASE do estúdio principal: legislação oficial conferida, súmulas/teses/informativos aplicáveis (conferidos), caderno de teses e base de conhecimento do gabinete,
+        // perfil da matéria do prompt escolhido, regras de mecânica judicial e proteção contra texto escondido nos autos.
+        andamento("Conferindo legislação, súmulas e teses do gabinete…", 70);
+        let blocoLegM = "", blocoPrecM = "", blocoTesesM = "", blocoBaseM = "", defesaInjM = "", alertaInjM: any = null, fontesM: any = null;
+        try {
+            const baseBusca = [autos.slice(0, 150000), String(ataText || "").slice(0, 20000), transcricao.slice(0, 60000), String(customInstruction || ""), String(customPromptTemplate || "")].join("\n");
+            const [anexadosM, confM] = await Promise.all([listarPrecedentes().catch(() => [] as any[]), listarConferencias().catch(() => ({} as Record<string, any>))]);
+            const precM = matchApplicableBindingPrecedents(baseBusca, anexadosM).slice(0, 6);
+            blocoPrecM = precM.length ? `\n\n[SÚMULAS, TESES VINCULANTES E INFORMATIVOS APLICÁVEIS (STF • STJ • TNU • TJGO)]:\n` + precM.map((p: any, i: number) => `${i + 1}. [${p.tribunal} • ${p.number} - ${p.title}] (${confM[p.id] ? "CONFERIDO na fonte oficial" : "NÃO CONFERIDO"}): "${p.statement}"`).join("\n") + "\nCite apenas o que estiver nesta lista ou nos autos; o que estiver \"NÃO CONFERIDO\" deve ser citado com cautela.\n" : "";
+            const lg = await consultarLegislacao([baseBusca], { maxArtigos: 8, timeoutMs: 6000 }); blocoLegM = lg.bloco;
+            fontesM = { legislacao: lg.conferidos, naoLocalizados: lg.naoAchados, indisponiveis: lg.falhas, precedentes: precM.map((p: any) => `${p.tribunal} ${p.number}`) };
+            let conhecimento: any[] = []; try { const k = JSON.parse(String(req.body.knowledgePdfs || "[]")); if (Array.isArray(k)) conhecimento = k; } catch { /* sem base */ }
+            blocoTesesM = blocoCadernoDeTesesTurbo(req.body.cabinetTesesText || "", req.body.isTesesEnabled === "false" ? false : true);
+            blocoBaseM = blocoBaseConhecimentoTurbo(conhecimento);
+            const ri = detectarInjecao(autos); if (ri.verificado) alertaInjM = ri; if (ri.total > 0) defesaInjM = instrucaoDefesaInjecao(ri);
+        } catch (e: any) { console.warn("[mutirao] base de conferência indisponível:", e?.message || e); }
         andamento("Redigindo a sentença com os autos, a ata e a degravação…", 75);
         const instrucao = `Você é um Juiz de Direito e Assessor Judicial no Mutirão Expresso de Audiências.
 Com base nos autos do processo, no termo de audiência e na DEGRAVAÇÃO dos depoimentos, elabore a Sentença Judicial completa com relatório (sucinto ou dispensado na forma da lei), fundamentação jurídica robusta e dispositivo com resolução de mérito. Use SOMENTE o que está nos autos e na degravação; o que a degravação não diz, não afirme.
@@ -2785,12 +2801,12 @@ ${customInstruction ? `\nInstruções Específicas do Gabinete: ${customInstruct
 Retorne estritamente em JSON: {"transcription": "resumo organizado dos depoimentos (quem disse o quê)", "sentenceText": "Sentença completa"}`;
         const rS = await generateWithFallbackAndRetry({
             apiKey: chaveUsada, keyPool: Array.isArray(pool) && pool.length ? pool : [chaveUsada], contents: [{ role: "user", parts: [{ text: instrucao }] }],
-            config: { systemInstruction: "Você é um magistrado que profere sentenças em audiências de mutirão expressas. Responda apenas com JSON válido.", responseMimeType: "application/json" },
+            config: { systemInstruction: "Você é um magistrado que profere sentenças em audiências de mutirão expressas. Responda apenas com JSON válido." + REGRAS_MECANICA_JUDICIAL + blocoPerfilMateria({ titulo: String(req.body.promptTitle || ""), categoria: String(req.body.promptCategory || ""), unidade: String(req.body.comarcaVara || "") }) + defesaInjM + blocoTesesM + blocoBaseM + blocoPrecM + blocoLegM, responseMimeType: "application/json" },
         });
         somar(rS);
         const parsed = safeParseObj(rS.text || "{}") || {};
         responder(200, {
-            success: true, usage: { promptTokenCount: tokens.prompt, candidatesTokenCount: tokens.saida, totalTokenCount: tokens.total }, modelUsed: modelo,
+            success: true, fontesConsultadas: fontesM ? { ...fontesM, consultado: true } : undefined, alertaInjecao: alertaInjM || undefined, usage: { promptTokenCount: tokens.prompt, candidatesTokenCount: tokens.saida, totalTokenCount: tokens.total }, modelUsed: modelo,
             data: { transcription: transcricao || parsed.transcription || "Depoimentos orais sintetizados conforme assentada.", resumoDepoimentos: parsed.transcription || "", sentenceText: parsed.sentenceText || "" },
         });
     } catch (err: any) {

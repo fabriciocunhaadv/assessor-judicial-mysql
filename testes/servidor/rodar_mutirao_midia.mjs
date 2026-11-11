@@ -43,6 +43,13 @@ try {
   ok(dep.arquivos - antes.arquivos === 2 && dep.degravacoes - antes.degravacoes === 2 && dep.sentencas - antes.sentencas === 1, "duas mídias: 2 envios, 2 degravações e 1 sentença");
   ok(/VÍDEO\/ÁUDIO 1 DE 2 \("testemunha1.mp4"\)/.test(j4.data.transcription) && /VÍDEO\/ÁUDIO 2 DE 2 \("testemunha2.webm"\)/.test(j4.data.transcription), "a degravação identifica cada vídeo pelo nome");
   ok(dep.apagados - antes.apagados === 2, "duas mídias: os dois arquivos são apagados na IA");
+  // mesma base do estúdio principal na sentença: teses do gabinete e base de conhecimento chegam à IA
+  const fd5 = new FormData(); fd5.append("ataText", "ATA"); fd5.append("pdfText", "AUTOS"); fd5.append("cabinetTesesText", "TESE: auxílio-doença exige incapacidade temporária comprovada por perícia."); fd5.append("isTesesEnabled", "true");
+  fd5.append("knowledgePdfs", JSON.stringify([{ name: "modelo.pdf", extractedText: "Modelo de sentença previdenciária do gabinete." }])); fd5.append("promptTitle", "Previdenciário");
+  const r5 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd5 }); const j5 = JSON.parse(await r5.text());
+  const bs = (await (await fetch("http://127.0.0.1:8994/__midia")).json()).baseSentenca;
+  ok(j5.success && bs?.teses && bs?.conhecimento, "a sentença do Mutirão recebe as teses e a base de conhecimento do gabinete");
+  ok(j5.fontesConsultadas?.consultado === true, "devolve o que foi consultado (legislação/precedentes)");
   // mídia que não chegou
   const fd2 = new FormData(); fd2.append("midiaId", "naoexiste123"); fd2.append("partes", "2"); fd2.append("pdfText", "x");
   const r2 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd2 }); const j2 = JSON.parse(await r2.text());

@@ -72,9 +72,11 @@ import {
   createEmptyHearing,
   SAMPLE_HEARINGS,
 } from '../utils/hearingsDb';
+import toast from 'react-hot-toast';
 import { lerAutosPdf, ExtensaoNecessaria } from '../utils/lerAutosPdf';
 import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
+import { guardarUploadPendente, apagarUploadPendente, lerUploadPendente } from '../utils/uploadsPendentes';
 import { gerenteGigantes } from '../utils/gigantes/gerente';
 import { descreverCorte, juntarComoServidor, CorteInfo } from '../utils/corteAutos';
 import { ProcessoGrandeDialog, EscolhaDossie } from './ProcessoGrandeDialog';
@@ -126,6 +128,8 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
   // State: List of hearings & Active hearing
   const [hearings, setHearings] = useState<HearingRecord[]>([]);
   const [activeHearing, setActiveHearing] = useState<HearingRecord | null>(null);
+  const [hearingsCarregadas, setHearingsCarregadas] = useState(false);
+  const uidMesa = String((user as any)?.uid || (user as any)?.email || '');
   const [searchFilter, setSearchFilter] = useState('');
   const [activeTab, setActiveTab] = useState<'briefing' | 'inquiring' | 'deliberations' | 'sentence' | 'minutes'>('briefing');
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -210,6 +214,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
     if (!isOpen) return;
     const unsub = subscribeToHearingRecords((list) => {
       setHearings(list);
+      setHearingsCarregadas(true);
       setActiveHearing((prev) => {
         if (!prev && list.length > 0) return list[0];
         if (prev) {
@@ -221,6 +226,20 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
     });
     return () => unsub();
   }, [isOpen]);
+
+  // Leitura de PDF que estava no meio quando a página recarregou (atualização de versão): retoma sozinha na audiência certa, uma vez por carregamento
+  useEffect(() => {
+    if (!isOpen || !hearingsCarregadas || !uidMesa || (globalThis as any).__mesaRetomada === uidMesa) return;
+    (globalThis as any).__mesaRetomada = uidMesa;
+    void lerUploadPendente('mesa', uidMesa).then((p) => {
+      if (!p || !p.arquivos.length) return;
+      const alvo = (p.contexto?.hearingId && hearings.find((h) => h.id === p.contexto!.hearingId)) || null;
+      if (alvo) setActiveHearing(alvo);
+      toast(`Retomando a leitura de ${p.arquivos.map((f) => `"${f.name}"`).join(', ')}, interrompida pela atualização da página…`, { icon: '🔄', duration: 6000 });
+      void handlePdfFilesUpload(p.arquivos, alvo);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, hearingsCarregadas, uidMesa]);
 
   // Handle Copy to clipboard
   const handleCopy = (text: string, sectionId: string) => {
@@ -629,7 +648,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
   };
 
   // Upload and Extract PDFs handler (The "Magic" Pipeline)
-  const handlePdfFilesUpload = async (files: FileList | File[]) => {
+  const handlePdfFilesUpload = async (files: FileList | File[], alvoForcado?: HearingRecord | null) => {
     if (!files || files.length === 0) return;
     const fileArray = Array.from(files).filter(
       (f) => f.name.toLowerCase().endsWith('.pdf') || f.name.toLowerCase().endsWith('.txt')
@@ -642,6 +661,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
 
     setIsExtractingPdf(true);
     setAiError(null);
+    void guardarUploadPendente('mesa', uidMesa, fileArray, { hearingId: (alvoForcado || activeHearing)?.id || null });      // se a página recarregar no meio (atualização de versão), a leitura é retomada sozinha
     let combinedText = '';
     const fileNames: string[] = [];
     const extraidos: { nome: string; texto: string; pageCount: number; semTexto?: number[]; naoLidas?: number[]; arquivo?: () => Promise<File | null> }[] = [];
@@ -686,7 +706,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
       setCaseInputText(combinedText);
 
       // Certificar audiência alvo
-      let target = activeHearing;
+      let target = alvoForcado || activeHearing;
       if (!target) {
         target = createEmptyHearing(user?.email || '', userProfile?.name || '');
         setActiveHearing(target);
@@ -721,6 +741,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
     } finally {
       setIsExtractingPdf(false);
       setExtractionProgressText('');
+      void apagarUploadPendente('mesa', uidMesa);
     }
   };
 

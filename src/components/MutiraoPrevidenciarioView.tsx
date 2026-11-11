@@ -35,7 +35,9 @@ import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { enviarMidiaEmPartes } from '../utils/enviarMidia';
 import { fetchRecuperavel } from '../utils/fetchRecuperavel';
+import { consultarResultado, lerCorpo } from '../utils/analisePendente';
 import { useSessao, sessaoMutirao } from '../utils/mutiraoSessao';
+import { guardarUploadPendente, apagarUploadPendente, lerUploadPendente } from '../utils/uploadsPendentes';
 import { getKnowledgeDocs } from '../utils/knowledgeDb';
 import { getCabinetTeses } from '../utils/tesesDb';
 
@@ -143,6 +145,7 @@ const ForenseSentenceDocument: React.FC<{
 
 export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps> = ({ onOpenHistory }) => {
   const { user, userProfile } = useAuth();
+  const uidPend = String((user as any)?.uid || (user as any)?.email || '');
   const [step, setStep] = useSessao<'upload' | 'ata' | 'sentence'>('step');
   const [prompts, setPrompts] = useState<CustomPrompt[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useSessao<string>('selectedPromptId');
@@ -157,6 +160,41 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
   }, []);
   // volta de onde parou (troca de aba, janela fechada ou página recarregada)
   useEffect(() => { void sessaoMutirao.carregar(String(user?.uid || user?.email || '')).then((aviso) => { if (aviso) toast.success(aviso, { duration: 6000 }); }); }, [user?.uid, user?.email]);
+  // análise da sentença que estava rodando no servidor quando a página recarregou: busca o resultado guardado e aplica (sem refazer, sem gastar a cota de novo)
+  useEffect(() => {
+    if (!uidPend || (globalThis as any).__mutiraoResultado === uidPend) return;
+    (globalThis as any).__mutiraoResultado = uidPend;
+    let vivo = true;
+    void sessaoMutirao.carregar(uidPend).then(async () => {
+      const id = String(sessaoMutirao.ler('progIdSentenca') || '');
+      if (!id || sessaoMutirao.ler('isProcessingVideo')) return;
+      setIsProcessingVideo(true); setProgressoMidia('Recuperando a sentença que estava sendo gerada…');
+      try {
+        const limite = Date.now() + 25 * 60_000;
+        while (vivo && Date.now() < limite) {
+          const r = await consultarResultado(id).catch(() => null);
+          if (r?.pronto) { const res = lerCorpo(r.body || ''); sessaoMutirao.definir('progIdSentenca', ''); aplicarRef.current(res); toast.success('Sentença recuperada: a análise terminou enquanto a página era atualizada.'); return; }
+          if (r?.andamento?.texto) setProgressoMidia(`${r.andamento.texto} (recuperada após atualizar a página)`);
+          if (r?.desconhecido) { sessaoMutirao.definir('progIdSentenca', ''); toast.error('A geração da sentença foi interrompida pela atualização do servidor. Clique em “Analisar Mídia e Gerar Sentença” de novo (a mídia continua anexada).', { duration: 12000 }); return; }
+          await new Promise((ok) => setTimeout(ok, 4000));
+        }
+      } catch (e: any) { toast.error(e?.message || 'Não consegui recuperar a sentença.'); }
+      finally { setProgressoMidia(''); setIsProcessingVideo(false); }
+    });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uidPend]);
+  // leitura de PDF interrompida por recarga da página: retoma sozinha (uma vez por carregamento)
+  useEffect(() => {
+    if (!uidPend || (globalThis as any).__mutiraoRetomado === uidPend) return;
+    (globalThis as any).__mutiraoRetomado = uidPend;
+    void sessaoMutirao.carregar(uidPend).then(() => lerUploadPendente('mutirao', uidPend)).then((p) => {
+      if (!p || !p.arquivos.length || sessaoMutirao.ler('isProcessingPdf')) return;
+      toast(`Retomando a leitura de "${p.arquivos[0].name}", interrompida pela atualização da página…`, { icon: '🔄', duration: 6000 });
+      void processarPdf(p.arquivos[0]);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uidPend]);
 
   const [isProcessingPdf, setIsProcessingPdf] = useSessao<boolean>('isProcessingPdf');
   const [isProcessingVideo, setIsProcessingVideo] = useSessao<boolean>('isProcessingVideo');
@@ -323,6 +361,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
     {
       setIsProcessingPdf(true);
       setProgressoPdf('');
+      void guardarUploadPendente('mutirao', uidPend, [file]);      // se a página recarregar no meio (atualização de versão), a leitura é retomada sozinha
       
       try {
         let pdfText = "";
@@ -418,6 +457,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
         toast.error(err.message || "Falha ao processar o PDF.");
       } finally {
         setIsProcessingPdf(false);
+        void apagarUploadPendente('mutirao', uidPend);
       }
     }
   };
@@ -474,6 +514,53 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
     }
   };
 
+  /** Aplica o resultado da análise (sentença + degravação) na tela e salva no Histórico. Usada na resposta normal e quando o resultado é recuperado depois de uma recarga. */
+  const aplicarResultadoSentenca = (result: any) => {
+    if (result?.success && result.data) {
+      const genTranscription = cleanSentenceText(result.data.transcription || 'Sem transcrição disponível.');
+      const genSentence = cleanSentenceText(result.data.sentenceText || 'Erro ao gerar texto da sentença.');
+
+      setTranscription(genTranscription);
+      setSentenceText(genSentence);
+      setStep('sentence');
+      setSentenceMobileTab('sentence');
+      setViewMode('formatted'); // Exibir no modo forense por padrão
+
+      // Auto-salvamento no histórico com título e partes reais
+      const autoSaveAnalysis: SavedAnalysis = {
+        id: crypto.randomUUID(),
+        promptTitle: activeTitle,
+        promptId: selectedPromptId || 'sentenca_audiencia_geral',
+        date: Date.now(),
+        processNumber: processInfo.processNumber || "Processo s/ nº",
+        processTextContext: "Mutirão Expresso: Análise de PDF e Mídia de Audiência.",
+        result: {
+          minute: {
+            title: activeTitle,
+            header: "PODER JUDICIÁRIO",
+            processNumber: processInfo.processNumber || "Processo s/ nº",
+            parties: { 
+              author: processInfo.author || "Parte Autora", 
+              defendant: processInfo.defendant || "Parte Ré" 
+            },
+            relatorio: genTranscription,
+            fundamentacao: "Análise probatória conforme termo e mídia em anexo.",
+            dispositivo: genSentence,
+            fullFormattedText: genSentence
+          },
+          auditAnalysis: {} as any
+        }
+      };
+
+      saveToHistory(autoSaveAnalysis).catch(console.error);
+      setSentencasDaSessao((n) => n + 1);
+      toast.success("Sentença de audiência gerada com sucesso!");
+    } else {
+      throw new Error("Erro ao gerar sentença a partir da mídia.");
+    }
+  };
+  const aplicarRef = useRef(aplicarResultadoSentenca); aplicarRef.current = aplicarResultadoSentenca;
+
   const handleGenerateSentence = async () => {
     if (!videoFiles.length) {
       toast.error("Selecione um arquivo de vídeo ou áudio da audiência.");
@@ -498,6 +585,10 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
       setProgressoMidia('A IA está ouvindo a audiência e redigindo (pode levar alguns minutos)…');
       const formData = new FormData();
       formData.append('midias', JSON.stringify(enviadas));
+      // mesma base do estúdio principal: teses do gabinete, base de conhecimento e matéria do prompt escolhido
+      try { const teses = await getCabinetTeses(); if (teses.isEnabled) { formData.append('cabinetTesesText', teses.text || ''); formData.append('isTesesEnabled', 'true'); } else formData.append('isTesesEnabled', 'false'); } catch { /* sem teses */ }
+      try { const docs = (await getKnowledgeDocs()).filter((d) => d.isActive); if (docs.length) formData.append('knowledgePdfs', JSON.stringify(docs)); } catch { /* sem base */ }
+      formData.append('promptTitle', selectedPrompt?.title || ''); formData.append('promptCategory', (selectedPrompt as any)?.category || (selectedPrompt as any)?.categoria || '');
       formData.append('ataText', ataText);
       formData.append('pdfText', pdfFullText);
       formData.append('processNumber', processInfo.processNumber);
@@ -514,6 +605,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
       
       // a análise continua no servidor mesmo que o proxy da hospedagem corte a espera (erro 524/504): o resultado fica guardado e a tela o busca (fetchRecuperavel)
       const progId = (globalThis.crypto?.randomUUID?.() || `m-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+      sessaoMutirao.definir('progIdSentenca', progId);      // se a página recarregar durante a análise, o resultado guardado no servidor é buscado ao voltar
       const acompanhar = setInterval(async () => {
         try { const a = await (await fetch(`/api/progresso/${encodeURIComponent(progId)}`, { cache: 'no-store' })).json(); if (a?.texto) setProgressoMidia(`${a.texto}${a.decorridoSeg ? ` (${Math.floor(a.decorridoSeg / 60)} min ${a.decorridoSeg % 60} s)` : ''}`); } catch { /* sem andamento agora */ }
       }, 5000);
@@ -540,51 +632,11 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
       if (!response.ok) throw new Error(result.error || 'Erro ao processar mídia');
       if (result.success === false && result.error) throw new Error(result.error);
 
-      if (result.success && result.data) {
-        const genTranscription = cleanSentenceText(result.data.transcription || 'Sem transcrição disponível.');
-        const genSentence = cleanSentenceText(result.data.sentenceText || 'Erro ao gerar texto da sentença.');
-
-        setTranscription(genTranscription);
-        setSentenceText(genSentence);
-        setStep('sentence');
-        setSentenceMobileTab('sentence');
-        setViewMode('formatted'); // Exibir no modo forense por padrão
-
-        // Auto-salvamento no histórico com título e partes reais
-        const autoSaveAnalysis: SavedAnalysis = {
-          id: crypto.randomUUID(),
-          promptTitle: activeTitle,
-          promptId: selectedPromptId || 'sentenca_audiencia_geral',
-          date: Date.now(),
-          processNumber: processInfo.processNumber || "Processo s/ nº",
-          processTextContext: "Mutirão Expresso: Análise de PDF e Mídia de Audiência.",
-          result: {
-            minute: {
-              title: activeTitle,
-              header: "PODER JUDICIÁRIO",
-              processNumber: processInfo.processNumber || "Processo s/ nº",
-              parties: { 
-                author: processInfo.author || "Parte Autora", 
-                defendant: processInfo.defendant || "Parte Ré" 
-              },
-              relatorio: genTranscription,
-              fundamentacao: "Análise probatória conforme termo e mídia em anexo.",
-              dispositivo: genSentence,
-              fullFormattedText: genSentence
-            },
-            auditAnalysis: {} as any
-          }
-        };
-
-        saveToHistory(autoSaveAnalysis).catch(console.error);
-        setSentencasDaSessao((n) => n + 1);
-        toast.success("Sentença de audiência gerada com sucesso!");
-      } else {
-        throw new Error("Erro ao gerar sentença a partir da mídia.");
-      }
+      aplicarResultadoSentenca(result);
     } catch (err: any) {
       toast.error(err.message || "Falha ao processar vídeo/áudio.");
     } finally {
+      sessaoMutirao.definir('progIdSentenca', '');
       setProgressoMidia('');
       setIsProcessingVideo(false);
     }
