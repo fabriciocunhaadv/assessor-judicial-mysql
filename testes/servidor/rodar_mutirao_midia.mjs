@@ -50,6 +50,12 @@ try {
   const bs = (await (await fetch("http://127.0.0.1:8994/__midia")).json()).baseSentenca;
   ok(j5.success && bs?.teses && bs?.conhecimento, "a sentença do Mutirão recebe as teses e a base de conhecimento do gabinete");
   ok(j5.fontesConsultadas?.consultado === true, "devolve o que foi consultado (legislação/precedentes)");
+  // Mesa de Audiência (pauta normal): as teses do gabinete passam a chegar à IA nos atos de decisão (mesma base do estúdio)
+  const antesT = (await (await fetch("http://127.0.0.1:8994/__midia")).json()).comTesesTotal;
+  const rm = await fetchComSessao("/api/hearing-copilot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actionType: "instant_sentence", processNumber: "5128-88", author: "A", defendant: "INSS", caseText: "Petição inicial de auxílio por incapacidade. ".repeat(40), sentenceParams: {}, pointsOfControversy: [], witnessesList: [], cabinetTesesText: "TESE: perícia judicial prevalece.", isTesesEnabled: true }) });
+  await rm.text();
+  const depoisT = (await (await fetch("http://127.0.0.1:8994/__midia")).json()).comTesesTotal;
+  ok(depoisT > antesT, "Mesa: a sentença imediata recebe o caderno de teses do gabinete");
   // mídia que não chegou
   const fd2 = new FormData(); fd2.append("midiaId", "naoexiste123"); fd2.append("partes", "2"); fd2.append("pdfText", "x");
   const r2 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd2 }); const j2 = JSON.parse(await r2.text());

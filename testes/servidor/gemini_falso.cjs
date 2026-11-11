@@ -22,12 +22,13 @@ http.createServer((req, res) => {
   }
   if (/\/v1beta\/files\/falso/.test(req.url) && req.method === "GET") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ name: "files/falso1", uri: "x", state: "ACTIVE" })); return; }
   if (/\/v1beta\/files\/falso/.test(req.url) && req.method === "DELETE") { global.__apagados = (global.__apagados || 0) + 1; res.writeHead(200, { "Content-Type": "application/json" }); res.end("{}"); return; }
-  if (req.method === "GET" && req.url === "/__midia") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ arquivos: global.__arquivos || 0, bytes: global.__bytesArquivo || 0, apagados: global.__apagados || 0, degravacoes: global.__degravacoes || 0, sentencas: global.__sentencas || 0, baseSentenca: global.__baseSentenca || null, semAutosNaDegravacao: global.__semAutos || 0 })); return; }
+  if (req.method === "GET" && req.url === "/__midia") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ arquivos: global.__arquivos || 0, bytes: global.__bytesArquivo || 0, apagados: global.__apagados || 0, degravacoes: global.__degravacoes || 0, sentencas: global.__sentencas || 0, comTesesTotal: global.__comTesesTotal || 0, baseSentenca: global.__baseSentenca || null, semAutosNaDegravacao: global.__semAutos || 0 })); return; }
   let corpo = ""; req.on("data", (c) => (corpo += c));
   req.on("end", () => {
     // fila travada do Google (só em teste): GEMINI_FALSO_TRAVA="modelo1,modelo2" nunca responde para esses modelos
     if (process.env.GEMINI_FALSO_TRAVA && process.env.GEMINI_FALSO_TRAVA.split(",").some((m) => String(req.url).includes("/models/" + m + ":"))) { if (process.env.GEMINI_FALSO_LOG) console.log("trava", req.url); return; }
     let j = {}; try { j = JSON.parse(corpo); } catch {}
+    if (/CADERNO DE TESES E DIRETRIZES VINCULANTES/.test(corpo)) global.__comTesesTotal = (global.__comTesesTotal || 0) + 1;
     // teste da calibração: conta, por tipo de chamada, quantas levam a conferência de prontidão do ato
     { const p = (global.__prontidao ||= {}); const tipo = /CONFERÊNCIA DA PRONTIDÃO DO ATO/.test(corpo) ? "lupa" : /PRONTIDÃO DO ATO — CONFERÊNCIA OBRIGATÓRIA/.test(corpo) ? (/DIRETRIZ DA ETAPA 2/.test(corpo) ? "etapa2" : /DIRETRIZ DA ETAPA 1/.test(corpo) ? "etapa1" : /ANÁLISE JUDICIAL TURBO/.test(corpo) ? "turbo" : "outro") : /\(9\) Em "pendencias" inclua SEMPRE/.test(corpo) ? "mapa" : "sem"; p[tipo] = (p[tipo] || 0) + 1; }
     // pesquisa ao vivo (Grounding): a chamada traz a ferramenta googleSearch; responde com texto e uma fonte, como o Google faria

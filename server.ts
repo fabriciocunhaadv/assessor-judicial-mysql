@@ -295,6 +295,18 @@ async function blocoLegislacao(textos: any[], max = 8, timeoutMs = 6000): Promis
     try { return (await consultarLegislacao(textos.map((t) => String(t || "").slice(0, 200000)), { maxArtigos: max, timeoutMs })).bloco; } catch { return ""; }
 }
 
+/** MESMA BASE do estúdio principal para a Mesa de Audiência: súmulas/teses/informativos aplicáveis (conferidos), caderno de teses e base de conhecimento do gabinete e, nos atos de decisão,
+ *  as regras de mecânica judicial. (A legislação oficial já entra por blocoLegislacao.) Falha silenciosa: a Mesa nunca deixa de responder por causa disto. */
+async function blocoBaseMesa(textos: any[], corpo: any, comMecanica = false): Promise<string> {
+    try {
+        const busca = textos.map((t) => String(t || "").slice(0, 150000)).join("\n");
+        const [anexados, conf] = await Promise.all([listarPrecedentes().catch(() => [] as any[]), listarConferencias().catch(() => ({} as Record<string, any>))]);
+        const prec = matchApplicableBindingPrecedents(busca, anexados).slice(0, 6);
+        const bPrec = prec.length ? `\n\n[SÚMULAS, TESES VINCULANTES E INFORMATIVOS APLICÁVEIS (STF • STJ • TNU • TJGO)]:\n` + prec.map((p: any, i: number) => `${i + 1}. [${p.tribunal} • ${p.number} - ${p.title}] (${conf[p.id] ? "CONFERIDO na fonte oficial" : "NÃO CONFERIDO"}): "${p.statement}"`).join("\n") + "\nCite apenas o que estiver nesta lista ou nos autos; o que estiver \"NÃO CONFERIDO\" deve ser citado com cautela.\n" : "";
+        return bPrec + blocoCadernoDeTesesTurbo(corpo?.cabinetTesesText || "", corpo?.isTesesEnabled === false ? false : true) + blocoBaseConhecimentoTurbo(corpo?.knowledgePdfs) + (comMecanica ? REGRAS_MECANICA_JUDICIAL : "");
+    } catch { return ""; }
+}
+
 app.get("/api/native-key-info", (req, res) => res.json({ hasNativeKey: !!process.env.GEMINI_API_KEY }));
 app.post("/api/test-claude-key", async (req, res) => {
     try {
@@ -2358,7 +2370,7 @@ Você DEVE responder ESTRITAMENTE em formato JSON com o seguinte schema:
                 res,
                 customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
                 maxCycles: 2,
-                contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt + await blocoLegislacao([userPrompt], 6) }] }],
+                contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt + await blocoLegislacao([userPrompt], 6) + await blocoBaseMesa([safeCaseText, userPrompt], req.body) }] }],
                 config: {
                     systemInstruction: "Você é um assistente de audiências judiciais que responde apenas com objetos JSON estritos e válidos." + REGRAS_FIDELIDADE_AUTOS,
                     responseMimeType: "application/json"
@@ -2526,7 +2538,7 @@ Redija em linguagem jurídica formal, concisa e direta para ser ditada e constar
                 apiKey,
                 keyPool: extractApiKeyPool(req),
                 res,
-                contents: [{ role: "user", parts: [{ text: systemPrompt + await blocoLegislacao([systemPrompt], 6) }] }],
+                contents: [{ role: "user", parts: [{ text: systemPrompt + await blocoLegislacao([systemPrompt], 6) + await blocoBaseMesa([safeCaseText, systemPrompt], req.body, true) }] }],
                 config: { systemInstruction: "Redija o texto de deliberação judicial para ata de audiência." }
             };
 
@@ -2554,7 +2566,7 @@ Redija a sentença em mesa (relatório sucinto/dispensado na forma da lei, funda
                 apiKey,
                 keyPool: extractApiKeyPool(req),
                 res,
-                contents: [{ role: "user", parts: [{ text: systemPrompt + await blocoLegislacao([systemPrompt], 6) }] }],
+                contents: [{ role: "user", parts: [{ text: systemPrompt + await blocoLegislacao([systemPrompt], 6) + await blocoBaseMesa([safeCaseText, systemPrompt], req.body, true) }] }],
                 config: { systemInstruction: "Redija sentença em mesa para termo de audiência." }
             };
 

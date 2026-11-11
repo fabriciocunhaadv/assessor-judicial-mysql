@@ -99,6 +99,7 @@ import { getLocalCachedPrompts, saveLocalCachedPrompts, syncPromptsWithDb, merge
 import { getIsGroundingEnabled } from "./utils/bindingPrecedents";
 import { saveSessionDraft, getSessionDraft, clearSessionDraft } from "./utils/sessionDraft";
 import { guardarPdfsDaSessao, lerPdfsDaSessao } from "./utils/pdfsDaSessao";
+import { instalarPonteSentencaVideo } from "./utils/sentencaComVideo";
 import { recordApiExecution } from "./utils/apiUsageTracker";
 import { DEFAULT_CABINET_TESES } from "./data/defaultTeses";
 import { DEFAULT_PROJUDI_GUIDE } from "./data/defaultProjudiGuide";
@@ -700,6 +701,9 @@ export default function App() {
       console.warn("Could not restore session draft:", e);
     }
   }, []);
+
+  // ponte da esteira da extensão: sentença com o vídeo da audiência, sem tela (um processo por vez)
+  useEffect(() => instalarPonteSentencaVideo(), []);
 
   // PDFs já lidos (texto/OCR) e o arquivo para visualizar: guardados no navegador, para uma atualização de versão ou recarga da página não obrigar a ler tudo de novo
   const uidPdfs = String((user as any)?.uid || (user as any)?.email || "");
