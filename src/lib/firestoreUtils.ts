@@ -577,6 +577,21 @@ export const updateProcessUnitInDb = async (
   }
 };
 
+/** Super Admin: MOVE atos/processos para uma unidade de OUTRO gabinete (grava no destino e apaga na origem, em pedaços pequenos). */
+export const moverParaOutroGabineteInDb = async (
+  alvos: { ids?: string[]; processos?: string[] },
+  tenantDestino: string,
+  destino: { unitId: string; judicialUnit: string; comarca?: string; vara?: string }
+): Promise<number> => {
+  if (!auth.currentUser) return 0;
+  const ids = alvos.ids || [], processos = alvos.processos || [];
+  let movidos = 0;
+  const pedaco = async (corpo: { ids?: string[]; processos?: string[] }) => { movidos += (await chamarHistorico<{ movidos: number }>(globalTenantId, 'POST', '/lote/mover-gabinete', { ...corpo, ...destino, tenantDestino })).movidos; };
+  for (let i = 0; i < ids.length; i += 25) await pedaco({ ids: ids.slice(i, i + 25) });
+  for (let i = 0; i < processos.length; i += 10) await pedaco({ processos: processos.slice(i, i + 10) });
+  return movidos;
+};
+
 /** Super Admin: muda a comarca/unidade de vários atos e/ou processos de uma vez (em pedaços pequenos, para o banco não sentir). */
 export const updateUnitEmLoteInDb = async (
   alvos: { ids?: string[]; processos?: string[] },

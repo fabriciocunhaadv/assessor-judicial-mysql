@@ -15,7 +15,10 @@ interface EditProcessUnitModalProps {
   allowedUnits: JudicialUnit[];
   onUnitUpdated: (updated: { unitId: string; judicialUnit: string; category?: string }) => void;
   /** Modo em lote (Super Admin): troca só a comarca/unidade de vários itens de uma vez; sem a escolha de vara/competência. */
-  lote?: { descricao: string; confirmar: (destino: { unitId: string; judicialUnit: string }) => Promise<void> };
+  lote?: { descricao: string; confirmar: (destino: { unitId: string; judicialUnit: string; tenantId?: string }) => Promise<void> };
+  /** Super Admin: unidades dos OUTROS gabinetes. Escolher uma delas MOVE o processo para aquele gabinete. */
+  outrosGabinetes?: { id: string; name: string; units: JudicialUnit[] }[];
+  aoMoverGabinete?: (tenantId: string, destino: { unitId: string; judicialUnit: string }) => Promise<void>;
 }
 
 export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
@@ -29,7 +32,10 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
   allowedUnits,
   onUnitUpdated,
   lote,
+  outrosGabinetes,
+  aoMoverGabinete,
 }) => {
+  const [tenantDestino, setTenantDestino] = useState<string>("");      // vazio = o gabinete atual
   const [selectedUnitId, setSelectedUnitId] = useState<string>(currentUnitId);
   const [customUnitName, setCustomUnitName] = useState<string>(currentJudicialUnit || "");
   const [useCustomName, setUseCustomName] = useState<boolean>(false);
@@ -49,6 +55,7 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
       } else {
         setUseCustomName(false);
       }
+      setTenantDestino("");
       setError(null);
     }
   }, [isOpen, currentJudicialUnit, currentUnitId, currentCategory, allowedUnits]);
@@ -56,10 +63,15 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
   if (!isOpen) return null;
 
   const handleSelectPredefined = (unit: JudicialUnit) => {
+    setTenantDestino("");
     setSelectedUnitId(unit.id);
     setCustomUnitName(unit.name);
     setUseCustomName(false);
     setError(null);
+  };
+
+  const handleSelectOutroGabinete = (tenantId: string, unit: JudicialUnit) => {
+    setTenantDestino(tenantId); setSelectedUnitId(unit.id); setCustomUnitName(unit.name); setUseCustomName(false); setError(null);
   };
 
   const handleSave = async () => {
@@ -83,8 +95,15 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
     setError(null);
 
     if (lote) {
-      try { await lote.confirmar({ unitId: finalUnitId, judicialUnit: finalUnitName }); onClose(); }
+      try { await lote.confirmar({ unitId: finalUnitId, judicialUnit: finalUnitName, ...(tenantDestino ? { tenantId: tenantDestino } : {}) }); onClose(); }
       catch (err: any) { setError(err?.message || "Erro ao mudar a comarca/unidade no banco de dados."); }
+      finally { setIsSaving(false); }
+      return;
+    }
+
+    if (tenantDestino && aoMoverGabinete) {
+      try { await aoMoverGabinete(tenantDestino, { unitId: finalUnitId, judicialUnit: finalUnitName }); onClose(); }
+      catch (err: any) { setError(err?.message || "Erro ao mover o processo para o outro gabinete."); }
       finally { setIsSaving(false); }
       return;
     }
@@ -197,7 +216,7 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
             </label>
             <div className="grid grid-cols-1 gap-2 max-h-36 overflow-y-auto pr-1">
               {allowedUnits.map((unit) => {
-                const isSelected = !useCustomName && selectedUnitId === unit.id;
+                const isSelected = !useCustomName && !tenantDestino && selectedUnitId === unit.id;
                 return (
                   <button
                     key={unit.id}
@@ -218,6 +237,30 @@ export const EditProcessUnitModal: React.FC<EditProcessUnitModalProps> = ({
                 );
               })}
             </div>
+            {outrosGabinetes && outrosGabinetes.length > 0 && (
+              <div className="mt-2 space-y-2" data-testid="outros-gabinetes">
+                <div className="text-[11px] font-bold text-indigo-900">Mover para outro gabinete (Super Admin):</div>
+                {outrosGabinetes.map((g) => (
+                  <div key={g.id} className="space-y-1.5">
+                    <div className="text-[11px] font-bold text-slate-600">🏢 {g.name}</div>
+                    <div className="grid grid-cols-1 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                      {g.units.map((unit) => {
+                        const sel = !useCustomName && tenantDestino === g.id && selectedUnitId === unit.id;
+                        return (
+                          <button key={`${g.id}:::${unit.id}`} type="button" data-testid="unidade-outro-gabinete" onClick={() => handleSelectOutroGabinete(g.id, unit)}
+                            className={`px-3.5 py-2 rounded-xl border text-left flex items-center justify-between text-xs transition cursor-pointer ${sel ? "bg-amber-50 border-amber-300 text-amber-950 font-bold" : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"}`}>
+                            <span className="flex items-center gap-2"><MapPin className={`w-3.5 h-3.5 ${sel ? "text-amber-600" : "text-slate-400"}`} /><span>{unit.name}</span></span>
+                            {sel && <Check className="w-4 h-4 text-amber-600" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {tenantDestino && <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">O processo (todas as minutas dele) <strong>sai deste gabinete</strong> e passa a aparecer no gabinete de destino.</div>}
+              </div>
+            )}
+
           </div>
 
           {/* Opção para Unidade / Comarca Personalizada */}

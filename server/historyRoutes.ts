@@ -4,7 +4,7 @@
 import express from "express";
 import { consultarComTentativa } from "./bancoResiliente";
 import mysql from "mysql2/promise";
-import { autenticarSessao, mensagemDeErro } from "./authRoutes";
+import { autenticarSessao, mensagemDeErro, tenantCanonico } from "./authRoutes";
 import { resumoLeve, digitosDoProcesso } from "../src/utils/historicoLeve";
 import { aplicarUnidade, lerPedidoDeLote } from "../src/utils/mudarUnidade";
 
@@ -212,6 +212,23 @@ historyRouter.post("/lote/unidade", rota(async (req, res, u) => {
   for (const num of p.processos) for (const a of await atosDoProcesso(u, num)) atos.set(String(a.id), a);
   for (const a of atos.values()) await gravarAto(u, limparNaoDefinidos(aplicarUnidade(a, p.destino)));      // um ato por vez: leve para o banco
   res.json({ atualizados: atos.size });
+}));
+
+/** Super Admin: MOVE atos/processos para uma unidade de OUTRO gabinete (tenant). { tenantDestino, ids?, processos?, unitId, judicialUnit, comarca?, vara? }
+ *  Grava primeiro todos os atos no gabinete de destino e só depois apaga os originais (se algo falhar no meio, nada se perde: no máximo fica uma cópia). */
+historyRouter.post("/lote/mover-gabinete", rota(async (req, res, u) => {
+  if (!u.superAdmin) throw Object.assign(new Error("Somente o Super Administrador move minutas entre gabinetes."), { status: 403 });
+  const tenantDestino = tenantCanonico(String(req.body?.tenantDestino || "").trim().slice(0, 64));
+  if (!tenantDestino) throw Object.assign(new Error("Informe o gabinete de destino."), { status: 400 });
+  if (tenantDestino === u.tenant) throw Object.assign(new Error("O gabinete de destino é o mesmo de origem: use a mudança de unidade comum."), { status: 400 });
+  const p = lerPedidoDeLote(req.body);
+  if ("erro" in p) throw Object.assign(new Error(p.erro), { status: 400 });
+  const atos = new Map<string, any>();
+  for (const id of p.ids) { const a = await lerAto(u, id); if (a) atos.set(String(a.id || id), a); }
+  for (const num of p.processos) for (const a of await atosDoProcesso(u, num)) atos.set(String(a.id), a);
+  for (const a of atos.values()) await gravarAtoDoTenant(tenantDestino, limparNaoDefinidos({ ...aplicarUnidade(a, p.destino), tenant: tenantDestino }));
+  for (const id of atos.keys()) await apagarAtoDoTenant(u.tenant, id);
+  res.json({ movidos: atos.size, atualizados: atos.size });
 }));
 
 /** Exclui o dossiê (só as minutas do próprio usuário) na unidade indicada. */

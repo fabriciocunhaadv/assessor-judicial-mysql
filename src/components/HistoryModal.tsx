@@ -54,6 +54,7 @@ import {
   abrirAtoCompleto,
   getHistoryCompleto,
   mudarUnidadeEmLote,
+  moverParaOutroGabinete,
 } from "../utils/historyDb";
 import { auth } from "../lib/firebase";
 import { getUserProfile, ehIdAntigoHistorico } from "../lib/firestoreUtils";
@@ -147,7 +148,9 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   analiseAbertaId = null,
   processoAberto = "",
 }) => {
-  const { allowedUnits, isAdmin, isJudge, isSuperAdmin, activeUnit, userProfile: perfilAuth } = useAuth();
+  const { allowedUnits, isAdmin, isJudge, isSuperAdmin, activeUnit, userProfile: perfilAuth, activeTenantId, allTenants, allUnitsForSuperAdmin } = useAuth() as any;
+  // Super Admin: unidades dos OUTROS gabinetes (cada gabinete tem as suas); mover para uma delas leva o processo para aquele gabinete
+  const outrosGabinetes = React.useMemo(() => !isSuperAdmin ? [] : ((allTenants || []) as any[]).filter((t) => t.id !== activeTenantId).map((t) => ({ id: t.id as string, name: t.name as string, units: ((allUnitsForSuperAdmin || []) as any[]).filter((u) => u.tenantId === t.id) })).filter((g) => g.units.length > 0), [isSuperAdmin, allTenants, allUnitsForSuperAdmin, activeTenantId]);
   const verBanco = ehDonoDoSistema(perfilAuth);      // selo e faixa de origem do banco: só o dono do sistema
   // só administrador, juiz e super admin podem ver as minutas do gabinete inteiro; os demais veem só as próprias
   const podeVerGabinete = Boolean(isAdmin || isJudge || isSuperAdmin);
@@ -384,11 +387,12 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     const nAtos = viewMode === "dossiers" ? dossies.reduce((n, d) => n + d.analyses.length, 0) : atos.length;
     setUnidadeLote({ ids, processos, descricao: viewMode === "dossiers" ? `${dossies.length} processo(s), ${nAtos} minuta(s)` : `${atos.length} minuta(s)` });
   };
-  const confirmarMudancaDeUnidade = async (destino: { unitId: string; judicialUnit: string }) => {
+  const confirmarMudancaDeUnidade = async (destino: { unitId: string; judicialUnit: string; tenantId?: string }) => {
     if (!unidadeLote) return;
-    const n = await mudarUnidadeEmLote({ ids: unidadeLote.ids, processos: unidadeLote.processos }, destino);
+    const { tenantId, ...dest } = destino;
+    const n = tenantId ? await moverParaOutroGabinete({ ids: unidadeLote.ids, processos: unidadeLote.processos }, tenantId, dest) : await mudarUnidadeEmLote({ ids: unidadeLote.ids, processos: unidadeLote.processos }, dest);
     sairDaSelecao();
-    showFeedback(`${n} minuta(s) movida(s) para "${destino.judicialUnit}". Elas saem desta lista e aparecem na unidade de destino (troque a unidade ativa para vê-las).`);
+    showFeedback(`${n} minuta(s) movida(s) para "${destino.judicialUnit}"${tenantId ? ` (${(outrosGabinetes.find((g) => g.id === tenantId)?.name) || "outro gabinete"})` : ""}. Elas saem desta lista e aparecem na unidade de destino (troque a unidade ativa${tenantId ? " ou o gabinete" : ""} para vê-las).`);
     await loadHistory();
   };
   const apagarEmLote = async (escopo: "selecionados" | "todos") => {
@@ -1254,6 +1258,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
             allowedUnits={allowedUnits}
             onUnitUpdated={() => {}}
             lote={{ descricao: unidadeLote.descricao, confirmar: confirmarMudancaDeUnidade }}
+            outrosGabinetes={outrosGabinetes}
           />
         )}
 
@@ -1268,6 +1273,13 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
             currentCategory={editingUnitProcess.currentCategory}
             analysisId={editingUnitProcess.analysisId}
             allowedUnits={allowedUnits}
+            outrosGabinetes={outrosGabinetes}
+            aoMoverGabinete={async (tenantId, dest) => {
+              const alvo = editingUnitProcess.analysisId ? { ids: [editingUnitProcess.analysisId] } : { processos: [editingUnitProcess.processNumber] };
+              const n = await moverParaOutroGabinete(alvo, tenantId, dest);
+              showFeedback(`${n} minuta(s) do processo ${editingUnitProcess.processNumber} movida(s) para "${dest.judicialUnit}" (${outrosGabinetes.find((g) => g.id === tenantId)?.name || "outro gabinete"}). Ela(s) saem desta lista e aparecem naquele gabinete.`);
+              await loadHistory();
+            }}
             onUnitUpdated={async (updated) => {
               showFeedback(`Vara e Lotação do processo ${editingUnitProcess.processNumber} atualizadas com sucesso!`);
               await loadHistory();

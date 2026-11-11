@@ -1,4 +1,4 @@
-"""Histórico: Super Admin vê o botão 'Mudar de unidade' no cartão do processo e do ato e consegue mover o processo para a unidade certa. Rodar: /usr/bin/python3 testes/teste_historico_mudar_unidade.py"""
+"""Histórico: Super Admin vê o botão 'Mudar de unidade' no cartão do processo e consegue mover o processo para uma unidade de OUTRO gabinete. Rodar: /usr/bin/python3 testes/teste_historico_mudar_unidade.py"""
 import glob, json, os, subprocess, time, urllib.request
 from playwright.sync_api import sync_playwright
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -20,7 +20,7 @@ try:
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path=glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome")[0], args=["--no-sandbox"]); erros = []
         pg = b.new_page(viewport={"width": 1200, "height": 900}); pg.on("pageerror", lambda e: erros.append(str(e)[:200]))
-        pg.add_init_script("localStorage.setItem('assessor_tour_done','1'); window.__su = true; window.__unidades = [{id:'crixas', name:'Crixás / Vara Única'},{id:'montes_claros', name:'Montes Claros de Goiás / Vara Única'}];")
+        pg.add_init_script("localStorage.setItem('assessor_tour_done','1'); window.__su = true; window.__unidades = [{id:'crixas', name:'Crixás / Vara Única'}]; window.__tenants = [{id:'gabinete_default', name:'Gabinete Crixás'},{id:'gab_montes', name:'Gabinete Montes Claros'}]; window.__unidadesTodas = [{id:'montes_claros', name:'Montes Claros de Goiás / Vara Única', tenantId:'gab_montes'}];")
         def api(r):
             u = r.request.url.split("?")[0]; m = r.request.method
             if m != "GET": chamadas.append((m, u[-60:], r.request.post_data or ""))
@@ -34,11 +34,14 @@ try:
         pg.wait_for_selector("text=Alterar Vara & Lotação do Processo", timeout=10000)
         ok(True, "abre a janela de lotação do processo")
         pg.screenshot(path="/tmp/claude-0/work/teste/hist_mudar_unidade.png")
-        pg.get_by_text("Montes Claros de Goiás / Vara Única").click()
+        ok(pg.locator("[data-testid=outros-gabinetes]").count() == 1 and "Gabinete Montes Claros" in pg.inner_text("[data-testid=outros-gabinetes]"), "a janela lista as unidades dos OUTROS gabinetes (agrupadas pelo nome do gabinete)")
+        pg.locator("[data-testid=unidade-outro-gabinete]").first.click()
+        ok("sai deste gabinete" in pg.inner_text("[data-testid=outros-gabinetes]"), "ao escolher uma unidade de outro gabinete, avisa que o processo sai deste gabinete")
         pg.get_by_text("Salvar Alterações").click(); pg.wait_for_timeout(1500)
-        gravou = [c for c in chamadas if "montes_claros" in c[2] and "5500001-10.2025.8.09.0166" in (c[1] + c[2])]
-        print("chamadas:", [(c[0], c[1]) for c in chamadas][:4])
-        ok(bool(gravou), "ao salvar, o processo vai para a unidade escolhida (a gravação leva o novo unitId e o número do processo)")
+        mover = [c for c in chamadas if c[1].endswith("/lote/mover-gabinete")]
+        print("chamadas:", [(c[0], c[1][-40:]) for c in chamadas][:4])
+        corpo = json.loads(mover[0][2]) if mover else {}
+        ok(bool(mover) and corpo.get("tenantDestino") == "gab_montes" and corpo.get("unitId") == "montes_claros" and corpo.get("processos") == ["5500001-10.2025.8.09.0166"], f"o processo é movido ao gabinete de destino com a unidade escolhida ({corpo})")
         ok(not erros, f"sem erros {erros}")
         b.close()
 finally:
