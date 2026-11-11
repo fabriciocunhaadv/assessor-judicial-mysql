@@ -34,6 +34,7 @@ import { lerAutosPdf, ExtensaoNecessaria } from '../utils/lerAutosPdf';
 import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { enviarMidiaEmPartes } from '../utils/enviarMidia';
+import { fetchRecuperavel } from '../utils/fetchRecuperavel';
 import { useSessao, sessaoMutirao } from '../utils/mutiraoSessao';
 import { getKnowledgeDocs } from '../utils/knowledgeDb';
 import { getCabinetTeses } from '../utils/tesesDb';
@@ -511,13 +512,22 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
         formData.append('customApiKey', customKey);
       }
       
-      const response = await fetch('/api/mutirao-video', {
-        method: 'POST',
-        headers: {
-          ...(customKey ? { 'x-gemini-api-key': customKey } : {}),
-        },
-        body: formData
-      });
+      // a análise continua no servidor mesmo que o proxy da hospedagem corte a espera (erro 524/504): o resultado fica guardado e a tela o busca (fetchRecuperavel)
+      const progId = (globalThis.crypto?.randomUUID?.() || `m-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+      const acompanhar = setInterval(async () => {
+        try { const a = await (await fetch(`/api/progresso/${encodeURIComponent(progId)}`, { cache: 'no-store' })).json(); if (a?.texto) setProgressoMidia(`${a.texto}${a.decorridoSeg ? ` (${Math.floor(a.decorridoSeg / 60)} min ${a.decorridoSeg % 60} s)` : ''}`); } catch { /* sem andamento agora */ }
+      }, 5000);
+      let response: Response;
+      try {
+        response = await fetchRecuperavel('/api/mutirao-video', {
+          method: 'POST',
+          headers: {
+            'x-progresso-id': progId,
+            ...(customKey ? { 'x-gemini-api-key': customKey } : {}),
+          },
+          body: formData
+        }, { esperaMaxMs: 25 * 60_000 });
+      } finally { clearInterval(acompanhar); }
 
       let result: any = {};
       try {

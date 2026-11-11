@@ -98,6 +98,7 @@ import { getProjudiGuide } from "./utils/projudiGuideDb";
 import { getLocalCachedPrompts, saveLocalCachedPrompts, syncPromptsWithDb, mergePromptsSafely } from "./utils/promptsDb";
 import { getIsGroundingEnabled } from "./utils/bindingPrecedents";
 import { saveSessionDraft, getSessionDraft, clearSessionDraft } from "./utils/sessionDraft";
+import { guardarPdfsDaSessao, lerPdfsDaSessao } from "./utils/pdfsDaSessao";
 import { recordApiExecution } from "./utils/apiUsageTracker";
 import { DEFAULT_CABINET_TESES } from "./data/defaultTeses";
 import { DEFAULT_PROJUDI_GUIDE } from "./data/defaultProjudiGuide";
@@ -699,6 +700,25 @@ export default function App() {
       console.warn("Could not restore session draft:", e);
     }
   }, []);
+
+  // PDFs já lidos (texto/OCR) e o arquivo para visualizar: guardados no navegador, para uma atualização de versão ou recarga da página não obrigar a ler tudo de novo
+  const uidPdfs = String((user as any)?.uid || (user as any)?.email || "");
+  const [pdfsRestaurados, setPdfsRestaurados] = useState(false);
+  useEffect(() => {
+    if (!uidPdfs || pdfsRestaurados) return;
+    let vivo = true;
+    void lerPdfsDaSessao(uidPdfs).then((l) => {
+      if (!vivo) return;
+      if (l.length) { setPdfFiles((atual) => (atual.length ? atual : l)); try { toast.success(`${l.length} PDF(s) já lido(s) foram recuperados.`, { duration: 5000 }); } catch { /* sem aviso */ } }
+      setPdfsRestaurados(true);
+    }).catch(() => setPdfsRestaurados(true));
+    return () => { vivo = false; };
+  }, [uidPdfs, pdfsRestaurados]);
+  useEffect(() => {
+    if (!uidPdfs || !pdfsRestaurados) return;      // só grava depois de restaurar (senão a lista vazia apagaria o que estava guardado)
+    const t = setTimeout(() => { void guardarPdfsDaSessao(uidPdfs, pdfFiles); }, 1500);
+    return () => clearTimeout(t);
+  }, [pdfFiles, uidPdfs, pdfsRestaurados]);
 
   // Auto-save session draft on change (debounced)
   useEffect(() => {

@@ -526,7 +526,7 @@ app.post("/api/uso-externo", usoExterno());
 app.post("/api/uso-extensao", usoExtensao());      // contagem de uso da extensão (por dia e recurso), entregue pelo app      // minuta feita em IA externa (ChatGPT/Gemini/Claude/Agaia) e entregue ao Studio pela esteira: conta no painel Utilização
 // consumo de IA contado aqui no servidor (tokens e execuções de cada pessoa), quando o app avisa pelo cabeçalho X-Uso-No-Servidor
 app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot", "/api/mapa-processo", "/api/mutirao-video"], contarUsoNoServidor((req: any) => isRequestNativeAllowed(req)));
-app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot"], (req: any, res: any, next: any) => {
+app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot", "/api/mutirao-video"], (req: any, res: any, next: any) => {
     const id = String(req.headers["x-progresso-id"] || "").slice(0, 80);
     if (req.method !== "POST" || !id) return next();
     if (!progressos.has(id)) setProg(id, "Em processamento no servidor…", null);      // a página que voltar saberá que a análise existe, mesmo nos módulos que não informam andamento
@@ -2728,6 +2728,8 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
         pulso = setInterval(() => { try { if (!res.writableEnded && !res.destroyed) res.write(" "); } catch { /* fechou */ } }, 3000);
     };
     const uid = String(req.usuarioSessao?.uid || "");
+    const progId = String(req.headers["x-progresso-id"] || "").slice(0, 80);
+    const andamento = (t: string, pct?: number) => { if (progId) setProg(progId, t, pct ?? null, 95); };      // a tela mostra o andamento e, se a conexão cair, busca o resultado guardado
     // uma ou mais mídias (às vezes há um vídeo por testemunha): `midias` = JSON [{ midiaId, partes, tamanho, nomeMidia, mimeMidia }] ou, no formato antigo, os campos soltos de uma só
     let midias: { midiaId: string; partes: number; tamanho?: number; nomeMidia: string; mimeMidia: string }[] = [];
     try { const l = JSON.parse(String(req.body?.midias || "[]")); if (Array.isArray(l)) midias = l.slice(0, 12).map((m: any) => ({ midiaId: String(m.midiaId || "").replace(/[^\w-]/g, ""), partes: Number(m.partes) || 1, tamanho: Number(m.tamanho) || undefined, nomeMidia: String(m.nomeMidia || ""), mimeMidia: String(m.mimeMidia || "") })).filter((m: any) => m.midiaId); } catch { /* lista inválida */ }
@@ -2748,16 +2750,19 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
         if (!fontes.length && req.file?.buffer) { const c = path.join(os.tmpdir(), `mutirao_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.bin`); fs.writeFileSync(c, req.file.buffer); temporarios.push(c); fontes.push({ caminho: c, mime: mimeDaMidia(req.file.originalname || "", req.file.mimetype), nome: req.file.originalname || "mídia" }); }
         let transcricao = "", tokens = { prompt: 0, saida: 0, total: 0 }, modelo = "";
         const somar = (r: any) => { const u = r?.usageMetadata || {}; tokens.prompt += Number(u.promptTokenCount) || 0; tokens.saida += Number(u.candidatesTokenCount) || 0; tokens.total += Number(u.totalTokenCount) || 0; modelo = r?.modelVersion || modelo; };
+        andamento(fontes.length ? "Mídia recebida; enviando à IA…" : "Redigindo a sentença…", 5);
         if (fontes.length) {
             const ai = new GoogleGenAI({ apiKey: chaveUsada });
             const partesDeg: string[] = [];
             for (let k = 0; k < fontes.length; k++) {
                 const f = fontes[k], rotulo = fontes.length > 1 ? `VÍDEO/ÁUDIO ${k + 1} DE ${fontes.length} ("${f.nome}")` : "";
+                andamento(`${fontes.length > 1 ? `Mídia ${k + 1} de ${fontes.length}: ` : ""}enviando à IA…`, 5 + Math.round((k / fontes.length) * 55));
                 const arq: any = await ai.files.upload({ file: f.caminho, config: { mimeType: f.mime } }); remotos.push(arq.name);
                 let info: any = arq;
                 for (let t = 0; t < 120 && info?.state === "PROCESSING"; t++) { await new Promise((r) => setTimeout(r, 3000)); info = await ai.files.get({ name: arq.name }); }
                 if (info?.state === "PROCESSING") throw new Error(`O Google demorou demais para processar a mídia "${f.nome}". Tente de novo ou envie um arquivo menor.`);
                 if (info?.state === "FAILED") throw new Error(`O Google não conseguiu processar a mídia "${f.nome}" (formato não aceito ou arquivo corrompido). Converta para MP4 ou MP3 e tente de novo.`);
+                andamento(`${fontes.length > 1 ? `Mídia ${k + 1} de ${fontes.length}: ` : ""}a IA está ouvindo e degravando…`, 10 + Math.round((k / fontes.length) * 55));
                 const rT = await generateWithFallbackAndRetry({
                     apiKey: chaveUsada, keyPool: [chaveUsada], customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"],
                     contents: [{ role: "user", parts: [{ text: `Você é um escrevente de audiência. Faça a DEGRAVAÇÃO FIEL do áudio desta audiência${processNumber ? ` (processo ${processNumber})` : ""}${rotulo ? `, parte ${rotulo} (cada vídeo costuma ser o depoimento de uma pessoa: diga quem depõe, pelo que se apresentar ou pelo termo prévio)` : ""}, em português, identificando quem fala quando possível (Juiz, Advogado da parte autora, Advogado da parte ré, Autor, Réu, Testemunha 1, Testemunha 2, Perito, MP…), com marcação de tempo aproximada [mm:ss] a cada troca de assunto. Não resuma, não invente e não complete o que não foi dito: trechos inaudíveis ficam como [inaudível]. Responda só com a degravação.${ataText ? `\n\nTERMO/ATA PRÉVIA (para ajudar a reconhecer os nomes e a ordem das oitivas):\n${String(ataText).slice(0, 20000)}` : ""}` }, { fileData: { fileUri: arq.uri, mimeType: f.mime } }] }],
@@ -2773,6 +2778,7 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
         // 3) sentença: autos (começo e fim, até 400 mil caracteres) + ata + degravação
         let autos = typeof pdfText === "string" ? pdfText : "";
         if (autos.length > 400000) autos = autos.slice(0, 200000) + "\n\n[... MEIO DOS AUTOS OMITIDO PELO TAMANHO ...]\n\n" + autos.slice(-200000);
+        andamento("Redigindo a sentença com os autos, a ata e a degravação…", 75);
         const instrucao = `Você é um Juiz de Direito e Assessor Judicial no Mutirão Expresso de Audiências.
 Com base nos autos do processo, no termo de audiência e na DEGRAVAÇÃO dos depoimentos, elabore a Sentença Judicial completa com relatório (sucinto ou dispensado na forma da lei), fundamentação jurídica robusta e dispositivo com resolução de mérito. Use SOMENTE o que está nos autos e na degravação; o que a degravação não diz, não afirme.
 ${customInstruction ? `\nInstruções Específicas do Gabinete: ${customInstruction}\n` : ""}${customPromptTemplate ? `\nModelo/Diretriz Estrutural:\n${customPromptTemplate}\n` : ""}${ataText ? `\nTERMO DE AUDIÊNCIA / ATA:\n${ataText}\n` : ""}${transcricao ? `\nDEGRAVAÇÃO DOS DEPOIMENTOS:\n${transcricao}\n` : ""}${autos ? `\nAUTOS DO PROCESSO:\n${autos}\n` : ""}
