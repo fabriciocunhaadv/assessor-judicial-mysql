@@ -834,6 +834,11 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                           <span>{latestAct.lancadoProjudi ? "Lançado" : "Marcar lançado"}</span>
                         </button>
                       )}
+                      {isSuperAdmin && (
+                        <button onClick={editarVara} data-testid="btn-mudar-unidade-processo" className="px-2 py-1 rounded-md border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-[11px] flex items-center gap-1 cursor-pointer whitespace-nowrap" title="Super Admin: mover este processo (todas as minutas dele) para a unidade/comarca correta">
+                          <span>📍 Mudar de unidade</span>
+                        </button>
+                      )}
                       <button onClick={() => setActiveTimelineDossier(dossier)} className="px-2 py-1 rounded-md border border-indigo-200 hover:bg-indigo-50 text-indigo-700 font-bold text-[11px] flex items-center gap-1 cursor-pointer whitespace-nowrap" title="Ver linha do tempo completa e todos os atos do processo">
                         <GitCommit className="w-3 h-3 shrink-0" /><span>Linha do tempo ({dossier.totalActs})</span>
                       </button>
@@ -925,6 +930,18 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                           )}
                         </div>
 
+                        {isSuperAdmin && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const cat = detectPromptCategory(item);
+                              setEditingUnitProcess({ processNumber: item.processNumber || item.result?.minute?.processNumber || "Processo s/ nº", currentUnit: getSafeUnitText(item.result?.minute?.judicialUnit), currentUnitId: item.unitId || "montes_claros", currentCategory: cat.category, analysisId: item.id });
+                            }}
+                            data-testid="btn-mudar-unidade-ato"
+                            className="px-2 py-1 rounded-md border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-[10px] shrink-0 cursor-pointer whitespace-nowrap"
+                            title="Super Admin: mover esta minuta para a unidade/comarca correta"
+                          >📍 Mudar de unidade</button>
+                        )}
                         {canDelete && (
                         <button
                           onClick={(e) => handleOpenDelete(item, e)}

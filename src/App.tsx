@@ -20,6 +20,7 @@ import { GigantesPanel } from "./components/GigantesPanel";
 import { MapaSegundoPlano } from "./components/MapaSegundoPlano";
 import { type MinutaExterna, reorganizarAnaliseExterna } from "./utils/minutaExterna";
 import { entradasExternas } from "./utils/entradaExterna";
+import { esteiraDeveIrParaSegundoPlano } from "./utils/esteiraOcupada";
 import { EntradaAgaia } from "./components/EntradaAgaia";
 import { AvisoSegundoPlano } from "./components/AvisoSegundoPlano";
 import { PainelProgresso } from "./components/PainelProgresso";
@@ -693,7 +694,7 @@ export default function App() {
         if (draft.processNumber2ndGrau) setProcessNumber2ndGrau(draft.processNumber2ndGrau);
         if (draft.processText) setProcessText(draft.processText);
         if (draft.actingArea) setActingArea(draft.actingArea);
-        if (draft.generationResult) setGenerationResult(draft.generationResult);
+        if (draft.generationResult) { telaDaEsteiraRef.current = false; setGenerationResult(draft.generationResult); }
         if (draft.currentAnalysisId) setCurrentAnalysisId(draft.currentAnalysisId);
         if (draft.chatMessages && draft.chatMessages.length > 0) setCurrentChatMessages(draft.chatMessages);
       }
@@ -998,6 +999,8 @@ export default function App() {
   const ehPassageiro = (m: string | null) => !!m && /alta demanda|503|Overloaded|cota|Quota|Rate Limit|interrompida momentaneamente|demorou mais que o esperado/i.test(m);
   const erroPassageiro = ehPassageiro(errorMessage);
   // silencioso = esteira da extensão: o trabalho entra na fila "Gigantes" e a extensão o acompanha por lá (mesmo protocolo dos processos gigantes)
+  // De quem é o resultado que está na tela: da esteira da extensão (pode ser trocado pelo próximo processo dela) ou do usuário (minuta carregada do Histórico ou análise manual: a esteira NÃO a apaga)
+  const telaDaEsteiraRef = useRef(false);
   const motivoEnvioRef = useRef<string>("");      // por que o envio ao segundo plano NÃO deu certo (vai para o Monitor de Operação, inclusive na esteira, onde o aviso é silencioso)
   const enviarSegundoPlano = async (silencioso = false, naoCabia = false): Promise<boolean> => {
     motivoEnvioRef.current = "";
@@ -1094,7 +1097,11 @@ export default function App() {
     // Autos extensos sem mapa pronto: a Etapa 1 não fica esperando a montagem do mapa (leva minutos). O pedido segue em segundo plano (mapa do processo + minuta com os autos inteiros), a minuta vai para o Histórico e a tela fica livre.
     {
       const autosParaMapa = [effectiveText, ...effectivePdfFiles.map((p) => p.extractedText || "")].filter(Boolean).join("\n");
-      if (await precisaDeSegundoPlano(autosParaMapa)) {
+      // STUDIO OCUPADO COM O USUÁRIO: se este processo veio da esteira da extensão e a pessoa está no chat da minuta (ou tem na tela uma minuta que é dela, não da esteira), a análise vai para o SEGUNDO PLANO
+      // (mesma fila dos processos grandes: mapa + 2 etapas, minuta no Histórico, a extensão acompanha por lá) em vez de apagar ou misturar a tela dela.
+      let esteiraOcupada = false;
+      try { const d = document.documentElement.dataset; esteiraOcupada = esteiraDeveIrParaSegundoPlano({ esteira: d.assessorAuto === "1", sinalOcupado: d.assessorOcupado === "1", temResultadoNaTela: !!generationResult, telaEhDaEsteira: telaDaEsteiraRef.current }); } catch { /* sem dataset */ }
+      if (esteiraOcupada || await precisaDeSegundoPlano(autosParaMapa)) {
         try {
           let paginasBg = 0; for (const p of effectivePdfFiles) paginasBg += p.pageCount || 0;
           if (!paginasBg) { try { for (const m of autosParaMapa.matchAll(/\[Página (\d+)(?: de \d+)?\]/g)) paginasBg = Math.max(paginasBg, Number(m[1])); } catch { /* sem marcadores */ } }
@@ -1102,7 +1109,10 @@ export default function App() {
           const numBg = numeroEntradaRef.current ?? processNumber;
           await gerenteGigantes.iniciarComTextos([{ nome: numBg && !/extrair/i.test(numBg) ? `Autos ${numBg}` : (effectivePdfFiles[0]?.name || "Autos (texto)"), texto: autosParaMapa, pageCount: paginasBg }], { ...montarConfigGigante(), direto: true, ocr: false });
           window.dispatchEvent(new CustomEvent("gigantes:abrir"));
-          toast("Autos extensos: o mapa do processo e a minuta seguem em segundo plano. A tela está livre; a minuta irá para o Histórico (acompanhe pelos selos “Mapa” e “Gigantes”).", { duration: 10000, icon: "🗺️" });
+          if (esteiraOcupada) {
+            if (effectivePdfFiles.length > 0) handleClearPdfs(); else setProcessText("");      // a esteira já entregou os autos ao segundo plano: o painel volta a ser da pessoa
+            toast("A esteira enviou um processo, mas você está usando a tela: ele foi para o segundo plano (nada se perde). A minuta irá para o Histórico; acompanhe pelos selos “Mapa” e “Gigantes”.", { duration: 10000, icon: "🗂️" });
+          } else toast("Autos extensos: o mapa do processo e a minuta seguem em segundo plano. A tela está livre; a minuta irá para o Histórico (acompanhe pelos selos “Mapa” e “Gigantes”).", { duration: 10000, icon: "🗺️" });
           return;
         } catch (bgErr) { console.warn("Segundo plano do mapa (Etapa 1):", bgErr); }
       }
@@ -1470,6 +1480,7 @@ export default function App() {
           fullText: effectiveParadigmText,
         } : rawData.paradigmUsed,
       };
+      try { telaDaEsteiraRef.current = document.documentElement.dataset.assessorAuto === "1"; } catch { telaDaEsteiraRef.current = false; }
       setGenerationResult(data);
 
       const effectiveProcessNum = (data.minute?.processNumber && !data.minute.processNumber.toLowerCase().includes("extrair") && !data.minute.processNumber.toLowerCase().includes("não informado"))
@@ -2057,6 +2068,7 @@ export default function App() {
         return;
       }
       
+      telaDaEsteiraRef.current = false;
       setGenerationResult(loadedResult);
       setProcessNumber(analysis.processNumber || loadedResult.minute?.processNumber || "");
       setProcessText(analysis.processTextContext || "");
@@ -2108,6 +2120,7 @@ export default function App() {
         ],
       },
     };
+    telaDaEsteiraRef.current = false;
     setGenerationResult(loadedResult);
     if (effectiveProcessNum) setProcessNumber(effectiveProcessNum);
     if (text) setProcessText(text);
