@@ -199,6 +199,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
 
   // Versions management
   const baseOriginalMinute = result?.originalMinute || result?.minute;
+  const [adaptarAberto, setAdaptarAberto] = useState(false);      // ganchos ficam ANTES de qualquer 'return' antecipado (senão: erro React #310 ao carregar uma minuta)
   const [versions, setVersions] = useState<MinuteVersion[]>(() => {
     if (Array.isArray(result?.versions) && result.versions.length > 0) {
       return result.versions;
@@ -663,7 +664,6 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
     }
   };
 
-  const [adaptarAberto, setAdaptarAberto] = useState(false);
   const aplicarParadigmo = async (nova: MinuteData, tituloModelo: string, avisos: string[]) => {
     onUpdateMinute(nova);
     const nv: MinuteVersion = { id: `v-${Date.now()}-paradigma`, versionNumber: versions.length + 1, label: `Adaptada ao paradigma: ${tituloModelo}`, timestamp: Date.now(), minute: nova, source: "editor", author: "Assessor Judicial", changeSummary: `Estrutura reorganizada conforme o modelo “${tituloModelo}”${avisos.length ? ` (${avisos.length} ponto(s) para conferir)` : ""}` };
