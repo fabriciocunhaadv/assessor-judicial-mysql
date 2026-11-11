@@ -100,6 +100,7 @@ import { getIsGroundingEnabled } from "./utils/bindingPrecedents";
 import { saveSessionDraft, getSessionDraft, clearSessionDraft } from "./utils/sessionDraft";
 import { guardarPdfsDaSessao, lerPdfsDaSessao } from "./utils/pdfsDaSessao";
 import { instalarPonteSentencaVideo } from "./utils/sentencaComVideo";
+import { SentencaVideoSelo } from "./components/SentencaVideoSelo";
 import { recordApiExecution } from "./utils/apiUsageTracker";
 import { DEFAULT_CABINET_TESES } from "./data/defaultTeses";
 import { DEFAULT_PROJUDI_GUIDE } from "./data/defaultProjudiGuide";
@@ -2961,6 +2962,7 @@ export default function App() {
       <MinhaFilaModal />
       <NovoChamadoCelular />
       <AvisoSegundoPlano />
+      <SentencaVideoSelo aoAbrirHistorico={() => setIsHistoryModalOpen(true)} />
       <GigantesPanel config={montarConfigGigante()} onVerHistorico={() => setIsHistoryModalOpen(true)} />
       <HistoryModal
         isOpen={isHistoryModalOpen}

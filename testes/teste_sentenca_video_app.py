@@ -13,12 +13,14 @@ try:
         try: urllib.request.urlopen("http://127.0.0.1:5198/testes/gigantes/sv.html", timeout=2); break
         except Exception: time.sleep(1)
     with sync_playwright() as p:
-        b = p.chromium.launch(executable_path=glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome")[0], args=["--no-sandbox"]); pg = b.new_page(); chamadas = []; erros = []
+        b = p.chromium.launch(executable_path=glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome")[0], args=["--no-sandbox"]); pg = b.new_page(); chamadas = []; erros = []; estado = {}
         pg.on("pageerror", lambda e: erros.append(str(e)[:200]))
         def api(rota):
             u = rota.request.url; chamadas.append((rota.request.method, u.split("5198")[1][:60]))
             if "/api/mutirao-extract-ata" in u: rota.fulfill(content_type="application/json", body=json.dumps({"success": True, "data": {"processNumber": "5428441-88.2026.8.09.0166", "author": "EZIO BORGES SANTOS", "defendant": "INSS", "ataText": "ATA prévia"}}))
             elif "/api/mutirao-midia/parte" in u: rota.fulfill(content_type="application/json", body='{"ok":true}')
+            elif "/api/mutirao-video" in u and not estado.get("falhou"):
+                estado["falhou"] = True; rota.fulfill(status=502, content_type="text/html", body="<html><body>Bad Gateway</body></html>")      # servidor reiniciou no meio: a 1ª resposta é página de erro
             elif "/api/mutirao-video" in u:
                 corpo = rota.request.post_data_buffer or b""; chamadas.append(("corpo", "midias" if b"midias" in corpo else "sem-midias"))
                 chamadas.append(("tem-prompt", "PROMPT DO JUIZ" in corpo.decode("latin1")))
@@ -43,10 +45,11 @@ try:
         assert res["ok"] and res["minuta"].startswith("SENTENÇA") and "conheço a autora" in res["transcricao"] and res["processo"] == "5428441-88.2026.8.09.0166", res
         assert res["autor"] == "EZIO BORGES SANTOS" and res["historicoId"], res
         partes_enviadas = [c for c in chamadas if isinstance(c[1], str) and c[1].startswith("/api/mutirao-midia/parte")]
-        assert len(partes_enviadas) == 2, "as duas mídias foram enviadas ao servidor em partes: " + str(len(partes_enviadas))
+        assert len(partes_enviadas) == 4, "na segunda tentativa as duas mídias são enviadas de novo: " + str(len(partes_enviadas))
         assert ("corpo", "midias") in chamadas and ("tem-prompt", True) in chamadas, "o servidor recebe a lista de mídias e o prompt escolhido"
         assert any("Lendo os autos" in a for a in andamentos) and any("ata" in a.lower() for a in andamentos) and any("Mídia 2 de 2" in a for a in andamentos), andamentos
-        assert not erros, erros
+        assert any('tentando de novo' in a for a in andamentos), 'a 1ª resposta foi página de erro: refaz sozinho'
+        assert estado.get('falhou') and not erros, erros
         # arquivos incompletos: erro claro, sem rodar
         enviar({"fase": "parte", "reqId": "R2", "idx": 0, "n": 0, "dados": b64(b"x"), "nome": "a.pdf", "tipo": "application/pdf"}) if False else None
         pg.evaluate("() => window.postMessage({ __projudi: 'sv', reqId: 'R2', fase: 'iniciar', processo: '1', pdfIdx: 0, videosIdx: [1] }, location.origin)")

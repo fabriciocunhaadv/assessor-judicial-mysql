@@ -35,7 +35,11 @@ export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento
     const processo = ata.processNumber || p.processo || "";
     if (cancelado()) return { ok: false, erro: "cancelado" };
 
-    // 3) mídias, em partes
+    // 3) e 4) mídias + degravação/sentença; se o servidor reiniciar ou a conexão cair no meio, refaz o envio uma vez sozinho (a análise é guardada no servidor, mas a reinicialização a perde)
+    let r: any = null, sentenca = "", degravacao = "";
+    for (let tentativa = 1; tentativa <= 2 && !sentenca; tentativa++) {
+      try {
+        if (tentativa === 2) andamento("O servidor reiniciou ou a conexão caiu: tentando de novo…", 20);
     const enviadas: any[] = [];
     for (let k = 0; k < p.videos.length; k++) {
       const f = p.videos[k], pre = p.videos.length > 1 ? `Mídia ${k + 1} de ${p.videos.length}: ` : "";
@@ -59,11 +63,14 @@ export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento
     const vigia = setInterval(async () => { try { const a = await (await fetch(`/api/progresso/${encodeURIComponent(progId)}`, { cache: "no-store" })).json(); if (a?.texto) andamento(`${a.texto}${a.decorridoSeg ? ` (${Math.floor(a.decorridoSeg / 60)} min)` : ""}`, 40 + Math.min(55, Number(a.pct) || 0)); } catch { /* sem andamento */ } }, 5000);
     let resp: Response;
     try { resp = await fetchRecuperavel("/api/mutirao-video", { method: "POST", headers: { "x-progresso-id": progId, ...(chave ? { "x-gemini-api-key": chave } : {}) }, body: fd }, { esperaMaxMs: 25 * 60_000 }); } finally { clearInterval(vigia); }
-    let r: any; try { r = JSON.parse(await resp.text()); } catch { throw new Error("A conexão com o servidor foi interrompida ou a IA retornou um formato inválido."); }
+    const corpo = await resp.text();
+    try { r = JSON.parse(corpo); } catch { throw Object.assign(new Error(`O servidor não devolveu a resposta da análise (código ${resp.status}${/<html|<!doctype/i.test(corpo) ? ", página de erro da hospedagem" : ""}). Provável causa: o servidor foi reiniciado ou a conexão caiu no meio da degravação.`), { tentarDeNovo: true }); }
     if (!resp.ok || r.success === false) throw new Error(r.error || "Erro ao processar a mídia");
-    const sentenca = limpar(r.data?.sentenceText || ""), degravacao = limpar(r.data?.transcription || "");
+    sentenca = limpar(r.data?.sentenceText || ""), degravacao = limpar(r.data?.transcription || "");
     if (!sentenca) throw new Error("A IA não devolveu a sentença.");
 
+      } catch (e: any) { if (!e?.tentarDeNovo || tentativa === 2) throw e; }
+    }
     // 5) Histórico (mesmo formato do Mutirão)
     andamento("Salvando no Histórico…", 97);
     const id = novoId();
@@ -79,6 +86,22 @@ export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento
     return { ok: false, erro: String(e?.message || e) };
   }
 }
+
+// ---------- andamento visível no Studio (a fila roda sem tela: este quadro mostra o que está acontecendo) ----------
+export interface ItemSV { reqId: string; processo: string; texto: string; pct: number; estado: "rodando" | "ok" | "erro"; erro?: string; inicio: number; fim?: number }
+let itensSV: ItemSV[] = []; const ouvintesSV = new Set<() => void>();
+const avisarSV = () => ouvintesSV.forEach((f) => f());
+export const filaSentencaVideo = {
+  lista: () => itensSV,
+  assinar: (f: () => void) => { ouvintesSV.add(f); return () => { ouvintesSV.delete(f); }; },
+  atualizar(reqId: string, mudanca: Partial<ItemSV>, novo?: Partial<ItemSV>) {
+    const i = itensSV.findIndex((x) => x.reqId === reqId);
+    if (i < 0) itensSV = [...itensSV, { reqId, processo: "", texto: "", pct: 0, estado: "rodando", inicio: Date.now(), ...novo, ...mudanca } as ItemSV];
+    else itensSV = itensSV.map((x, k) => (k === i ? { ...x, ...mudanca } : x));
+    avisarSV();
+  },
+  remover(reqId: string) { itensSV = itensSV.filter((x) => x.reqId !== reqId); avisarSV(); },
+};
 
 // ---------- ponte com a extensão (window.postMessage ↔ studio-base.js) ----------
 const b64ParaBytes = (b: string) => { const s = atob(b || ""), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
@@ -105,8 +128,10 @@ export function instalarPonteSentencaVideo(): () => void {
         const pdf = montar(d.pdfIdx), videos = (d.videosIdx as number[]).map(montar);
         if (!pdf || videos.some((v) => !v)) { resp(d.reqId, { tipo: "resultado", ok: false, erro: "o Studio não recebeu os arquivos completos (envie de novo)" }); recebidos.delete(d.reqId); return; }
         resp(d.reqId, { tipo: "iniciado" });
+        filaSentencaVideo.atualizar(d.reqId, { processo: String(d.processo || ""), texto: "Começando…", estado: "rodando" });
         const res = await executarSentencaComVideo({ reqId: d.reqId, processo: String(d.processo || ""), promptTitulo: String(d.promptTitulo || ""), promptTexto: String(d.promptTexto || ""), promptCategoria: String(d.promptCategoria || ""), pdf, videos: videos as File[] },
-          (texto, pct) => resp(d.reqId, { tipo: "andamento", texto, pct }), () => r.cancelar);
+          (texto, pct) => { filaSentencaVideo.atualizar(d.reqId, { texto, pct: pct || 0 }); resp(d.reqId, { tipo: "andamento", texto, pct }); }, () => r.cancelar);
+        filaSentencaVideo.atualizar(d.reqId, res.ok ? { estado: "ok", texto: "Sentença pronta e salva no Histórico", pct: 100, fim: Date.now(), processo: res.processo || String(d.processo || "") } : { estado: "erro", erro: (res as any).erro, texto: "Falhou", fim: Date.now() });
         resp(d.reqId, { tipo: "resultado", ...res }); recebidos.delete(d.reqId);
       });
     }
