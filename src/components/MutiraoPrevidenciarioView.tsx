@@ -34,6 +34,7 @@ import { lerAutosPdf, ExtensaoNecessaria } from '../utils/lerAutosPdf';
 import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { enviarMidiaEmPartes } from '../utils/enviarMidia';
+import { assinaturaDosVideos, degravacaoGuardada, guardarDegravacao } from '../utils/degravacaoGuardada';
 import { entradasExternas } from '../utils/entradaExterna';
 import { enxugarResultado } from '../utils/sentencaComVideo';
 import { resolverUnidade } from '../utils/minutaExterna';
@@ -573,7 +574,9 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
     try {
       // a mídia vai em partes (arquivos de audiência passam de centenas de MB); o servidor junta, envia à IA, degrava e redige
       const enviadas: { midiaId: string; partes: number; tamanho: number; nomeMidia: string; mimeMidia: string }[] = [];
-      for (let k = 0; k < videoFiles.length; k++) {
+      const assinVideos = assinaturaDosVideos(videoFiles), degrPronta = degravacaoGuardada(assinVideos);
+      if (degrPronta) toast('Estes vídeos já foram ouvidos: reaproveitando a degravação (não serão enviados de novo).', { duration: 6000 });
+      for (let k = 0; k < (degrPronta ? 0 : videoFiles.length); k++) {
         const f = videoFiles[k], pre = videoFiles.length > 1 ? `Mídia ${k + 1} de ${videoFiles.length}: ` : '';
         setProgressoMidia(`${pre}enviando…`);
         const env = await enviarMidiaEmPartes(f, (fe, t) => setProgressoMidia(`${pre}enviando parte ${fe} de ${t}`));
@@ -582,6 +585,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
       setProgressoMidia('A IA está ouvindo a audiência e redigindo (pode levar alguns minutos)…');
       const formData = new FormData();
       formData.append('midias', JSON.stringify(enviadas));
+      if (degrPronta) formData.append('degravacaoPronta', degrPronta);
       // mesma base do estúdio principal: teses do gabinete, base de conhecimento e matéria do prompt escolhido
       try { const teses = await getCabinetTeses(); if (teses.isEnabled) { formData.append('cabinetTesesText', teses.text || ''); formData.append('isTesesEnabled', 'true'); } else formData.append('isTesesEnabled', 'false'); } catch { /* sem teses */ }
       try { const docs = (await getKnowledgeDocs()).filter((d) => d.isActive); if (docs.length) formData.append('knowledgePdfs', JSON.stringify(docs)); } catch { /* sem base */ }
@@ -627,6 +631,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
         throw new Error("A conexão com o servidor foi interrompida ou a IA retornou um formato inválido.");
       }
 
+      guardarDegravacao(assinVideos, String(result?.data?.transcription || ''));      // a degravação fica guardada mesmo se a sentença falhar
       if (!response.ok) throw new Error(result.error || 'Erro ao processar mídia');
       if (result.success === false && result.error) throw new Error(result.error);
 
