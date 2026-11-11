@@ -60,3 +60,30 @@ try:
 finally:
     try: os.killpg(srv.pid, 9)
     except Exception: pass
+
+# ---- o quadro de andamento sobrevive a recarregar a página (e o que estava rodando vira "interrompido" e a extensão é avisada) ----
+def selo():
+    srv2 = subprocess.Popen(["npx", "vite", "--config", "testes/gigantes/vite.hist.config.ts"], cwd=RAIZ, stdout=open("/tmp/claude-0/work/teste/vite_sv2.log", "w"), stderr=subprocess.STDOUT, start_new_session=True)
+    try:
+        for _ in range(90):
+            try: urllib.request.urlopen("http://127.0.0.1:5198/testes/gigantes/sv.html", timeout=2); break
+            except Exception: time.sleep(1)
+        with sync_playwright() as p:
+            b = p.chromium.launch(executable_path=glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome")[0], args=["--no-sandbox"]); pg = b.new_page()
+            agora = int(time.time() * 1000)
+            pg.add_init_script("""(agora) => {}""" if False else "window.__msgs = []; window.addEventListener('message', (e) => { if (e.data && e.data.__projudiResp === 'sv') window.__msgs.push(e.data); });")
+            pg.goto("http://127.0.0.1:5198/testes/gigantes/sv.html"); pg.wait_for_function("window.pronto")
+            pg.evaluate("""(agora) => { localStorage.setItem('assessor_selo_sentenca_video_v1', JSON.stringify([
+              { reqId: 'A1', processo: '5428441-88', texto: 'Sentença pronta e salva no Histórico', pct: 100, estado: 'ok', inicio: agora - 600000, fim: agora - 1000 },
+              { reqId: 'A2', processo: '5655940-63', texto: 'A IA está ouvindo…', pct: 40, estado: 'rodando', inicio: agora - 120000 }]));}""", agora)
+            pg.reload(); pg.wait_for_function("window.pronto"); pg.wait_for_selector("[data-testid=selo-sentenca-video]", timeout=10000)
+            txt = pg.inner_text("[data-testid=selo-sentenca-video]"); print(txt.replace("\n", " | "))
+            assert "5428441-88" in txt and "Sentença pronta" in txt, "o que estava pronto continua no quadro depois de recarregar"
+            assert "5655940-63" in txt and "Interrompido" in txt.replace("Interrompido", "Interrompido") or "recarregada" in txt, "o que estava rodando aparece como interrompido"
+            pg.wait_for_function("window.__msgs.some(m => m.reqId === 'A2' && m.tipo === 'resultado' && m.ok === false)", timeout=5000)
+            b.close()
+        print("OK quadro persistente")
+    finally:
+        try: os.killpg(srv2.pid, 9)
+        except Exception: pass
+selo()

@@ -34,6 +34,9 @@ import { lerAutosPdf, ExtensaoNecessaria } from '../utils/lerAutosPdf';
 import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { enviarMidiaEmPartes } from '../utils/enviarMidia';
+import { entradasExternas } from '../utils/entradaExterna';
+import { resolverUnidade } from '../utils/minutaExterna';
+import { organizarMinutaExterna } from '../utils/organizarMinutaExterna';
 import { fetchRecuperavel } from '../utils/fetchRecuperavel';
 import { consultarResultado, lerCorpo } from '../utils/analisePendente';
 import { useSessao, sessaoMutirao } from '../utils/mutiraoSessao';
@@ -526,31 +529,24 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
       setSentenceMobileTab('sentence');
       setViewMode('formatted'); // Exibir no modo forense por padrão
 
-      // Auto-salvamento no histórico com título e partes reais
+      // Auto-salvamento no histórico: a minuta é SÓ a sentença (a degravação é prova e não entra na minuta); vem do motor principal quando disponível
+      const ctxE = entradasExternas.contexto(); const un = resolverUnidade('', ctxE?.unidades || [], ctxE?.ativa);
+      const origemVideo = { videos: videoFiles.map((f) => f.name), degravacaoChars: genTranscription.length, em: Date.now() };
+      let resultado: any;
+      if (result.resultado?.minute) resultado = { ...result.resultado, minute: { ...result.resultado.minute, judicialUnit: result.resultado.minute.judicialUnit || un.name }, origemVideo };
+      else {
+        const org = organizarMinutaExterna(genSentence, '');
+        resultado = { minute: { title: org.titulo || activeTitle, header: `${un.name || 'PODER JUDICIÁRIO'}\nPROCESSO Nº ${processInfo.processNumber || ''}`, processNumber: processInfo.processNumber || 'Processo s/ nº', judicialUnit: un.name, parties: { author: org.autor || processInfo.author || 'Parte Autora', defendant: org.reu || processInfo.defendant || 'Parte Ré' }, relatorio: org.relatorio || '', fundamentacao: org.fundamentacao || '', dispositivo: org.dispositivo || '', closing: org.closing || 'Documento assinado digitalmente.', fullFormattedText: genSentence }, auditAnalysis: {} as any, origemVideo };
+      }
       const autoSaveAnalysis: SavedAnalysis = {
-        id: crypto.randomUUID(),
+        id: crypto.randomUUID(), unitId: un.id,
         promptTitle: activeTitle,
         promptId: selectedPromptId || 'sentenca_audiencia_geral',
         date: Date.now(),
         processNumber: processInfo.processNumber || "Processo s/ nº",
-        processTextContext: "Mutirão Expresso: Análise de PDF e Mídia de Audiência.",
-        result: {
-          minute: {
-            title: activeTitle,
-            header: "PODER JUDICIÁRIO",
-            processNumber: processInfo.processNumber || "Processo s/ nº",
-            parties: { 
-              author: processInfo.author || "Parte Autora", 
-              defendant: processInfo.defendant || "Parte Ré" 
-            },
-            relatorio: genTranscription,
-            fundamentacao: "Análise probatória conforme termo e mídia em anexo.",
-            dispositivo: genSentence,
-            fullFormattedText: genSentence
-          },
-          auditAnalysis: {} as any
-        }
-      };
+        processTextContext: "[Sentença feita com o vídeo da audiência (Mutirão Expresso); a degravação foi usada como prova oral e não faz parte da minuta]",
+        result: resultado,
+      } as any;
 
       saveToHistory(autoSaveAnalysis).catch(console.error);
       setSentencasDaSessao((n) => n + 1);
@@ -589,6 +585,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
       try { const teses = await getCabinetTeses(); if (teses.isEnabled) { formData.append('cabinetTesesText', teses.text || ''); formData.append('isTesesEnabled', 'true'); } else formData.append('isTesesEnabled', 'false'); } catch { /* sem teses */ }
       try { const docs = (await getKnowledgeDocs()).filter((d) => d.isActive); if (docs.length) formData.append('knowledgePdfs', JSON.stringify(docs)); } catch { /* sem base */ }
       formData.append('promptTitle', selectedPrompt?.title || ''); formData.append('promptCategory', (selectedPrompt as any)?.category || (selectedPrompt as any)?.categoria || '');
+      formData.append('autor', processInfo.author || ''); formData.append('reu', processInfo.defendant || '');
       formData.append('ataText', ataText);
       formData.append('pdfText', pdfFullText);
       formData.append('processNumber', processInfo.processNumber);

@@ -295,6 +295,19 @@ async function blocoLegislacao(textos: any[], max = 8, timeoutMs = 6000): Promis
     try { return (await consultarLegislacao(textos.map((t) => String(t || "").slice(0, 200000)), { maxArtigos: max, timeoutMs })).bloco; } catch { return ""; }
 }
 
+/** Chama o MOTOR PRINCIPAL de minutas (/api/generate-minute) de dentro do servidor, com a mesma sessão e chaves de quem fez o pedido. Usado pela sentença com vídeo: a degravação entra como prova oral e a
+ *  minuta sai pelas duas etapas do estúdio (prontidão do ato, legislação, precedentes, conferência de citações, juiz revisor), no mesmo formato das demais minutas. */
+async function chamarMotorPrincipal(req: any, corpo: any, limiteMs = 25 * 60_000): Promise<any> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    for (const [k, v] of Object.entries(req.headers || {})) { if (/^x-/i.test(k) && !/^x-(uso-no-servidor|progresso-id|forwarded-.*|real-ip)$/i.test(k) && typeof v === "string") headers[k] = v; }
+    if (typeof req.headers?.authorization === "string") headers["authorization"] = req.headers.authorization;
+    const r = await fetch(`http://127.0.0.1:${PORT}/api/generate-minute`, { method: "POST", headers, body: JSON.stringify(corpo), signal: AbortSignal.timeout(limiteMs) });
+    const t = await r.text(); let j: any;
+    try { j = JSON.parse(t.trim()); } catch { throw new Error(`o motor principal devolveu uma resposta inválida (código ${r.status})`); }
+    if (!r.ok || j?.error) throw new Error(String(j?.error || `o motor principal falhou (código ${r.status})`));
+    return j;
+}
+
 /** MESMA BASE do estúdio principal para a Mesa de Audiência: súmulas/teses/informativos aplicáveis (conferidos), caderno de teses e base de conhecimento do gabinete e, nos atos de decisão,
  *  as regras de mecânica judicial. (A legislação oficial já entra por blocoLegislacao.) Falha silenciosa: a Mesa nunca deixa de responder por causa disto. */
 async function blocoBaseMesa(textos: any[], corpo: any, comMecanica = false): Promise<string> {
@@ -2806,9 +2819,46 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
             blocoBaseM = blocoBaseConhecimentoTurbo(conhecimento);
             const ri = detectarInjecao(autos); if (ri.verificado) alertaInjM = ri; if (ri.total > 0) defesaInjM = instrucaoDefesaInjecao(ri);
         } catch (e: any) { console.warn("[mutirao] base de conferência indisponível:", e?.message || e); }
+        // MOTOR PRINCIPAL: a degravação vira prova oral e a sentença sai pelas 2 etapas do estúdio. Se falhar, segue para o caminho curto abaixo (reserva).
+        let resultadoMotor: any = null;
+        if (String(req.body.motorPrincipal || "true") !== "false") {
+            try {
+                const partesU = String(req.body.unidadeNome || "").split(/\s+-\s+/).map((x: string) => x.trim()).filter((x: string) => x && !/^[A-Z]{2}$/.test(x));
+                const comarca = partesU[0] ? `Comarca de ${partesU[0]} - TJGO` : "Comarca", vara = partesU[1] || "Vara";
+                const blocoAudiencia = (transcricao ? `[DEGRAVAÇÃO DA AUDIÊNCIA DE INSTRUÇÃO E JULGAMENTO — PROVA ORAL (lida do vídeo; cada vídeo costuma ser o depoimento de uma pessoa)]\n${transcricao}\n[FIM DA DEGRAVAÇÃO]\n\n` : "") + (ataText ? `[TERMO/ATA PRÉVIA DA AUDIÊNCIA]\n${String(ataText).slice(0, 30000)}\n[FIM DO TERMO]\n\n` : "");
+                const instr = "SENTENÇA DE MÉRITO APÓS AUDIÊNCIA DE INSTRUÇÃO E JULGAMENTO. A DEGRAVAÇÃO DA AUDIÊNCIA é PROVA ORAL: use-a para fundamentar a decisão (resuma o que cada depoente disse, com a marcação [mm:ss], e confronte com a prova documental e pericial dos autos). NÃO copie a degravação na minuta. A minuta deve ser COMPLETA e analítica, no padrão do prompt do gabinete: relatório com todo o andamento (citando as movimentações), fundamentação em tópicos (questões preliminares, prova documental, perícia, prova oral, requisitos legais, correção monetária e juros conforme a tese aplicável) e dispositivo completo com todos os comandos.";
+                let conhecimentoM: any[] = []; try { const k = JSON.parse(String(req.body.knowledgePdfs || "[]")); if (Array.isArray(k)) conhecimentoM = k; } catch { /* sem base */ }
+                const teseTxt = req.body.isTesesEnabled === "false" ? "" : String(req.body.cabinetTesesText || "");
+                const comum = {
+                    processText: blocoAudiencia, pdfFiles: [{ name: "autos-do-processo.pdf", extractedText: autos }], knowledgePdfs: conhecimentoM,
+                    customPromptText: String(customPromptTemplate || ""), activePromptTitle: String(req.body.promptTitle || "Sentença"), promptCategory: String(req.body.promptCategory || ""),
+                    cabinetTesesText: teseTxt, isTesesEnabled: !!teseTxt, actType: "sentenca", proceduralPhase: "conhecimento", specificInstructions: instr,
+                    isGroundingEnabled: false, aceitaSegundoPlano: false,
+                    processInfo: { processNumber: processNumber || "Autos", comarca, vara, juiz: "Juiz(a) de Direito", autor: String(req.body.autor || ""), reu: String(req.body.reu || ""), assunto: String(req.body.promptTitle || "Sentença") },
+                };
+                andamento("Motor principal — 1ª etapa (minuta da sentença com legislação, precedentes e teses)…", 72);
+                const e1 = await chamarMotorPrincipal(req, { ...comum, executionStage: 1 });
+                somar({ usageMetadata: { promptTokenCount: e1?.usage?.promptTokenCount, candidatesTokenCount: e1?.usage?.candidatesTokenCount, totalTokenCount: e1?.usage?.totalTokenCount }, modelVersion: e1?.modelUsed });
+                const m1 = e1?.minute || {};
+                const snap = e1?.stage1Snapshot || { processNumber: m1.processNumber, author: m1.parties?.author, defendant: m1.parties?.defendant, judicialUnit: m1.judicialUnit, actType: m1.title || m1.decisionType, relatorio: m1.relatorio, fundamentacao: m1.fundamentacao, dispositivo: m1.dispositivo, generatedAt: Date.now() };
+                resultadoMotor = e1;
+                try {
+                    andamento("Motor principal — 2ª etapa (juiz revisor e conferências)…", 86);
+                    const e2 = await chamarMotorPrincipal(req, { ...comum, executionStage: 2, stage1Snapshot: snap, mapaProcesso: e1?.mapaProcesso?.bloco, groundingReuso: e1?.groundingTexto ? { texto: e1.groundingTexto, fontes: e1.groundingSources || [] } : undefined });
+                    somar({ usageMetadata: { promptTokenCount: e2?.usage?.promptTokenCount, candidatesTokenCount: e2?.usage?.candidatesTokenCount, totalTokenCount: e2?.usage?.totalTokenCount }, modelVersion: e2?.modelUsed });
+                    resultadoMotor = { ...e2, autosReduzidos: e2?.autosReduzidos || e1?.autosReduzidos, mapaProcesso: e2?.mapaProcesso || e1?.mapaProcesso };
+                } catch (e: any) { console.warn("[mutirao] 2ª etapa do motor falhou; usa a 1ª:", e?.message || e); }
+            } catch (e: any) { console.warn("[mutirao] motor principal indisponível; usa o caminho curto:", e?.message || e); resultadoMotor = null; }
+        }
+        if (resultadoMotor?.minute) {
+            const mm = resultadoMotor.minute, texto = String(mm.fullFormattedText || [mm.relatorio, mm.fundamentacao, mm.dispositivo].filter(Boolean).join("\n\n"));
+            if (texto.trim().length > 200) {
+                return responder(200, { success: true, motor: "principal", resultado: resultadoMotor, usage: { promptTokenCount: tokens.prompt, candidatesTokenCount: tokens.saida, totalTokenCount: tokens.total }, modelUsed: modelo, data: { transcription: transcricao, resumoDepoimentos: "", sentenceText: texto } });
+            }
+        }
         andamento("Redigindo a sentença com os autos, a ata e a degravação…", 75);
         const instrucao = `Você é um Juiz de Direito e Assessor Judicial no Mutirão Expresso de Audiências.
-Com base nos autos do processo, no termo de audiência e na DEGRAVAÇÃO dos depoimentos, elabore a Sentença Judicial completa com relatório (sucinto ou dispensado na forma da lei), fundamentação jurídica robusta e dispositivo com resolução de mérito. Use SOMENTE o que está nos autos e na degravação; o que a degravação não diz, não afirme.
+Com base nos autos do processo, no termo de audiência e na DEGRAVAÇÃO dos depoimentos, elabore a Sentença Judicial COMPLETA E EXTENSA: relatório com todo o andamento do processo (cite as movimentações), fundamentação jurídica analítica em tópicos (preliminares, prova documental, perícia, prova oral com o resumo do que cada depoente disse e o tempo [mm:ss], requisitos legais, correção monetária e juros) e dispositivo completo com todos os comandos. Não reproduza a degravação na sentença. Use SOMENTE o que está nos autos e na degravação; o que a degravação não diz, não afirme.
 ${customInstruction ? `\nInstruções Específicas do Gabinete: ${customInstruction}\n` : ""}${customPromptTemplate ? `\nModelo/Diretriz Estrutural:\n${customPromptTemplate}\n` : ""}${ataText ? `\nTERMO DE AUDIÊNCIA / ATA:\n${ataText}\n` : ""}${transcricao ? `\nDEGRAVAÇÃO DOS DEPOIMENTOS:\n${transcricao}\n` : ""}${autos ? `\nAUTOS DO PROCESSO:\n${autos}\n` : ""}
 Retorne estritamente em JSON: {"transcription": "resumo organizado dos depoimentos (quem disse o quê)", "sentenceText": "Sentença completa"}`;
         const rS = await generateWithFallbackAndRetry({

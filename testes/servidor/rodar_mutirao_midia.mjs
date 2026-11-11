@@ -17,7 +17,7 @@ try {
   const fetchComSessao = (u, o = {}) => fetch(B + u, { ...o, headers: { ...(o.headers || {}), ...H } });
   const prog = []; const env1 = await enviarMidiaEmPartes(midia, (f, t) => prog.push(`${f}/${t}`), fetchComSessao);
   ok(env1.partes === 3 && prog.join() === "1/3,2/3,3/3", "arquivo de 16 MB + um pouco vai em 3 partes, com andamento");
-  const fd = new FormData(); fd.append("midiaId", env1.midiaId); fd.append("partes", String(env1.partes)); fd.append("tamanho", String(env1.tamanho)); fd.append("nomeMidia", "audiencia.webm"); fd.append("mimeMidia", "video/webm");
+  const fd = new FormData(); fd.append("motorPrincipal", "false"); fd.append("midiaId", env1.midiaId); fd.append("partes", String(env1.partes)); fd.append("tamanho", String(env1.tamanho)); fd.append("nomeMidia", "audiencia.webm"); fd.append("mimeMidia", "video/webm");
   fd.append("ataText", "ATA prévia"); fd.append("pdfText", "AUTOS ".repeat(150000)); fd.append("processNumber", "5129546-88.2025.8.09.0100");
   const r = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd });
   const j = JSON.parse(await r.text());
@@ -35,7 +35,7 @@ try {
   const v2 = new Blob([new Uint8Array(5_000_000).fill(2)], { type: "video/webm" }); v2.name = "testemunha2.webm";
   const e1 = await enviarMidiaEmPartes(v1, () => {}, fetchComSessao), e2 = await enviarMidiaEmPartes(v2, () => {}, fetchComSessao);
   const antes = await (await fetch("http://127.0.0.1:8994/__midia")).json();
-  const fd4 = new FormData(); fd4.append("midias", JSON.stringify([{ ...e1, nomeMidia: "testemunha1.mp4", mimeMidia: "video/mp4" }, { ...e2, nomeMidia: "testemunha2.webm", mimeMidia: "video/webm" }])); fd4.append("ataText", "ATA"); fd4.append("pdfText", "AUTOS");
+  const fd4 = new FormData(); fd4.append("motorPrincipal", "false"); fd4.append("midias", JSON.stringify([{ ...e1, nomeMidia: "testemunha1.mp4", mimeMidia: "video/mp4" }, { ...e2, nomeMidia: "testemunha2.webm", mimeMidia: "video/webm" }])); fd4.append("ataText", "ATA"); fd4.append("pdfText", "AUTOS");
   const r4 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd4 }); const j4 = JSON.parse(await r4.text());
   await espera(1500);
   const dep = await (await fetch("http://127.0.0.1:8994/__midia")).json();
@@ -44,7 +44,7 @@ try {
   ok(/VÍDEO\/ÁUDIO 1 DE 2 \("testemunha1.mp4"\)/.test(j4.data.transcription) && /VÍDEO\/ÁUDIO 2 DE 2 \("testemunha2.webm"\)/.test(j4.data.transcription), "a degravação identifica cada vídeo pelo nome");
   ok(dep.apagados - antes.apagados === 2, "duas mídias: os dois arquivos são apagados na IA");
   // mesma base do estúdio principal na sentença: teses do gabinete e base de conhecimento chegam à IA
-  const fd5 = new FormData(); fd5.append("ataText", "ATA"); fd5.append("pdfText", "AUTOS"); fd5.append("cabinetTesesText", "TESE: auxílio-doença exige incapacidade temporária comprovada por perícia."); fd5.append("isTesesEnabled", "true");
+  const fd5 = new FormData(); fd5.append("motorPrincipal", "false"); fd5.append("ataText", "ATA"); fd5.append("pdfText", "AUTOS"); fd5.append("cabinetTesesText", "TESE: auxílio-doença exige incapacidade temporária comprovada por perícia."); fd5.append("isTesesEnabled", "true");
   fd5.append("knowledgePdfs", JSON.stringify([{ name: "modelo.pdf", extractedText: "Modelo de sentença previdenciária do gabinete." }])); fd5.append("promptTitle", "Previdenciário");
   const r5 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd5 }); const j5 = JSON.parse(await r5.text());
   const bs = (await (await fetch("http://127.0.0.1:8994/__midia")).json()).baseSentenca;
@@ -56,12 +56,20 @@ try {
   await rm.text();
   const depoisT = (await (await fetch("http://127.0.0.1:8994/__midia")).json()).comTesesTotal;
   ok(depoisT > antesT, "Mesa: a sentença imediata recebe o caderno de teses do gabinete");
+  // MOTOR PRINCIPAL: a degravação vira prova oral e a sentença sai pelas 2 etapas do estúdio (mesmo formato das demais minutas)
+  const fd6 = new FormData(); fd6.append("midias", JSON.stringify([{ ...(await enviarMidiaEmPartes(v1, () => {}, fetchComSessao)), nomeMidia: "testemunha1.mp4", mimeMidia: "video/mp4" }]));
+  fd6.append("ataText", "ATA"); fd6.append("pdfText", "Petição inicial de auxílio por incapacidade. Movimentacao 1 : Petição Arquivo 1: inicial.pdf - Pag.1/1. ".repeat(30)); fd6.append("processNumber", "5129546-88.2025.8.09.0100"); fd6.append("promptTitle", "Previdenciário"); fd6.append("unidadeNome", "Montes Claros de Goiás - Vara das Fazendas Públicas - GO");
+  const r6 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd6 }); const j6 = JSON.parse(await r6.text());
+  ok(j6.success && j6.motor === "principal" && j6.resultado?.minute, "a sentença sai pelo motor principal (resultado completo no formato das demais minutas)");
+  ok(/roça desde os doze anos/.test(j6.data.transcription) && !/roça desde os doze anos/.test(j6.data.sentenceText || ""), "a degravação vai à parte; não é copiada para a sentença");
+  const bm = (await (await fetch("http://127.0.0.1:8994/__midia")).json());
+  ok(bm.sentencas >= 1 && j6.data.sentenceText.length > 100, "sentença com texto próprio do motor");
   // mídia que não chegou
   const fd2 = new FormData(); fd2.append("midiaId", "naoexiste123"); fd2.append("partes", "2"); fd2.append("pdfText", "x");
   const r2 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd2 }); const j2 = JSON.parse(await r2.text());
   ok(j2.success === false && /não chegou|faltou/.test(j2.error || ""), "mídia ausente: erro claro em português");
   // sem mídia (só autos e ata)
-  const fd3 = new FormData(); fd3.append("ataText", "ATA"); fd3.append("pdfText", "AUTOS");
+  const fd3 = new FormData(); fd3.append("motorPrincipal", "false"); fd3.append("ataText", "ATA"); fd3.append("pdfText", "AUTOS");
   const r3 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd3 }); const j3 = JSON.parse(await r3.text());
   ok(j3.success === true && /Julgo procedente/.test(j3.data.sentenceText), "sem mídia: ainda redige com autos e ata");
 } finally { for (const p of filhos) { try { process.kill(-p.pid, 9); } catch {} } }

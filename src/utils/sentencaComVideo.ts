@@ -9,8 +9,12 @@ import { getKnowledgeDocs } from "./knowledgeDb";
 import { getCabinetTeses } from "./tesesDb";
 import { saveToHistory } from "./historyDb";
 import type { SavedAnalysis } from "../types";
+import { entradasExternas } from "./entradaExterna";
+import { resolverUnidade } from "./minutaExterna";
+import { organizarMinutaExterna } from "./organizarMinutaExterna";
+import { avisarHistoricoMudou } from "./historyDb";
 
-export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; pdf: File; videos: File[] }
+export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; pdf: File; videos: File[] }
 export type ResultadoSentencaVideo = { ok: true; minuta: string; transcricao: string; processo: string; autor: string; reu: string; historicoId: string; fontes?: any; aviso?: string } | { ok: false; erro: string; semRetry?: boolean };
 
 const limpar = (t: string) => String(t || "").replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\t/g, "    ").replace(/^"|"$/g, "").trim();
@@ -56,6 +60,7 @@ export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento
     fd.append("ataText", limpar(ata.ataText || "")); fd.append("pdfText", texto); fd.append("processNumber", processo);
     fd.append("customInstruction", ""); fd.append("customPromptTemplate", p.promptTexto || "");
     fd.append("promptTitle", p.promptTitulo || ""); fd.append("promptCategory", p.promptCategoria || "");
+    fd.append("unidadeNome", p.serventia || ""); fd.append("autor", ata.author || ""); fd.append("reu", ata.defendant || "");
     if (teses.isEnabled) { fd.append("cabinetTesesText", teses.text || ""); fd.append("isTesesEnabled", "true"); } else fd.append("isTesesEnabled", "false");
     if (base.length) fd.append("knowledgePdfs", JSON.stringify(base));
     const chave = getCustomApiKey(); if (chave) fd.append("customApiKey", chave);
@@ -66,22 +71,37 @@ export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento
     const corpo = await resp.text();
     try { r = JSON.parse(corpo); } catch { throw Object.assign(new Error(`O servidor não devolveu a resposta da análise (código ${resp.status}${/<html|<!doctype/i.test(corpo) ? ", página de erro da hospedagem" : ""}). Provável causa: o servidor foi reiniciado ou a conexão caiu no meio da degravação.`), { tentarDeNovo: true }); }
     if (!resp.ok || r.success === false) throw new Error(r.error || "Erro ao processar a mídia");
-    sentenca = limpar(r.data?.sentenceText || ""), degravacao = limpar(r.data?.transcription || "");
+    sentenca = limpar(r.data?.sentenceText || r.resultado?.minute?.fullFormattedText || ""), degravacao = limpar(r.data?.transcription || "");
     if (!sentenca) throw new Error("A IA não devolveu a sentença.");
 
       } catch (e: any) { if (!e?.tentarDeNovo || tentativa === 2) throw e; }
     }
-    // 5) Histórico (mesmo formato do Mutirão)
+    // 5) Histórico: a minuta é SÓ a sentença (a degravação é prova e fica à parte); a vara vem da serventia; etiqueta própria "Sentença com vídeo"
     andamento("Salvando no Histórico…", 97);
-    const id = novoId();
+    const ctx = entradasExternas.contexto();
+    const un = resolverUnidade(p.serventia || "", ctx?.unidades || [], ctx?.ativa);
+    const cnj = (String(processo).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || String(p.processo).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || [processo || "Sem número"])[0];
+    let h = 0; for (let i = 0; i < sentenca.length; i++) h = (Math.imul(31, h) + sentenca.charCodeAt(i)) | 0;
+    const id = `video-${cnj.replace(/\D/g, "")}-${(h >>> 0).toString(36)}`;      // o mesmo texto do mesmo processo grava no mesmo registro
+    const origemVideo = { videos: p.videos.map((v) => v.name), degravacaoChars: degravacao.length, em: Date.now() };
+    let resultado: any;
+    if (r.resultado?.minute) {
+      const m = { ...r.resultado.minute }; if (!m.judicialUnit) m.judicialUnit = un.name || p.serventia || "";
+      resultado = { ...r.resultado, minute: m, origemVideo };
+    } else {
+      const org = organizarMinutaExterna(sentenca, "");
+      resultado = { minute: { title: org.titulo || "SENTENÇA", header: `${un.name || p.serventia || ""}\nPROCESSO Nº ${cnj}`, processNumber: cnj, judicialUnit: un.name || p.serventia || "", parties: { author: org.autor || ata.author || "", defendant: org.reu || ata.defendant || "" }, relatorio: org.relatorio || "", fundamentacao: org.fundamentacao || "", dispositivo: org.dispositivo || "", closing: org.closing || "Documento assinado digitalmente.", fullFormattedText: sentenca }, auditAnalysis: { fatoVsProva: [], regularidadeDocumental: {}, competenciaCheck: {}, normasAplicadas: [], alertasProcessuais: [] }, origemVideo };
+    }
     const analise: SavedAnalysis = {
-      id, promptTitle: p.promptTitulo || "Sentença de Instrução e Julgamento", promptId: "sentenca_audiencia_video", date: Date.now(), processNumber: processo || "Processo s/ nº",
-      processTextContext: "Sentença com vídeo da audiência (esteira da extensão): autos em PDF + mídia degravada.",
-      result: { minute: { title: p.promptTitulo || "Sentença", header: "PODER JUDICIÁRIO", processNumber: processo || "Processo s/ nº", parties: { author: ata.author || "Parte Autora", defendant: ata.defendant || "Parte Ré" }, relatorio: degravacao, fundamentacao: "Análise probatória conforme termo e mídia da audiência.", dispositivo: sentenca, fullFormattedText: sentenca } as any, auditAnalysis: {} as any },
+      id, unitId: un.id, promptTitle: p.promptTitulo || "Sentença de Instrução e Julgamento", promptCategory: p.promptCategoria || "", promptScope: "judicial", date: Date.now(), processNumber: cnj, result: resultado,
+      originalMinute: JSON.parse(JSON.stringify(resultado.minute)),
+      processTextContext: `[Sentença feita com o vídeo da audiência (${p.videos.length} mídia(s)); a degravação foi usada como prova oral e não faz parte da minuta]`,
+      createdBy: ctx?.user?.uid || "anonymous", creatorName: ctx?.user?.displayName || ctx?.user?.email?.split("@")[0] || "Assessor", creatorEmail: ctx?.user?.email || "", chatMessages: [],
     } as any;
     const salvo = await saveToHistory(analise).catch((e: any) => ({ ok: false, erro: String(e?.message || e) }));
     if (!salvo.ok) console.warn("[sentença com vídeo] não gravou no Histórico:", salvo.erro);
-    return { ok: true, aviso: salvo.ok ? undefined : `A sentença foi gerada, mas NÃO foi gravada no Histórico (${salvo.erro || "erro"}). Copie o texto daqui.`, minuta: sentenca, transcricao: degravacao, processo, autor: ata.author || "", reu: ata.defendant || "", historicoId: id, fontes: r.fontesConsultadas };
+    for (const t of [3000, 10000]) setTimeout(avisarHistoricoMudou, t);      // o Histórico aberto atualiza a lista sem precisar recarregar a página
+    return { ok: true, aviso: salvo.ok ? undefined : `A sentença foi gerada, mas NÃO foi gravada no Histórico (${salvo.erro || "erro"}). Copie o texto daqui.`, minuta: sentenca, transcricao: degravacao, processo: cnj, autor: ata.author || "", reu: ata.defendant || "", historicoId: id, fontes: r.fontesConsultadas };
   } catch (e: any) {
     return { ok: false, erro: String(e?.message || e) };
   }
@@ -89,8 +109,19 @@ export async function executarSentencaComVideo(p: PedidoSentencaVideo, andamento
 
 // ---------- andamento visível no Studio (a fila roda sem tela: este quadro mostra o que está acontecendo) ----------
 export interface ItemSV { reqId: string; processo: string; texto: string; pct: number; estado: "rodando" | "ok" | "erro"; erro?: string; inicio: number; fim?: number }
-let itensSV: ItemSV[] = []; const ouvintesSV = new Set<() => void>();
-const avisarSV = () => ouvintesSV.forEach((f) => f());
+const CHAVE_SV = "assessor_selo_sentenca_video_v1";
+let itensSV: ItemSV[] = []; const ouvintesSV = new Set<() => void>(); const interrompidos: string[] = [];
+// o quadro SOBREVIVE a recarregar a página: o que estava pronto/falhou continua na tela até a pessoa fechar; o que estava rodando vira "interrompido" (a fila roda nesta página) e a extensão é avisada
+try {
+  const salvo = JSON.parse(localStorage.getItem(CHAVE_SV) || "[]") as ItemSV[];
+  itensSV = (Array.isArray(salvo) ? salvo : []).filter((x) => x && x.reqId && Date.now() - (x.fim || x.inicio || 0) < 24 * 3600_000).map((x) => {
+    if (x.estado !== "rodando") return x;
+    interrompidos.push(x.reqId);
+    return { ...x, estado: "erro" as const, texto: "Interrompido", erro: "A página do Studio foi recarregada enquanto este processo era feito. Use “Tentar de novo” na esteira da extensão.", fim: Date.now() };
+  });
+} catch { /* sem armazenamento */ }
+const gravarSV = () => { try { localStorage.setItem(CHAVE_SV, JSON.stringify(itensSV.slice(-20))); } catch { /* sem espaço */ } };
+const avisarSV = () => { gravarSV(); ouvintesSV.forEach((f) => f()); };
 export const filaSentencaVideo = {
   lista: () => itensSV,
   assinar: (f: () => void) => { ouvintesSV.add(f); return () => { ouvintesSV.delete(f); }; },
@@ -113,7 +144,8 @@ export function instalarPonteSentencaVideo(): () => void {
   if (typeof window === "undefined") return () => {};
   const origem = window.location.origin;
   const resp = (reqId: string, o: Record<string, unknown>) => window.postMessage({ __projudiResp: "sv", reqId, ...o }, origem);
-  document.documentElement.dataset.assessorSentencaVideo = "1";      // a extensão só usa este caminho se o Studio avisar que sabe fazer
+  document.documentElement.dataset.assessorSentencaVideo = "1";
+  for (const id of interrompidos.splice(0)) resp(id, { tipo: "resultado", ok: false, erro: "A página do Studio foi recarregada durante o trabalho. Use “Tentar de novo” (os arquivos serão enviados outra vez)." });      // a extensão só usa este caminho se o Studio avisar que sabe fazer
   const ouvir = (ev: MessageEvent) => {
     const d = ev.data;
     if (ev.source !== window || ev.origin !== origem || !d || d.__projudi !== "sv" || typeof d.reqId !== "string") return;
@@ -129,7 +161,7 @@ export function instalarPonteSentencaVideo(): () => void {
         if (!pdf || videos.some((v) => !v)) { resp(d.reqId, { tipo: "resultado", ok: false, erro: "o Studio não recebeu os arquivos completos (envie de novo)" }); recebidos.delete(d.reqId); return; }
         resp(d.reqId, { tipo: "iniciado" });
         filaSentencaVideo.atualizar(d.reqId, { processo: String(d.processo || ""), texto: "Começando…", estado: "rodando" });
-        const res = await executarSentencaComVideo({ reqId: d.reqId, processo: String(d.processo || ""), promptTitulo: String(d.promptTitulo || ""), promptTexto: String(d.promptTexto || ""), promptCategoria: String(d.promptCategoria || ""), pdf, videos: videos as File[] },
+        const res = await executarSentencaComVideo({ reqId: d.reqId, processo: String(d.processo || ""), promptTitulo: String(d.promptTitulo || ""), promptTexto: String(d.promptTexto || ""), promptCategoria: String(d.promptCategoria || ""), serventia: String(d.serventia || ""), pdf, videos: videos as File[] },
           (texto, pct) => { filaSentencaVideo.atualizar(d.reqId, { texto, pct: pct || 0 }); resp(d.reqId, { tipo: "andamento", texto, pct }); }, () => r.cancelar);
         filaSentencaVideo.atualizar(d.reqId, res.ok ? { estado: "ok", texto: "Sentença pronta e salva no Histórico", pct: 100, fim: Date.now(), processo: res.processo || String(d.processo || "") } : { estado: "erro", erro: (res as any).erro, texto: "Falhou", fim: Date.now() });
         resp(d.reqId, { tipo: "resultado", ...res }); recebidos.delete(d.reqId);

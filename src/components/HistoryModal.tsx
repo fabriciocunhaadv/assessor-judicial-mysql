@@ -143,6 +143,13 @@ const origemExterna = (a: any): { rotulo: string; dica: string } | null => {
   return { rotulo: colada ? "✍ Colada" : `🤖 ${sistema.slice(0, 18)}`, dica: colada ? "Minuta feita fora do Studio e colada à mão no Histórico" : agaia ? `Analisado pelo Agaia${o.promptAgaia ? ` (prompt “${o.promptAgaia}”)` : ""}: a minuta não foi gerada pelo Studio` : `Analisada em ${sistema} (IA externa), com o prompt do Studio${o.promptAgaia ? ` “${o.promptAgaia}”` : ""}: a minuta não foi gerada pelo Studio` };
 };
 
+/** Sentença feita pela esteira da extensão com o VÍDEO da audiência: etiqueta própria no Histórico. */
+const origemVideo = (a: any): { rotulo: string; dica: string } | null => {
+  const o = a?.result?.origemVideo; if (!o) return null;
+  const n = Array.isArray(o.videos) ? o.videos.length : 0;
+  return { rotulo: "🎙 Sentença c/ vídeo", dica: `Sentença feita com o vídeo da audiência (${n} mídia(s): ${(o.videos || []).join(", ").slice(0, 160)}). A degravação foi usada como prova oral e não está na minuta.` };
+};
+
 export const HistoryModal: React.FC<HistoryModalProps> = ({
   isOpen,
   onClose,
@@ -801,6 +808,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-extrabold flex items-center gap-1 border ${hasMultipleActs ? "bg-emerald-50 text-emerald-800 border-emerald-300" : "bg-slate-100 text-slate-700 border-slate-200"}`} title={dossier.actTypes.join(", ")}>
                         <GitCommit className="w-3 h-3 shrink-0" />{dossier.totalActs} {dossier.totalActs === 1 ? "ato" : "atos"}
                       </span>
+                      {(() => { const vd = dossier.analyses.map(origemVideo).find(Boolean); return vd ? <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-violet-100 text-violet-900 border-violet-400 whitespace-nowrap" title={vd.dica} data-testid="etiqueta-video-dossie">{vd.rotulo}</span> : null; })()}
                       {(() => { const ag = dossier.analyses.map(origemExterna).find(Boolean); const todos = dossier.analyses.every((a: any) => origemExterna(a)); return ag ? <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-teal-100 text-teal-900 border-teal-400 whitespace-nowrap" title={todos ? ag.dica : "Este processo tem minuta(s) feita(s) fora do Studio. " + ag.dica} data-testid="etiqueta-agaia">{ag.rotulo}{todos ? "" : " +"}</span> : null; })()}
                       {!unidade && (
                         <button onClick={editarVara} className="px-1.5 py-0.5 rounded-md bg-amber-50 border border-amber-300 text-amber-900 text-[10px] font-bold flex items-center gap-1 cursor-pointer" title="Cadastrar Unidade / Vara para este Processo">
@@ -959,6 +967,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       {/* Judicial Unit / Comarca Tag */}
                       <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                         {origemExterna(item) && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-teal-100 text-teal-900 border-teal-400 whitespace-nowrap" title={origemExterna(item)!.dica} data-testid="etiqueta-agaia">{origemExterna(item)!.rotulo}</span>}
+                        {origemVideo(item) && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-violet-100 text-violet-900 border-violet-400 whitespace-nowrap" title={origemVideo(item)!.dica} data-testid="etiqueta-video">{origemVideo(item)!.rotulo}</span>}
                         {getSafeUnitText(item.result?.minute?.judicialUnit) ? (
                           <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 text-[10px] font-bold">
                             <span className="text-slate-900">📍</span>

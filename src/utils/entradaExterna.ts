@@ -36,6 +36,7 @@ class Entradas {
   private carregado: Promise<void> | null = null;
 
   definirContexto(c: ContextoEntrada) { this.ctx = c; }
+  contexto(): ContextoEntrada | null { return this.ctx; }
   inscrever(fn: Ouvinte) { this.ouvintes.add(fn); fn(this.lista()); return () => { this.ouvintes.delete(fn); }; }
   lista(): EntradaExterna[] { return Array.from(this.itens.values()).sort((a, b) => b.recebidoEm - a.recebidoEm); }
   private avisar() { const l = this.lista(); this.ouvintes.forEach((f) => { try { f(l); } catch { /* ouvinte com erro */ } }); }
