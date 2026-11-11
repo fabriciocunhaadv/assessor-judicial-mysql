@@ -9,6 +9,20 @@ const resposta = (t, usage) => JSON.stringify({ candidates: [{ content: { role: 
 http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/__grounding") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ n: global.__grounding || 0 })); return; }
   if (req.method === "GET" && req.url === "/__prontidao") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(global.__prontidao || {})); return; }
+  // API de arquivos (envio retomável do SDK): início -> URL de envio -> finalização devolve o arquivo ATIVO; consulta e exclusão
+  if (/\/upload\/v1beta\/files/.test(req.url) && req.method === "POST") {
+    req.resume();
+    req.on("end", () => { res.writeHead(200, { "x-goog-upload-url": `http://127.0.0.1:${porta}/__envio/${Date.now()}`, "x-goog-upload-status": "active", "Content-Type": "application/json" }); res.end("{}"); });
+    return;
+  }
+  if (/^\/__envio\//.test(req.url) && req.method === "POST") {
+    let n = 0; req.on("data", (c) => (n += c.length));
+    req.on("end", () => { global.__bytesAcum = (global.__bytesAcum || 0) + n; if (/finalize/.test(String(req.headers["x-goog-upload-command"] || ""))) { global.__arquivos = (global.__arquivos || 0) + 1; global.__bytesArquivo = global.__bytesAcum; global.__bytesAcum = 0; } const fim = /finalize/.test(String(req.headers["x-goog-upload-command"] || "")); if (!fim) { res.writeHead(200, { "x-goog-upload-status": "active" }); res.end("{}"); return; } res.writeHead(200, { "x-goog-upload-status": "final", "Content-Type": "application/json" }); res.end(JSON.stringify({ file: { name: "files/falso" + global.__arquivos, uri: `http://127.0.0.1:${porta}/v1beta/files/falso${global.__arquivos}`, mimeType: "video/mp4", state: "ACTIVE", sizeBytes: String(n) } })); });
+    return;
+  }
+  if (/\/v1beta\/files\/falso/.test(req.url) && req.method === "GET") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ name: "files/falso1", uri: "x", state: "ACTIVE" })); return; }
+  if (/\/v1beta\/files\/falso/.test(req.url) && req.method === "DELETE") { global.__apagados = (global.__apagados || 0) + 1; res.writeHead(200, { "Content-Type": "application/json" }); res.end("{}"); return; }
+  if (req.method === "GET" && req.url === "/__midia") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ arquivos: global.__arquivos || 0, bytes: global.__bytesArquivo || 0, apagados: global.__apagados || 0, degravacoes: global.__degravacoes || 0, sentencas: global.__sentencas || 0, semAutosNaDegravacao: global.__semAutos || 0 })); return; }
   let corpo = ""; req.on("data", (c) => (corpo += c));
   req.on("end", () => {
     // fila travada do Google (só em teste): GEMINI_FALSO_TRAVA="modelo1,modelo2" nunca responde para esses modelos
@@ -24,6 +38,8 @@ http.createServer((req, res) => {
     // chave gratuita de mentira: recusa pedidos acima de 250 mil tokens de entrada (como o Google), menos as chamadas de classificação/mapa/ficha, que são pequenas
     if (!/CLASSIFICADOR DE RELEV|MAPA-PARTE|MAPA-CONSOLIDAR/.test(tudo.slice(0, 20000) + sis) && Math.ceil(corpo.length / 3.2) > 250000 && process.env.GEMINI_FALSO_GRATUITO === "1") { res.writeHead(429, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { code: 429, message: "You exceeded your current quota: generate_content_free_tier_input_token_count, limit: 250000, request: " + Math.ceil(corpo.length / 3.2), status: "RESOURCE_EXHAUSTED" } })); return; }
     let t;
+    if (/DEGRAVAÇÃO FIEL do áudio/.test(tudo)) { global.__degravacoes = (global.__degravacoes || 0) + 1; if (!/fileData/.test(tudo)) global.__semAutos = 1; res.writeHead(200, { "Content-Type": "application/json" }); res.end(resposta("[00:00] Juiz: Bom dia, vamos iniciar a audiência. [00:20] Autora: Trabalho na roça desde os doze anos, em regime de economia familiar. [01:10] Testemunha 1: Conheço a autora há trinta anos.", 5000)); return; }
+    if (/Mutirão Expresso de Audiências/.test(tudo)) { global.__sentencas = (global.__sentencas || 0) + 1; res.writeHead(200, { "Content-Type": "application/json" }); res.end(resposta(JSON.stringify({ transcription: "Autora e testemunha confirmam o labor rural.", sentenceText: "SENTENÇA. Julgo procedente o pedido." + (/DEGRAVAÇÃO DOS DEPOIMENTOS/.test(tudo) && /roça desde os doze anos/.test(tudo) ? " [usou a degravação]" : "") }), 3000)); return; }
     if (/MAPA-PARTE/.test(sis + tudo.slice(0, 4000)) && !/MAPA-CONSOLIDAR/.test(sis)) { const movs = [...new Set([...tudo.matchAll(/\[Mov\. (\d+) /g)].map((m) => +m[1]))]; t = JSON.stringify({ numeroProcesso: "5129546-88.2025.8.09.0100", partes: "Autor x Réu", eventos: movs.filter((n) => n % 37 === 0 || n === 148).map((n) => ({ mov: n, data: "01/01/2026", tipo: n === 148 ? "Decisão" : "Despacho", resumo: "Ato da movimentação " + n, determinou: "comando " + n, situacao: "em_vigor" })) }); }
     else if (/MAPA-CONSOLIDAR/.test(sis)) t = JSON.stringify({ numeroProcesso: "5129546-88.2025.8.09.0100", partes: "Autor x Réu", estadoAtual: { ultimoAtoRelevante: "Decisão da Mov. 148", questaoAtual: "Deliberar sobre a avaliação dos imóveis e a alienação pendente", pendencias: ["avaliação dos imóveis"], vigentes: ["Mov. 148: nova avaliação determinada"], ligacoes: ["Mov. 148 depende da Mov. 37"] }, situacoes: [{ mov: 37, situacao: "cumprido" }] });
     else if (/CLASSIFICADOR DE RELEV/.test(tudo)) { const pags = [...tudo.matchAll(/\[Página (\d+) de/g)].map((m) => +m[1]); t = JSON.stringify({ segmentos: pags.map((n) => ({ de: n, ate: n, classe: n % 4 === 0 ? "dispensavel" : "essencial", motivo: "teste" })) }); }

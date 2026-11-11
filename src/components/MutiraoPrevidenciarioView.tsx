@@ -30,7 +30,10 @@ import { saveToHistory } from '../utils/historyDb';
 import { CustomPrompt, SavedAnalysis } from '../types';
 import toast from 'react-hot-toast';
 import { getCustomApiKey, getApiHeaders } from '../utils/apiKeyManager';
-import { extractTextFromPdf } from '../utils/pdfExtractor';
+import { lerAutosPdf, ExtensaoNecessaria } from '../utils/lerAutosPdf';
+import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
+import { caminhoAtual } from '../utils/pdfViaExtensao';
+import { enviarMidiaEmPartes } from '../utils/enviarMidia';
 import { getKnowledgeDocs } from '../utils/knowledgeDb';
 import { getCabinetTeses } from '../utils/tesesDb';
 
@@ -297,22 +300,42 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
     }
   };
 
+  const [bloqueioExt, setBloqueioExt] = useState<{ tipo: 'instalar' | 'atualizar'; arquivo: File; aindaNao?: boolean } | null>(null);
+  const [progressoPdf, setProgressoPdf] = useState('');
+  const [progressoMidia, setProgressoMidia] = useState('');
+  const [sentencasDaSessao, setSentencasDaSessao] = useState(0);
+  /** Pauta com várias audiências: guarda a que acabou (já foi salva no Histórico) e volta ao começo, mantendo o prompt escolhido */
+  const proximoProcesso = () => {
+    setProcessInfo({ processNumber: '', author: '', defendant: '' }); setAtaText(''); setSentenceText(''); setTranscription(''); setVideoFile(null); setPdfFullText('');
+    setStep('upload'); setSentenceMobileTab('sentence');
+  };
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
+      const f = e.target.files[0];
+      e.target.value = '';
+      await processarPdf(f);
+    }
+  };
+  const processarPdf = async (file: File) => {
+    {
       setIsProcessingPdf(true);
-      const file = e.target.files[0];
+      setProgressoPdf('');
       
       try {
         let pdfText = "";
         
         // 1. Tentar extrair o texto diretamente no navegador (ultra-rápido, sem limites de upload)
         try {
-          const clientExtract = await extractTextFromPdf(file);
+          // igual ao upload principal: com a extensão ela faz o OCR das páginas de imagem e devolve o texto; sem ela (computador) bloqueia e mostra o link
+          const clientExtract = await lerAutosPdf(file, (etapa, feitas, total) => setProgressoPdf(total ? `${etapa}: ${feitas}/${total}` : etapa));
           if (clientExtract && clientExtract.hasText && clientExtract.text.trim()) {
             pdfText = clientExtract.text;
-            console.log(`[Mutirão] Texto extraído no navegador: ${pdfText.length} caracteres.`);
+            console.log(`[Mutirão] Texto extraído: ${pdfText.length} caracteres.`);
+            const sem = clientExtract.paginasSemTexto || [];
+            if (sem.length) toast(`⚠ ${sem.length} página(s) de imagem ficaram sem texto reconhecido (pág. ${sem.slice(0, 12).join(', ')}${sem.length > 12 ? '…' : ''}). Confira no PDF.`, { duration: 12000 });
           }
-        } catch (clientErr) {
+        } catch (clientErr: any) {
+          if (clientErr instanceof ExtensaoNecessaria) { setBloqueioExt({ tipo: clientErr.tipo, arquivo: file }); setIsProcessingPdf(false); return; }
           console.warn("[Mutirão] Falha ao extrair texto no cliente. Tentando via servidor...", clientErr);
         }
 
@@ -457,8 +480,13 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
 
     setIsProcessingVideo(true);
     try {
+      // a mídia vai em partes (arquivos de audiência passam de centenas de MB); o servidor junta, envia à IA, degrava e redige
+      setProgressoMidia('Enviando a mídia…');
+      const env = await enviarMidiaEmPartes(videoFile, (f, t) => setProgressoMidia(`Enviando a mídia: parte ${f} de ${t}`));
+      setProgressoMidia('A IA está ouvindo a audiência e redigindo (pode levar alguns minutos)…');
       const formData = new FormData();
-      formData.append('video', videoFile);
+      formData.append('midiaId', env.midiaId); formData.append('partes', String(env.partes)); formData.append('tamanho', String(env.tamanho));
+      formData.append('nomeMidia', videoFile.name); formData.append('mimeMidia', videoFile.type || '');
       formData.append('ataText', ataText);
       formData.append('pdfText', pdfFullText);
       formData.append('processNumber', processInfo.processNumber);
@@ -490,6 +518,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
       }
 
       if (!response.ok) throw new Error(result.error || 'Erro ao processar mídia');
+      if (result.success === false && result.error) throw new Error(result.error);
 
       if (result.success && result.data) {
         const genTranscription = cleanSentenceText(result.data.transcription || 'Sem transcrição disponível.');
@@ -528,6 +557,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
         };
 
         saveToHistory(autoSaveAnalysis).catch(console.error);
+        setSentencasDaSessao((n) => n + 1);
         toast.success("Sentença de audiência gerada com sucesso!");
       } else {
         throw new Error("Erro ao gerar sentença a partir da mídia.");
@@ -535,6 +565,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
     } catch (err: any) {
       toast.error(err.message || "Falha ao processar vídeo/áudio.");
     } finally {
+      setProgressoMidia('');
       setIsProcessingVideo(false);
     }
   };
@@ -624,7 +655,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
               {isProcessingPdf ? (
                 <div className="flex flex-col items-center text-indigo-400 animate-pulse">
                   <Zap className="w-10 h-10 mb-3" />
-                  <span className="font-bold text-sm sm:text-base">Lendo peças e montando termo com IA...</span>
+                  <span className="font-bold text-sm sm:text-base">{progressoPdf || 'Lendo peças e montando termo com IA...'}</span>
                 </div>
               ) : (
                 <>
@@ -637,6 +668,10 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
               )}
             </button>
             <input type="file" ref={fileInputRef} className="hidden" accept=".pdf" onChange={handlePdfUpload} />
+            {bloqueioExt && (
+              <AvisoInstalarExtensao tipo={bloqueioExt.tipo} arquivos={[bloqueioExt.arquivo.name]} aindaNao={bloqueioExt.aindaNao} aoFechar={() => setBloqueioExt(null)}
+                aoTentar={async () => { const c = await caminhoAtual(800); if (c === 'extensao') { const f = bloqueioExt.arquivo; setBloqueioExt(null); await processarPdf(f); } else setBloqueioExt({ ...bloqueioExt, aindaNao: true }); }} />
+            )}
           </div>
         )}
 
@@ -800,7 +835,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
                     className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 active:scale-[0.99] text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 min-h-[44px]"
                   >
                     {isProcessingVideo ? (
-                      <><Zap className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse text-amber-300" /> Analisando Mídia e Redigindo Sentença...</>
+                      <><Zap className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse text-amber-300" /> {progressoMidia || 'Analisando Mídia e Redigindo Sentença...'}</>
                     ) : (
                       <><Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> Analisar Mídia e Gerar Sentença</>
                     )}
@@ -849,6 +884,16 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
                     <span className="hidden sm:inline">Modo Edição</span>
                   </button>
                 </div>
+
+                <button
+                  onClick={proximoProcesso}
+                  className="text-xs bg-amber-600 hover:bg-amber-500 px-2.5 py-1.5 rounded-lg font-bold text-white transition cursor-pointer flex items-center gap-1 shadow-sm"
+                  title="Esta sentença já ficou salva no Histórico. Começa o próximo processo da pauta (o prompt escolhido é mantido)."
+                  data-testid="mutirao-proximo"
+                >
+                  <ChevronRight className="w-3 h-3" />
+                  <span>Próximo processo{sentencasDaSessao ? ` (${sentencasDaSessao} feita${sentencasDaSessao > 1 ? 's' : ''})` : ''}</span>
+                </button>
 
                 {/* Copiar Formatado para PROJUDI / Word */}
                 <button 

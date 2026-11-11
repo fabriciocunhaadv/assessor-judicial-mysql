@@ -9,6 +9,7 @@ import { historyRouter } from './server/historyRoutes';
 import { utilizacaoRouter } from './server/utilizacao';
 import { authRouter, exigirSessao } from './server/authRoutes';
 import { contarUsoNoServidor, usoExterno, usoExtensao } from './server/usoNoServidor';
+import { guardarParte, montarArquivo, limparMidia, varrerMidiasAntigas, mimeDaMidia } from './server/mutiraoMidia';
 import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { fontesPendentesRouter, detectoresDosMotores } from './server/fontesPendentes';
@@ -36,6 +37,7 @@ import { descreverCorte, textoDoCorte, CorteArquivo } from './src/utils/corteAut
 import { montarCobertura } from './server/coberturaLeitura';
 import { textoOcultoDeDocumento, blocoTextoOculto } from './src/utils/pdfTextoOculto';
 import fs from 'fs';
+import os from 'os';
 import { blocoPerfilMateria } from './src/utils/perfisMateria';
 import { REGRA_ESTRUTURA_POR_ATO } from './src/utils/estruturaDoAto';
 import { REGRA_COBERTURA_DOS_AUTOS } from './src/utils/coberturaDosAutos';
@@ -523,7 +525,7 @@ const guardarResultado = (id: string, status: number, body: string, dono: string
 app.post("/api/uso-externo", usoExterno());
 app.post("/api/uso-extensao", usoExtensao());      // contagem de uso da extensão (por dia e recurso), entregue pelo app      // minuta feita em IA externa (ChatGPT/Gemini/Claude/Agaia) e entregue ao Studio pela esteira: conta no painel Utilização
 // consumo de IA contado aqui no servidor (tokens e execuções de cada pessoa), quando o app avisa pelo cabeçalho X-Uso-No-Servidor
-app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot", "/api/mapa-processo"], contarUsoNoServidor((req: any) => isRequestNativeAllowed(req)));
+app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot", "/api/mapa-processo", "/api/mutirao-video"], contarUsoNoServidor((req: any) => isRequestNativeAllowed(req)));
 app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot"], (req: any, res: any, next: any) => {
     const id = String(req.headers["x-progresso-id"] || "").slice(0, 80);
     if (req.method !== "POST" || !id) return next();
@@ -2635,7 +2637,7 @@ REGRAS:
 
 const uploadMedia = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 500 * 1024 * 1024 } // 500MB
+    limits: { fileSize: 60 * 1024 * 1024, fieldSize: 60 * 1024 * 1024 }      // arquivo pequeno inteiro; os grandes vão em partes (/api/mutirao-midia/parte). fieldSize: os autos seguem como campo de texto
 });
 
 app.post("/api/mutirao-extract-ata", async (req, res) => {
@@ -2700,68 +2702,94 @@ A Ata deve conter:
     }
 });
 
-app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req, res) => {
+// Mídia da audiência em PARTES (o app fatia o arquivo): cada parte vai para o disco temporário; a rota /api/mutirao-video junta, envia à IA e redige.
+app.post("/api/mutirao-midia/parte", express.raw({ type: "*/*", limit: "16mb" }), (req: any, res: any) => {
+    try {
+        const u = req.usuarioSessao; if (!u) return res.status(401).json({ ok: false });
+        const id = String(req.query.id || ""), n = Number(req.query.n);
+        if (!id || !Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ ok: false, erro: "parte vazia" });
+        guardarParte(String(u.uid), id, n, req.body);
+        res.json({ ok: true });
+    } catch (e: any) { res.status(400).json({ ok: false, erro: String(e?.message || e) }); }
+});
+setInterval(() => { try { varrerMidiasAntigas(); } catch { /* sem pasta */ } }, 30 * 60_000).unref?.();
+
+app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req: any, res: any) => {
+    // Resposta em fluxo com pulso (como as análises longas): degravar uma audiência demora minutos e proxies cortam conexão parada.
+    let pulso: ReturnType<typeof setInterval> | null = null, iniciou = false;
+    const responder = (status: number, corpo: any) => {
+        if (pulso) { clearInterval(pulso); pulso = null; }
+        if (!iniciou) return res.status(status).json(corpo);
+        try { res.end(JSON.stringify(corpo)); } catch { /* conexão já fechada */ }
+    };
+    const iniciar = () => {
+        if (iniciou) return; iniciou = true;
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Transfer-Encoding": "chunked", "X-Accel-Buffering": "no", "Cache-Control": "no-cache, no-transform" });
+        pulso = setInterval(() => { try { if (!res.writableEnded && !res.destroyed) res.write(" "); } catch { /* fechou */ } }, 3000);
+    };
+    const uid = String(req.usuarioSessao?.uid || "");
+    const midiaId = String(req.body?.midiaId || "").replace(/[^\w-]/g, "");
+    let caminho = "", chaveUsada = "", aiArq: any = null, nomeRemoto = "";
     try {
         const apiKey = extractApiKey(req) || req.body.customApiKey;
-        if (!apiKey) return res.status(401).json({ error: "Chave da API Gemini ausente." });
-
+        if (!apiKey) return responder(401, { error: "Chave da API Gemini ausente." });
         const { ataText, pdfText, processNumber, customInstruction, customPromptTemplate } = req.body;
-        const videoFile = req.file;
+        const pool = extractApiKeyPool(req); chaveUsada = String((Array.isArray(pool) && pool[0]) || apiKey);      // o arquivo enviado só vale para a chave que o enviou: usa uma só
+        iniciar();
 
-        let parts: any[] = [];
-
-        // Prompt de instrução
-        const instructionText = `Você é um Juiz de Direito e Assessor Judicial no Mutirão Expresso de Audiências.
-Com base nos autos do processo e no termo de assentada/audiência fornecido, elabore:
-1. Uma transcrição e resumo dos depoimentos orais prestados em audiência (relatório dos depoimentos).
-2. A Sentença Judicial completa com relatório (sucinto ou dispensado na forma da lei), fundamentação jurídica robusta e dispositivo com resolução de mérito.
-
-${customInstruction ? `\nInstruções Específicas do Gabinete: ${customInstruction}\n` : ''}
-${customPromptTemplate ? `\nModelo/Diretriz Estrutural:\n${customPromptTemplate}\n` : ''}
-${ataText ? `\nTERMO DE AUDIÊNCIA / ATA:\n${ataText}\n` : ''}
-${pdfText ? `\nRESUMO DOS AUTOS DO PROCESSO:\n${typeof pdfText === 'string' ? pdfText.slice(0, 100000) : ''}\n` : ''}
-
-Retorne estritamente em JSON com o formato:
-{
-  "transcription": "Resumo detalhado e degravação dos depoimentos orais e declarações colhidas",
-  "sentenceText": "Sentença completa, com cabeçalho, relatório, fundamentação e dispositivo condizente com as provas"
-}`;
-
-        parts.push({ text: instructionText });
-
-        if (videoFile && videoFile.buffer) {
-            parts.push({
-                inlineData: {
-                    mimeType: videoFile.mimetype || "video/mp4",
-                    data: videoFile.buffer.toString("base64")
-                }
-            });
+        // 1) a mídia: montada das partes (preferido) ou vinda inteira no formulário (arquivos pequenos)
+        let mime = "video/mp4";
+        if (midiaId) {
+            const m = montarArquivo(uid, midiaId, Number(req.body.partes) || 1, Number(req.body.tamanho) || undefined);
+            caminho = m.caminho; mime = mimeDaMidia(String(req.body.nomeMidia || ""), String(req.body.mimeMidia || ""));
+        } else if (req.file?.buffer) {
+            caminho = path.join(os.tmpdir(), `mutirao_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.bin`); fs.writeFileSync(caminho, req.file.buffer);
+            mime = mimeDaMidia(req.file.originalname || "", req.file.mimetype);
         }
 
-        const options = {
-            apiKey,
-            keyPool: extractApiKeyPool(req),
-            res,
-            contents: [{ role: "user", parts }],
-            config: {
-                systemInstruction: "Você é um magistrado que profere sentenças em audiências de mutirão expressas. Responda apenas com JSON válido.",
-                responseMimeType: "application/json"
-            }
-        };
+        // 2) degravação: a IA ouve a mídia (arquivo enviado pela API de arquivos, resolução baixa de vídeo: o que importa é o áudio) e escreve o que foi dito
+        let transcricao = "", tokens = { prompt: 0, saida: 0, total: 0 }, modelo = "";
+        const somar = (r: any) => { const u = r?.usageMetadata || {}; tokens.prompt += Number(u.promptTokenCount) || 0; tokens.saida += Number(u.candidatesTokenCount) || 0; tokens.total += Number(u.totalTokenCount) || 0; modelo = r?.modelVersion || modelo; };
+        if (caminho) {
+            const ai = new GoogleGenAI({ apiKey: chaveUsada });
+            aiArq = await ai.files.upload({ file: caminho, config: { mimeType: mime } }); nomeRemoto = aiArq.name;
+            let info: any = aiArq;
+            for (let t = 0; t < 120 && info?.state === "PROCESSING"; t++) { await new Promise((r) => setTimeout(r, 3000)); info = await ai.files.get({ name: nomeRemoto }); }
+            if (info?.state === "PROCESSING") throw new Error("O Google demorou demais para processar a mídia. Tente de novo ou envie um arquivo menor.");
+            if (info?.state === "FAILED") throw new Error("O Google não conseguiu processar esta mídia (formato não aceito ou arquivo corrompido). Converta para MP4 ou MP3 e tente de novo.");
+            const rT = await generateWithFallbackAndRetry({
+                apiKey: chaveUsada, keyPool: [chaveUsada], customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"],
+                contents: [{ role: "user", parts: [{ text: `Você é um escrevente de audiência. Faça a DEGRAVAÇÃO FIEL do áudio desta audiência${processNumber ? ` (processo ${processNumber})` : ""}, em português, identificando quem fala quando possível (Juiz, Advogado da parte autora, Advogado da parte ré, Autor, Réu, Testemunha 1, Testemunha 2, Perito, MP…), com marcação de tempo aproximada [mm:ss] a cada troca de assunto. Não resuma, não invente e não complete o que não foi dito: trechos inaudíveis ficam como [inaudível]. Responda só com a degravação.${ataText ? `\n\nTERMO/ATA PRÉVIA (para ajudar a reconhecer os nomes e a ordem das oitivas):\n${String(ataText).slice(0, 20000)}` : ""}` }, { fileData: { fileUri: aiArq.uri, mimeType: mime } }] }],
+                config: { systemInstruction: "Você transcreve audiências judiciais com fidelidade. Nunca invente falas.", mediaResolution: "MEDIA_RESOLUTION_LOW", maxOutputTokens: 60000 },
+            });
+            somar(rT); transcricao = String(rT.text || "").trim();
+            if (transcricao.length < 40) throw new Error("A IA não conseguiu ouvir a mídia (áudio ausente ou muito baixo). Confira o arquivo.");
+        }
 
-        const response = await generateWithFallbackAndRetry(options);
-        const parsed = safeParseObj(response.text || "{}") || {};
-
-        return res.json({
-            success: true,
-            data: {
-                transcription: parsed.transcription || 'Depoimentos orais sintetizados conforme assentada.',
-                sentenceText: parsed.sentenceText || ''
-            }
+        // 3) sentença: autos (começo e fim, até 400 mil caracteres) + ata + degravação
+        let autos = typeof pdfText === "string" ? pdfText : "";
+        if (autos.length > 400000) autos = autos.slice(0, 200000) + "\n\n[... MEIO DOS AUTOS OMITIDO PELO TAMANHO ...]\n\n" + autos.slice(-200000);
+        const instrucao = `Você é um Juiz de Direito e Assessor Judicial no Mutirão Expresso de Audiências.
+Com base nos autos do processo, no termo de audiência e na DEGRAVAÇÃO dos depoimentos, elabore a Sentença Judicial completa com relatório (sucinto ou dispensado na forma da lei), fundamentação jurídica robusta e dispositivo com resolução de mérito. Use SOMENTE o que está nos autos e na degravação; o que a degravação não diz, não afirme.
+${customInstruction ? `\nInstruções Específicas do Gabinete: ${customInstruction}\n` : ""}${customPromptTemplate ? `\nModelo/Diretriz Estrutural:\n${customPromptTemplate}\n` : ""}${ataText ? `\nTERMO DE AUDIÊNCIA / ATA:\n${ataText}\n` : ""}${transcricao ? `\nDEGRAVAÇÃO DOS DEPOIMENTOS:\n${transcricao}\n` : ""}${autos ? `\nAUTOS DO PROCESSO:\n${autos}\n` : ""}
+Retorne estritamente em JSON: {"transcription": "resumo organizado dos depoimentos (quem disse o quê)", "sentenceText": "Sentença completa"}`;
+        const rS = await generateWithFallbackAndRetry({
+            apiKey: chaveUsada, keyPool: Array.isArray(pool) && pool.length ? pool : [chaveUsada], contents: [{ role: "user", parts: [{ text: instrucao }] }],
+            config: { systemInstruction: "Você é um magistrado que profere sentenças em audiências de mutirão expressas. Responda apenas com JSON válido.", responseMimeType: "application/json" },
+        });
+        somar(rS);
+        const parsed = safeParseObj(rS.text || "{}") || {};
+        responder(200, {
+            success: true, usage: { promptTokenCount: tokens.prompt, candidatesTokenCount: tokens.saida, totalTokenCount: tokens.total }, modelUsed: modelo,
+            data: { transcription: transcricao || parsed.transcription || "Depoimentos orais sintetizados conforme assentada.", resumoDepoimentos: parsed.transcription || "", sentenceText: parsed.sentenceText || "" },
         });
     } catch (err: any) {
         console.error("Erro no mutirao-video:", err);
-        return res.status(500).json({ error: formatGeminiError(err) || "Falha ao processar mídia e proferir sentença." });
+        responder(500, { success: false, error: formatGeminiError(err) || String(err?.message || "Falha ao processar mídia e proferir sentença.") });
+    } finally {
+        if (pulso) clearInterval(pulso);
+        if (midiaId) limparMidia(uid, midiaId); else if (caminho) { try { fs.unlinkSync(caminho); } catch { /* já apagado */ } }
+        if (nomeRemoto) { try { await new GoogleGenAI({ apiKey: chaveUsada }).files.delete({ name: nomeRemoto }); } catch { /* o Google apaga sozinho em 48 h */ } }
     }
 });
 

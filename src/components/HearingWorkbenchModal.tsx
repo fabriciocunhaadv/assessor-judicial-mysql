@@ -72,7 +72,9 @@ import {
   createEmptyHearing,
   SAMPLE_HEARINGS,
 } from '../utils/hearingsDb';
-import { extractTextFromPdf } from '../utils/pdfExtractor';
+import { lerAutosPdf, ExtensaoNecessaria } from '../utils/lerAutosPdf';
+import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
+import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { gerenteGigantes } from '../utils/gigantes/gerente';
 import { descreverCorte, juntarComoServidor, CorteInfo } from '../utils/corteAutos';
 import { ProcessoGrandeDialog, EscolhaDossie } from './ProcessoGrandeDialog';
@@ -145,6 +147,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
   const [showRawSourceModal, setShowRawSourceModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dossieEmUsoRef = useRef<Set<string>>(new Set());
+  const [bloqueioExt, setBloqueioExt] = useState<{ tipo: 'instalar' | 'atualizar'; arquivos: File[]; aindaNao?: boolean } | null>(null);
   const [dlgDossie, setDlgDossie] = useState<{ paginas: number; tokens: number; corte: CorteInfo | null; resolver: (e: EscolhaDossie) => void } | null>(null);
 
   // Input fields for Briefing AI Generation
@@ -654,7 +657,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
           combinedText += `\n\n==============================\nARQUIVO DOS AUTOS: ${file.name}\n==============================\n${txt}`;
           extraidos.push({ nome: file.name, texto: txt, pageCount: 0 });
         } else {
-          const pdfResult = await extractTextFromPdf(file);
+          const pdfResult = await lerAutosPdf(file, (etapa, feitas, total) => setExtractionProgressText(`Autos (${i + 1}/${fileArray.length}) "${file.name}": ${etapa}${total ? ` ${feitas}/${total}` : ''}`));      // igual ao upload principal: a extensão faz o OCR e devolve o texto
           combinedText += `\n\n==============================\nARQUIVO DOS AUTOS: ${file.name} (Páginas: ${pdfResult.pageCount})\n==============================\n${pdfResult.text}`;
           extraidos.push({ nome: file.name, texto: pdfResult.text, pageCount: pdfResult.pageCount, semTexto: pdfResult.paginasSemTexto, naoLidas: pdfResult.paginasNaoLidas, arquivo: async () => file });
         }
@@ -712,6 +715,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
         preparedTarget
       );
     } catch (err: any) {
+      if (err instanceof ExtensaoNecessaria) { setBloqueioExt({ tipo: err.tipo, arquivos: fileArray }); setIsExtractingPdf(false); setExtractionProgressText(''); return; }
       console.error('Falha no upload dos PDFs:', err);
       setAiError(err.message || 'Erro ao processar os arquivos PDF dos autos.');
     } finally {
@@ -796,6 +800,10 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
 
   return (
     <div style={areaPrincipal ? { position: "relative" } : undefined} data-modulo-janela={areaPrincipal ? "mesa" : undefined} className={areaPrincipal ? "mesa-escura fixed flex items-stretch justify-center bg-slate-950 p-0 w-full h-[84vh] rounded-xl border border-slate-800 overflow-hidden" : "mesa-escura fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-0 sm:p-3 md:p-4 animate-in fade-in duration-200"}>
+      {bloqueioExt && (
+        <AvisoInstalarExtensao tipo={bloqueioExt.tipo} arquivos={bloqueioExt.arquivos.map((f) => f.name)} aindaNao={bloqueioExt.aindaNao} aoFechar={() => setBloqueioExt(null)}
+          aoTentar={async () => { const c = await caminhoAtual(800); if (c === 'extensao') { const l = bloqueioExt.arquivos; setBloqueioExt(null); await handlePdfFilesUpload(l); } else setBloqueioExt({ ...bloqueioExt, aindaNao: true }); }} />
+      )}
       {dlgDossie && <ProcessoGrandeDialog modulo="mesa" paginas={dlgDossie.paginas} tokens={dlgDossie.tokens} corte={dlgDossie.corte} onEscolha={dlgDossie.resolver} />}
       <div
         className={`bg-slate-900 border-0 sm:border border-slate-700/80 rounded-none sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100 transition-all duration-300 w-full ${
