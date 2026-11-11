@@ -162,7 +162,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
   const [ataText, setAtaText] = useState('');
   const [sentenceText, setSentenceText] = useState('');
   const [transcription, setTranscription] = useState('');
-  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoFiles, setVideoFiles] = useState<File[]>([]);      // às vezes há um vídeo por testemunha: aceita vários
   const [pdfFullText, setPdfFullText] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -306,7 +306,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
   const [sentencasDaSessao, setSentencasDaSessao] = useState(0);
   /** Pauta com várias audiências: guarda a que acabou (já foi salva no Histórico) e volta ao começo, mantendo o prompt escolhido */
   const proximoProcesso = () => {
-    setProcessInfo({ processNumber: '', author: '', defendant: '' }); setAtaText(''); setSentenceText(''); setTranscription(''); setVideoFile(null); setPdfFullText('');
+    setProcessInfo({ processNumber: '', author: '', defendant: '' }); setAtaText(''); setSentenceText(''); setTranscription(''); setVideoFiles([]); setPdfFullText('');
     setStep('upload'); setSentenceMobileTab('sentence');
   };
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -420,11 +420,15 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
   };
 
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setVideoFile(e.target.files[0]);
-      setAtaMobileTab('media');
-      toast.success("Mídia anexada: " + e.target.files[0].name);
-    }
+    const novos = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!novos.length) return;
+    setVideoFiles((atuais) => {
+      const sem = novos.filter((f) => !atuais.some((a) => a.name === f.name && a.size === f.size));      // o mesmo arquivo não entra duas vezes
+      return [...atuais, ...sem].slice(0, 12);
+    });
+    setAtaMobileTab('media');
+    toast.success(novos.length > 1 ? `${novos.length} mídias anexadas` : "Mídia anexada: " + novos[0].name);
   };
 
   const handleSave = async () => {
@@ -468,7 +472,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
   };
 
   const handleGenerateSentence = async () => {
-    if (!videoFile) {
+    if (!videoFiles.length) {
       toast.error("Selecione um arquivo de vídeo ou áudio da audiência.");
       return;
     }
@@ -481,12 +485,16 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
     setIsProcessingVideo(true);
     try {
       // a mídia vai em partes (arquivos de audiência passam de centenas de MB); o servidor junta, envia à IA, degrava e redige
-      setProgressoMidia('Enviando a mídia…');
-      const env = await enviarMidiaEmPartes(videoFile, (f, t) => setProgressoMidia(`Enviando a mídia: parte ${f} de ${t}`));
+      const enviadas: { midiaId: string; partes: number; tamanho: number; nomeMidia: string; mimeMidia: string }[] = [];
+      for (let k = 0; k < videoFiles.length; k++) {
+        const f = videoFiles[k], pre = videoFiles.length > 1 ? `Mídia ${k + 1} de ${videoFiles.length}: ` : '';
+        setProgressoMidia(`${pre}enviando…`);
+        const env = await enviarMidiaEmPartes(f, (fe, t) => setProgressoMidia(`${pre}enviando parte ${fe} de ${t}`));
+        enviadas.push({ ...env, nomeMidia: f.name, mimeMidia: f.type || '' });
+      }
       setProgressoMidia('A IA está ouvindo a audiência e redigindo (pode levar alguns minutos)…');
       const formData = new FormData();
-      formData.append('midiaId', env.midiaId); formData.append('partes', String(env.partes)); formData.append('tamanho', String(env.tamanho));
-      formData.append('nomeMidia', videoFile.name); formData.append('mimeMidia', videoFile.type || '');
+      formData.append('midias', JSON.stringify(enviadas));
       formData.append('ataText', ataText);
       formData.append('pdfText', pdfFullText);
       formData.append('processNumber', processInfo.processNumber);
@@ -763,32 +771,39 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
                 </p>
 
                 <div className="flex-1 flex flex-col justify-center items-center gap-4">
-                  {!videoFile ? (
+                  {videoFiles.length === 0 ? (
                     <button 
                       onClick={() => videoInputRef.current?.click()}
-                      className="w-full h-36 border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl bg-slate-950/50 hover:bg-slate-950 flex flex-col items-center justify-center gap-2 transition cursor-pointer group p-3 text-center"
+                      className="w-full h-36 border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl bg-slate-950/50 hover:bg-slate-950 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group"
                     >
                       <div className="w-10 h-10 rounded-full bg-slate-800 group-hover:bg-indigo-600/20 flex items-center justify-center text-slate-400 group-hover:text-indigo-400 transition">
                         <Upload className="w-5 h-5" />
                       </div>
-                      <span className="text-xs font-bold text-slate-300">Selecionar Vídeo ou Áudio da Mídia</span>
-                      <span className="text-[10px] text-slate-500">MP4, WebM, MKV, MP3, M4A</span>
+                      <span className="text-xs font-bold text-slate-300">Selecionar Vídeo(s) ou Áudio(s) da Audiência</span>
+                      <span className="text-[10px] text-slate-500">MP4, WebM, MKV, MP3, M4A — pode escolher vários (ex.: um vídeo por testemunha)</span>
                     </button>
                   ) : (
-                    <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2 overflow-hidden">
-                        <Video className="w-4 h-4 text-indigo-400 shrink-0" />
-                        <span className="text-xs text-slate-200 font-medium truncate">{videoFile.name}</span>
-                      </div>
-                      <button 
-                        onClick={() => setVideoFile(null)}
-                        className="text-xs text-red-400 hover:text-red-300 transition cursor-pointer shrink-0 ml-2"
-                      >
-                        Remover
-                      </button>
+                    <div className="w-full flex flex-col gap-2" data-testid="lista-midias">
+                      {videoFiles.map((vf, idx) => (
+                        <div key={vf.name + vf.size} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <Video className="w-4 h-4 text-indigo-400 shrink-0" />
+                            <span className="text-xs text-slate-200 font-medium truncate">{idx + 1}. {vf.name}</span>
+                            <span className="text-[10px] text-slate-500 shrink-0">{(vf.size / 1048576).toFixed(0)} MB</span>
+                          </div>
+                          <button 
+                            onClick={() => setVideoFiles((l) => l.filter((_, i) => i !== idx))}
+                            disabled={isProcessingVideo}
+                            className="text-xs text-red-400 hover:text-red-300 transition cursor-pointer shrink-0 ml-2 disabled:opacity-40"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      ))}
+                      <button onClick={() => videoInputRef.current?.click()} disabled={isProcessingVideo || videoFiles.length >= 12} className="text-xs font-bold text-indigo-300 hover:text-indigo-200 border border-dashed border-indigo-500/50 rounded-xl py-2 cursor-pointer disabled:opacity-40" data-testid="adicionar-midia">+ Adicionar outro vídeo ou áudio</button>
                     </div>
                   )}
-                  <input type="file" ref={videoInputRef} className="hidden" accept="video/*,audio/*" onChange={handleVideoUpload} />
+                  <input type="file" ref={videoInputRef} className="hidden" accept="video/*,audio/*" multiple onChange={handleVideoUpload} />
 
                   {/* Seletor de Prompts Cadastrados no Sistema */}
                   <div className="w-full flex flex-col gap-1.5">
@@ -831,7 +846,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
 
                   <button 
                     onClick={handleGenerateSentence}
-                    disabled={isProcessingVideo || !videoFile}
+                    disabled={isProcessingVideo || videoFiles.length === 0}
                     className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 active:scale-[0.99] text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 min-h-[44px]"
                   >
                     {isProcessingVideo ? (

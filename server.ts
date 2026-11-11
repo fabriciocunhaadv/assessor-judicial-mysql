@@ -2728,8 +2728,13 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
         pulso = setInterval(() => { try { if (!res.writableEnded && !res.destroyed) res.write(" "); } catch { /* fechou */ } }, 3000);
     };
     const uid = String(req.usuarioSessao?.uid || "");
-    const midiaId = String(req.body?.midiaId || "").replace(/[^\w-]/g, "");
-    let caminho = "", chaveUsada = "", aiArq: any = null, nomeRemoto = "";
+    // uma ou mais mídias (às vezes há um vídeo por testemunha): `midias` = JSON [{ midiaId, partes, tamanho, nomeMidia, mimeMidia }] ou, no formato antigo, os campos soltos de uma só
+    let midias: { midiaId: string; partes: number; tamanho?: number; nomeMidia: string; mimeMidia: string }[] = [];
+    try { const l = JSON.parse(String(req.body?.midias || "[]")); if (Array.isArray(l)) midias = l.slice(0, 12).map((m: any) => ({ midiaId: String(m.midiaId || "").replace(/[^\w-]/g, ""), partes: Number(m.partes) || 1, tamanho: Number(m.tamanho) || undefined, nomeMidia: String(m.nomeMidia || ""), mimeMidia: String(m.mimeMidia || "") })).filter((m: any) => m.midiaId); } catch { /* lista inválida */ }
+    const midiaIdUnica = String(req.body?.midiaId || "").replace(/[^\w-]/g, "");
+    if (!midias.length && midiaIdUnica) midias = [{ midiaId: midiaIdUnica, partes: Number(req.body.partes) || 1, tamanho: Number(req.body.tamanho) || undefined, nomeMidia: String(req.body.nomeMidia || ""), mimeMidia: String(req.body.mimeMidia || "") }];
+    const temporarios: string[] = [], remotos: string[] = [];
+    let chaveUsada = "";
     try {
         const apiKey = extractApiKey(req) || req.body.customApiKey;
         if (!apiKey) return responder(401, { error: "Chave da API Gemini ausente." });
@@ -2737,33 +2742,32 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
         const pool = extractApiKeyPool(req); chaveUsada = String((Array.isArray(pool) && pool[0]) || apiKey);      // o arquivo enviado só vale para a chave que o enviou: usa uma só
         iniciar();
 
-        // 1) a mídia: montada das partes (preferido) ou vinda inteira no formulário (arquivos pequenos)
-        let mime = "video/mp4";
-        if (midiaId) {
-            const m = montarArquivo(uid, midiaId, Number(req.body.partes) || 1, Number(req.body.tamanho) || undefined);
-            caminho = m.caminho; mime = mimeDaMidia(String(req.body.nomeMidia || ""), String(req.body.mimeMidia || ""));
-        } else if (req.file?.buffer) {
-            caminho = path.join(os.tmpdir(), `mutirao_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.bin`); fs.writeFileSync(caminho, req.file.buffer);
-            mime = mimeDaMidia(req.file.originalname || "", req.file.mimetype);
-        }
-
-        // 2) degravação: a IA ouve a mídia (arquivo enviado pela API de arquivos, resolução baixa de vídeo: o que importa é o áudio) e escreve o que foi dito
+        // 1) e 2) cada mídia: montada das partes (ou vinda inteira no formulário, se pequena), enviada à IA pela API de arquivos e DEGRAVADA à parte
+        const fontes: { caminho: string; mime: string; nome: string }[] = [];
+        for (const m of midias) { const mm = montarArquivo(uid, m.midiaId, m.partes, m.tamanho); fontes.push({ caminho: mm.caminho, mime: mimeDaMidia(m.nomeMidia, m.mimeMidia), nome: m.nomeMidia || `mídia ${fontes.length + 1}` }); }
+        if (!fontes.length && req.file?.buffer) { const c = path.join(os.tmpdir(), `mutirao_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.bin`); fs.writeFileSync(c, req.file.buffer); temporarios.push(c); fontes.push({ caminho: c, mime: mimeDaMidia(req.file.originalname || "", req.file.mimetype), nome: req.file.originalname || "mídia" }); }
         let transcricao = "", tokens = { prompt: 0, saida: 0, total: 0 }, modelo = "";
         const somar = (r: any) => { const u = r?.usageMetadata || {}; tokens.prompt += Number(u.promptTokenCount) || 0; tokens.saida += Number(u.candidatesTokenCount) || 0; tokens.total += Number(u.totalTokenCount) || 0; modelo = r?.modelVersion || modelo; };
-        if (caminho) {
+        if (fontes.length) {
             const ai = new GoogleGenAI({ apiKey: chaveUsada });
-            aiArq = await ai.files.upload({ file: caminho, config: { mimeType: mime } }); nomeRemoto = aiArq.name;
-            let info: any = aiArq;
-            for (let t = 0; t < 120 && info?.state === "PROCESSING"; t++) { await new Promise((r) => setTimeout(r, 3000)); info = await ai.files.get({ name: nomeRemoto }); }
-            if (info?.state === "PROCESSING") throw new Error("O Google demorou demais para processar a mídia. Tente de novo ou envie um arquivo menor.");
-            if (info?.state === "FAILED") throw new Error("O Google não conseguiu processar esta mídia (formato não aceito ou arquivo corrompido). Converta para MP4 ou MP3 e tente de novo.");
-            const rT = await generateWithFallbackAndRetry({
-                apiKey: chaveUsada, keyPool: [chaveUsada], customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"],
-                contents: [{ role: "user", parts: [{ text: `Você é um escrevente de audiência. Faça a DEGRAVAÇÃO FIEL do áudio desta audiência${processNumber ? ` (processo ${processNumber})` : ""}, em português, identificando quem fala quando possível (Juiz, Advogado da parte autora, Advogado da parte ré, Autor, Réu, Testemunha 1, Testemunha 2, Perito, MP…), com marcação de tempo aproximada [mm:ss] a cada troca de assunto. Não resuma, não invente e não complete o que não foi dito: trechos inaudíveis ficam como [inaudível]. Responda só com a degravação.${ataText ? `\n\nTERMO/ATA PRÉVIA (para ajudar a reconhecer os nomes e a ordem das oitivas):\n${String(ataText).slice(0, 20000)}` : ""}` }, { fileData: { fileUri: aiArq.uri, mimeType: mime } }] }],
-                config: { systemInstruction: "Você transcreve audiências judiciais com fidelidade. Nunca invente falas.", mediaResolution: "MEDIA_RESOLUTION_LOW", maxOutputTokens: 60000 },
-            });
-            somar(rT); transcricao = String(rT.text || "").trim();
-            if (transcricao.length < 40) throw new Error("A IA não conseguiu ouvir a mídia (áudio ausente ou muito baixo). Confira o arquivo.");
+            const partesDeg: string[] = [];
+            for (let k = 0; k < fontes.length; k++) {
+                const f = fontes[k], rotulo = fontes.length > 1 ? `VÍDEO/ÁUDIO ${k + 1} DE ${fontes.length} ("${f.nome}")` : "";
+                const arq: any = await ai.files.upload({ file: f.caminho, config: { mimeType: f.mime } }); remotos.push(arq.name);
+                let info: any = arq;
+                for (let t = 0; t < 120 && info?.state === "PROCESSING"; t++) { await new Promise((r) => setTimeout(r, 3000)); info = await ai.files.get({ name: arq.name }); }
+                if (info?.state === "PROCESSING") throw new Error(`O Google demorou demais para processar a mídia "${f.nome}". Tente de novo ou envie um arquivo menor.`);
+                if (info?.state === "FAILED") throw new Error(`O Google não conseguiu processar a mídia "${f.nome}" (formato não aceito ou arquivo corrompido). Converta para MP4 ou MP3 e tente de novo.`);
+                const rT = await generateWithFallbackAndRetry({
+                    apiKey: chaveUsada, keyPool: [chaveUsada], customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"],
+                    contents: [{ role: "user", parts: [{ text: `Você é um escrevente de audiência. Faça a DEGRAVAÇÃO FIEL do áudio desta audiência${processNumber ? ` (processo ${processNumber})` : ""}${rotulo ? `, parte ${rotulo} (cada vídeo costuma ser o depoimento de uma pessoa: diga quem depõe, pelo que se apresentar ou pelo termo prévio)` : ""}, em português, identificando quem fala quando possível (Juiz, Advogado da parte autora, Advogado da parte ré, Autor, Réu, Testemunha 1, Testemunha 2, Perito, MP…), com marcação de tempo aproximada [mm:ss] a cada troca de assunto. Não resuma, não invente e não complete o que não foi dito: trechos inaudíveis ficam como [inaudível]. Responda só com a degravação.${ataText ? `\n\nTERMO/ATA PRÉVIA (para ajudar a reconhecer os nomes e a ordem das oitivas):\n${String(ataText).slice(0, 20000)}` : ""}` }, { fileData: { fileUri: arq.uri, mimeType: f.mime } }] }],
+                    config: { systemInstruction: "Você transcreve audiências judiciais com fidelidade. Nunca invente falas.", mediaResolution: "MEDIA_RESOLUTION_LOW", maxOutputTokens: 60000 },
+                });
+                somar(rT); const tx = String(rT.text || "").trim();
+                if (tx.length < 40) throw new Error(`A IA não conseguiu ouvir a mídia "${f.nome}" (áudio ausente ou muito baixo). Confira o arquivo.`);
+                partesDeg.push(rotulo ? `=== ${rotulo} ===\n${tx}` : tx);
+            }
+            transcricao = partesDeg.join("\n\n");
         }
 
         // 3) sentença: autos (começo e fim, até 400 mil caracteres) + ata + degravação
@@ -2788,8 +2792,9 @@ Retorne estritamente em JSON: {"transcription": "resumo organizado dos depoiment
         responder(500, { success: false, error: formatGeminiError(err) || String(err?.message || "Falha ao processar mídia e proferir sentença.") });
     } finally {
         if (pulso) clearInterval(pulso);
-        if (midiaId) limparMidia(uid, midiaId); else if (caminho) { try { fs.unlinkSync(caminho); } catch { /* já apagado */ } }
-        if (nomeRemoto) { try { await new GoogleGenAI({ apiKey: chaveUsada }).files.delete({ name: nomeRemoto }); } catch { /* o Google apaga sozinho em 48 h */ } }
+        for (const m of midias) limparMidia(uid, m.midiaId);
+        for (const c of temporarios) { try { fs.unlinkSync(c); } catch { /* já apagado */ } }
+        for (const n of remotos) { try { await new GoogleGenAI({ apiKey: chaveUsada }).files.delete({ name: n }); } catch { /* o Google apaga sozinho em 48 h */ } }
     }
 });
 

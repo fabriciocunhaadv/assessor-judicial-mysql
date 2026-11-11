@@ -30,6 +30,19 @@ try {
   ok(m.degravacoes === 1 && m.sentencas === 1 && !m.semAutosNaDegravacao, "duas chamadas: degravação (com o arquivo) e sentença");
   ok(m.apagados === 1, "o arquivo é apagado na IA depois do uso");
   ok(j.usage?.totalTokenCount > 0, "consumo de tokens devolvido (entra no painel Utilização)");
+  // dois vídeos (um por testemunha): cada um é enviado, degravado à parte e identificado; a sentença recebe as duas degravações
+  const v1 = new Blob([new Uint8Array(3_000_000).fill(1)], { type: "video/mp4" }); v1.name = "testemunha1.mp4";
+  const v2 = new Blob([new Uint8Array(5_000_000).fill(2)], { type: "video/webm" }); v2.name = "testemunha2.webm";
+  const e1 = await enviarMidiaEmPartes(v1, () => {}, fetchComSessao), e2 = await enviarMidiaEmPartes(v2, () => {}, fetchComSessao);
+  const antes = await (await fetch("http://127.0.0.1:8994/__midia")).json();
+  const fd4 = new FormData(); fd4.append("midias", JSON.stringify([{ ...e1, nomeMidia: "testemunha1.mp4", mimeMidia: "video/mp4" }, { ...e2, nomeMidia: "testemunha2.webm", mimeMidia: "video/webm" }])); fd4.append("ataText", "ATA"); fd4.append("pdfText", "AUTOS");
+  const r4 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd4 }); const j4 = JSON.parse(await r4.text());
+  await espera(1500);
+  const dep = await (await fetch("http://127.0.0.1:8994/__midia")).json();
+  ok(j4.success === true, "duas mídias: rota responde com sucesso");
+  ok(dep.arquivos - antes.arquivos === 2 && dep.degravacoes - antes.degravacoes === 2 && dep.sentencas - antes.sentencas === 1, "duas mídias: 2 envios, 2 degravações e 1 sentença");
+  ok(/VÍDEO\/ÁUDIO 1 DE 2 \("testemunha1.mp4"\)/.test(j4.data.transcription) && /VÍDEO\/ÁUDIO 2 DE 2 \("testemunha2.webm"\)/.test(j4.data.transcription), "a degravação identifica cada vídeo pelo nome");
+  ok(dep.apagados - antes.apagados === 2, "duas mídias: os dois arquivos são apagados na IA");
   // mídia que não chegou
   const fd2 = new FormData(); fd2.append("midiaId", "naoexiste123"); fd2.append("partes", "2"); fd2.append("pdfText", "x");
   const r2 = await fetchComSessao("/api/mutirao-video", { method: "POST", body: fd2 }); const j2 = JSON.parse(await r2.text());
