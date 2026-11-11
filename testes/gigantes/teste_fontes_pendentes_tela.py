@@ -37,13 +37,13 @@ try:
                 if m == "DELETE": estado["itens"] = [x for x in estado["itens"] if x["id"] != iid]; return ok({"ok": True})
                 return ok({"item": it})
             pg.route("**/api/fontes/pendentes**", rota)
-            pg.goto(f"http://127.0.0.1:{PV}/testes/gigantes/fontes.html"); pg.get_by_text("Abrir central").first.click(); pg.wait_for_selector("text=Constituição Federal de 1988", timeout=60000)
+            pg.goto(f"http://127.0.0.1:{PV}/testes/gigantes/fontes.html"); pg.get_by_text("Abrir central").first.click(); pg.get_by_test_id("menu-leis").click(); pg.wait_for_selector("text=Constituição Federal de 1988", timeout=60000)
             return pg, erros, chamadas, estado
-        pg, erros, ch, est = nova("1.0.89"); pg.get_by_role("button", name="Fontes pendentes (4)", exact=True).click(); pg.wait_for_selector("[data-testid=aba-fontes-pendentes]")
+        pg, erros, ch, est = nova("1.0.89"); pg.get_by_test_id("menu-pendentes").click(); pg.wait_for_selector("[data-testid=aba-fontes-pendentes]")
         assert pg.get_by_test_id("buscar-todas-pendentes").is_disabled() and pg.get_by_test_id("buscar-mun").is_disabled(), "extensão antiga: busca desativada"; pg.close()
         pg, erros, ch, est = nova("1.0.90")
         assert "Fontes pendentes (4)" in pg.inner_text("body"), "badge com a contagem de pendentes (mun, est, súmula, tratado)"
-        pg.get_by_role("button", name="Fontes pendentes (4)").click(); pg.wait_for_selector("[data-testid=aba-fontes-pendentes]")
+        pg.get_by_test_id("menu-pendentes").click(); pg.wait_for_selector("[data-testid=aba-fontes-pendentes]")
         corpo = pg.inner_text("[data-testid=aba-fontes-pendentes]"); assert "Lei Municipal 1234/2015" in corpo and "Súmula 999 do STJ" in corpo and "Lei Estadual 1/2000" not in corpo and "Lei Municipal 9/1999" not in corpo, "só pendentes por padrão"
         assert pg.get_by_test_id("buscar-sum").count() == 0 and pg.get_by_test_id("buscar-trat").count() == 0, "súmula e tratado não têm busca automática"
         assert not pg.get_by_test_id("buscar-todas-pendentes").is_disabled() and "(2)" in pg.get_by_test_id("buscar-todas-pendentes").inner_text(), "2 leis buscáveis"

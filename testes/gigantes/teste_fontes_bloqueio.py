@@ -16,7 +16,7 @@ try:
         b = p.chromium.launch(executable_path=glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome")[0], args=["--no-sandbox"])
         pg = b.new_page(viewport={"width": 1200, "height": 900}); erros = []; pg.on("pageerror", lambda e: erros.append(str(e)[:300]))
         pg.goto(f"http://127.0.0.1:{PV}/testes/gigantes/fontes.html")
-        pg.get_by_text("Abrir central").first.click()
+        pg.get_by_text("Abrir central").first.click(); pg.get_by_test_id("menu-leis").click()
         pg.wait_for_selector("text=Constituição Federal de 1988", timeout=60000)
         corpo = pg.inner_text("body")
         avisos = pg.locator("[data-testid=aviso-bloqueio-planalto]"); assert avisos.count() == 2, avisos.count()

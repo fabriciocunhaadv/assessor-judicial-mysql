@@ -23,7 +23,7 @@ try:
                 idl = req.url.split("id=")[1]
                 r.fulfill(status=200, content_type="application/json", body='{"lei":{"id":"%s","nome":"Lei %s","url":"https://www.planalto.gov.br/ccivil_03/%s.htm","baixadoEm":1794000000000,"total":10,"revogados":0,"vetados":1}}' % (idl, idl, idl))
             pg.route("**/api/fontes/leis/importar-arquivo*", rota)
-            pg.goto(f"http://127.0.0.1:{PV}/testes/gigantes/fontes.html"); pg.get_by_text("Abrir central").first.click(); pg.wait_for_selector("text=Constituição Federal de 1988", timeout=60000)
+            pg.goto(f"http://127.0.0.1:{PV}/testes/gigantes/fontes.html"); pg.get_by_text("Abrir central").first.click(); pg.get_by_test_id("menu-leis").click(); pg.wait_for_selector("text=Constituição Federal de 1988", timeout=60000)
             return pg, erros, posts
         # extensão antiga: botões desativados
         pg, erros, posts = nova("1.0.87")

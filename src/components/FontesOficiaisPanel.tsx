@@ -10,6 +10,7 @@ interface Resultado { id: string; grupo: string; nome: string; url: string; stat
 interface Lei { id: string; nome: string; url: string; baixadoEm?: number; total?: number; revogados?: number; vetados?: number; erro?: string }
 interface ItemEnvio { chave: string; arquivo: File; nome: string; estado: "enviando" | "ok" | "erro" | "nao_reconhecido"; msg: string; escolha?: string }
 
+type AbaFonte = "visao" | "leis" | "outras" | "testes" | "pendentes";
 const chamarSimples = async (url: string) => { const r = await fetch(url, { headers: getApiHeaders() }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || j.erro || `erro ${r.status}`); return j; };
 const nomeArquivo = (l: Lei) => l.url.split("/").pop() || "";
 const pronta = (l: Lei) => !!l.baixadoEm;
@@ -19,7 +20,7 @@ const btn = "px-3 py-1.5 rounded-full text-xs font-bold cursor-pointer disabled:
 
 /** Só Super Admin: central das fontes oficiais. Envio de várias leis salvas do Planalto de uma vez (arrastando ou escolhendo), andamento das 29 leis, envio por lei e testes de acesso. */
 export const FontesOficiaisPanel: React.FC = () => {
-  const [aberto, setAberto] = useState(false), [aba, setAba] = useState<"leis" | "outras" | "testes" | "pendentes">("leis"), [nPendentes, setNPendentes] = useState<number | null>(null), [erro, setErro] = useState("");
+  const [aberto, setAberto] = useState(false), [aba, setAba] = useState<AbaFonte>("visao"), [nPendentes, setNPendentes] = useState<number | null>(null), [erro, setErro] = useState("");
   const [leis, setLeis] = useState<Lei[] | null>(null), [atualizando, setAtualizando] = useState<string | null>(null), [lote, setLote] = useState<{ feitas: number; total: number } | null>(null);
   const [envios, setEnvios] = useState<ItemEnvio[]>([]), [arrastando, setArrastando] = useState(false);
   const [filtro, setFiltro] = useState<"todas" | "pendentes" | "prontas" | "erro">("todas"), [busca, setBusca] = useState("");
@@ -175,23 +176,57 @@ export const FontesOficiaisPanel: React.FC = () => {
       {aberto && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-3 bg-slate-900/60" onClick={() => setAberto(false)}>
           <div className="bg-white text-slate-800 w-full max-w-5xl h-[92vh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 pt-4 pb-3 border-b border-slate-200 space-y-2 shrink-0">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-bold">Central de fontes oficiais</h3>
-                  <p className="text-[11px] text-slate-500">Leis e normas usadas na conferência das minutas, fontes citadas que ainda faltam e testes de acesso. Só o Super Admin alimenta; vale para todos os gabinetes.</p>
-                </div>
-                <button onClick={() => setAberto(false)} className="text-slate-400 hover:text-slate-700 text-lg cursor-pointer" aria-label="Fechar">✕</button>
+            <div className="px-5 py-3 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
+              <div>
+                <h3 className="text-base font-bold">Central de fontes oficiais</h3>
+                <p className="text-[11px] text-slate-500">As leis e normas que o sistema usa para conferir as minutas. Só o Super Admin alimenta; vale para todos os gabinetes.</p>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-[#673de6] transition-all" style={{ width: `${pct}%` }} /></div>
-                <span className="hidden sm:flex items-center gap-1.5 text-[11px] font-semibold"><span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✅ {contagem.prontas} prontas</span>{contagem.pendentes > 0 && <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">⏳ {contagem.pendentes} pendentes</span>}{contagem.erro > 0 && <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">⚠ {contagem.erro} com erro</span>}</span><span className="text-xs font-bold whitespace-nowrap">{contagem.prontas} de {contagem.total} leis prontas</span>
-              </div>
-              <div className="flex overflow-x-auto -mx-1 px-1">{aba_("leis", "Leis do Planalto")}{aba_("outras", "Outras leis (estaduais e municipais)")}{aba_("pendentes", nPendentes ? `Fontes pendentes (${nPendentes})` : "Fontes pendentes")}{aba_("testes", "Testes de acesso")}</div>
+              <button onClick={() => setAberto(false)} className="text-slate-400 hover:text-slate-700 text-lg cursor-pointer" aria-label="Fechar">✕</button>
             </div>
-
+            <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+              <nav className="md:w-60 shrink-0 border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50 p-2 flex md:flex-col gap-1 overflow-x-auto md:overflow-y-auto" data-testid="menu-fontes">
+                {([
+                  ["visao", "🏠", "Visão geral", "O que tem aqui e o que falta"],
+                  ["leis", "🏛", "Leis federais", `${contagem.prontas} de ${contagem.total} prontas`],
+                  ["outras", "📜", "Leis estaduais e municipais", "Enviar leis que o Planalto não tem"],
+                  ["pendentes", "⏳", nPendentes ? `Fontes pendentes (${nPendentes})` : "Fontes pendentes", "Citadas nas minutas e ainda sem cópia"],
+                  ["testes", "🔎", "Testes de acesso", "Ver se os sites oficiais respondem"],
+                ] as [AbaFonte, string, string, string][]).map(([id, ic, titulo, sub]) => (
+                  <button key={id} onClick={() => setAba(id)} data-testid={`menu-${id}`} className={`text-left rounded-lg px-3 py-2 cursor-pointer shrink-0 md:shrink min-w-[150px] md:min-w-0 flex items-start gap-2 transition ${aba === id ? "bg-[#673de6] text-white shadow-sm" : "text-slate-700 hover:bg-[#ebe4ff]"}`}>
+                    <span className="text-base leading-none mt-0.5">{ic}</span>
+                    <span className="min-w-0"><span className="block text-xs font-bold leading-tight">{titulo}</span><span className={`block text-[10px] leading-tight mt-0.5 ${aba === id ? "text-white/80" : "text-slate-500"}`}>{sub}</span></span>
+                  </button>
+                ))}
+              </nav>
+              <div className="flex-1 min-w-0 flex flex-col min-h-0">
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-xs text-slate-700">
+              {aba !== "visao" && (<div className="rounded-lg bg-[#f5f1ff] border border-[#e0d6ff] px-3 py-2"><h4 className="text-sm font-bold text-[#2f1c6a]">{({ leis: "Leis federais (Planalto)", outras: "Leis estaduais e municipais", pendentes: "Fontes pendentes", testes: "Testes de acesso" } as Record<string, string>)[aba]}</h4><p className="text-[11px] text-slate-600 mt-0.5">{({ leis: "As leis federais que o sistema conhece. Mantenha-as atualizadas pelo site ou enviando o arquivo salvo.", outras: "O Planalto só tem leis federais. Envie aqui o texto das leis do Estado, dos Municípios, decretos e resoluções, para o sistema conferir as citações.", pendentes: "Fontes que apareceram nas minutas e ainda não têm cópia guardada. Envie o arquivo de cada uma para tirá-la desta lista.", testes: "Mostra se o servidor e o navegador conseguem abrir os sites oficiais (STF, STJ, TNU, TJGO e Planalto)." } as Record<string, string>)[aba]}</p></div>)}
               {erro && <p className="rounded-lg border border-red-200 bg-red-50 text-red-800 p-2">{erro}</p>}
+
+              {aba === "visao" && (
+                <div className="space-y-4" data-testid="visao-geral">
+                  <div>
+                    <h4 className="text-sm font-bold">Para que serve</h4>
+                    <p className="mt-1">Quando o sistema redige uma minuta, ele confere os artigos de lei, as súmulas e os precedentes citados com o texto oficial. Aqui você mantém essa base: manda o texto das leis que o sistema ainda não tem e acompanha o que falta.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><div className="text-2xl font-black text-emerald-700">{contagem.prontas}</div><div className="text-[11px] text-emerald-800">leis federais prontas de {contagem.total}</div></div>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3"><div className="text-2xl font-black text-amber-700">{nPendentes ?? "…"}</div><div className="text-[11px] text-amber-800">fontes citadas nas minutas e ainda sem cópia</div></div>
+                    <div className={`rounded-xl border p-3 ${contagem.erro ? "border-red-200 bg-red-50" : "border-slate-200 bg-slate-50"}`}><div className={`text-2xl font-black ${contagem.erro ? "text-red-700" : "text-slate-500"}`}>{contagem.erro}</div><div className="text-[11px] text-slate-600">leis federais com erro</div></div>
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-bold">Por onde começar</h4>
+                    {([
+                      ["outras", "📜", "Preciso incluir uma lei estadual ou municipal", "Abra “Leis estaduais e municipais” e envie o arquivo da lei."],
+                      ["pendentes", "⏳", "Quero ver o que as minutas citaram e eu ainda não tenho", "Abra “Fontes pendentes”: a lista cresce sozinha conforme as minutas são geradas."],
+                      ["leis", "🏛", "Quero atualizar as leis federais do Planalto", "Abra “Leis federais” e use “Atualizar todas” ou envie os arquivos salvos do navegador."],
+                      ["testes", "🔎", "As consultas às leis estão falhando", "Abra “Testes de acesso” para ver quais sites respondem ao servidor e ao navegador."],
+                    ] as [AbaFonte, string, string, string][]).map(([id, ic, t, d]) => (
+                      <button key={id} onClick={() => setAba(id)} className="w-full text-left rounded-xl border border-slate-200 hover:border-[#673de6] hover:bg-[#f5f1ff] p-3 cursor-pointer flex items-start gap-3"><span className="text-lg">{ic}</span><span><span className="block text-xs font-bold">{t}</span><span className="block text-[11px] text-slate-500">{d}</span></span></button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {aba === "leis" && (<>
                 <div onDragOver={(e) => { e.preventDefault(); setArrastando(true); }} onDragLeave={() => setArrastando(false)} onDrop={aoSoltar} onClick={() => entradaArquivos.current?.click()}
@@ -303,6 +338,8 @@ export const FontesOficiaisPanel: React.FC = () => {
                   </div>}
                 </div>
               </>)}
+            </div>
+              </div>
             </div>
           </div>
         </div>

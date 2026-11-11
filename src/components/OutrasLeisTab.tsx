@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { paginaSoComCasca } from "../utils/paginaCasca";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
 import { BotaoVerLei } from "./VisualizadorLei";
 
@@ -26,7 +27,10 @@ export const OutrasLeisTab: React.FC = () => {
       try {
         let bytes: ArrayBuffer, formato: "" | "texto" = "";
         if (/\.pdf$/i.test(f.name)) { const t = await extractTextFromPdf(f, undefined, { fullSequential: true }); if (!t?.text || t.text.trim().length < 100) throw new Error("não consegui ler texto deste PDF (se for imagem digitalizada, envie o texto ou a página HTML)"); bytes = new TextEncoder().encode(t.text).buffer as ArrayBuffer; formato = "texto"; }
-        else if (/\.(html?|txt)$/i.test(f.name)) { bytes = await f.arrayBuffer(); formato = /\.txt$/i.test(f.name) ? "texto" : ""; }
+        else if (/\.(html?|txt)$/i.test(f.name)) {
+          bytes = await f.arrayBuffer(); formato = /\.txt$/i.test(f.name) ? "texto" : "";
+          if (!formato) { const casca = paginaSoComCasca(new TextDecoder("utf-8").decode(bytes.slice(0, 400_000))); if (casca) throw new Error(casca); }
+        }
         else throw new Error("formato não aceito (use .htm, .html, .txt ou .pdf)");
         const r = await fetch("/api/fontes/outras/analisar", { method: "POST", headers: { "Content-Type": "application/octet-stream", "x-formato": formato }, body: bytes });
         const j = await r.json().catch(() => ({} as any)); if (!r.ok) throw new Error(j.erro || `erro ${r.status}`);

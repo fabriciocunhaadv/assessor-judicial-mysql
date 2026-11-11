@@ -21,8 +21,8 @@ try:
             pg.add_init_script(f"const __v = setInterval(() => {{ if (document.documentElement) {{ document.documentElement.dataset.assessorExtensao = '{versao}'; clearInterval(__v); }} }}, 5); window.addEventListener('projudi:leis-pedido', () => {{ window.__pedido = JSON.parse(document.documentElement.dataset.projudiLeisPedido); delete document.documentElement.dataset.projudiLeisPedido; }});")
             pg.route("**/api/fontes/sites-teste", lambda r, _q=None: r.fulfill(status=200, content_type="application/json", body=json.dumps({"sites": SITES})))
             pg.route("**/api/fontes/reconhecer", lambda r, _q=None: r.fulfill(status=200, content_type="application/json", body=json.dumps({"resultados": SERVIDOR})))
-            pg.goto(f"http://127.0.0.1:{PV}/testes/gigantes/fontes.html"); pg.get_by_text("Abrir central").first.click(); pg.wait_for_selector("text=Constituição Federal de 1988", timeout=60000)
-            pg.get_by_role("button", name="Testes de acesso", exact=True).click()
+            pg.goto(f"http://127.0.0.1:{PV}/testes/gigantes/fontes.html"); pg.get_by_text("Abrir central").first.click(); pg.get_by_test_id("menu-leis").click(); pg.wait_for_selector("text=Constituição Federal de 1988", timeout=60000)
+            pg.get_by_test_id("menu-testes").click()
             return pg, erros
         pg, erros = nova("1.0.88"); assert pg.get_by_test_id("testar-pelo-navegador").is_disabled(), "extensão 1.0.88 não sabe testar"; pg.close()
         pg, erros = nova("1.0.89")
