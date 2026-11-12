@@ -4,6 +4,7 @@ import { getHistory, marcarLancadoProjudi, HISTORICO_MUDOU } from "../utils/hist
 import { idsDoMesmoProcesso } from "../utils/lancadoProcesso";
 import { AvisosDaMinuta } from "./AvisosDaMinuta";
 import { AdaptarParadigmoModal } from "./AdaptarParadigmoModal";
+import { ConferirModelosModal } from "./ConferirModelosModal";
 import ReactMarkdown from "react-markdown";
 import { organizarTextoDaMinuta } from "../utils/organizarTextoDaMinuta";
 import { MinutaSecaoEditavel } from "./MinutaSecaoEditavel";
@@ -199,11 +200,12 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
 
   // Versions management
   const baseOriginalMinute = result?.originalMinute || result?.minute;
+  const [conferirAberto, setConferirAberto] = useState(false);
   const [adaptarAberto, setAdaptarAberto] = useState(false);      // ganchos ficam ANTES de qualquer 'return' antecipado (senão: erro React #310 ao carregar uma minuta)
   const idAtualRef = useRef<string | null>(currentAnalysisId || null);      // a resposta do chat compara com este id: se a tela já mostra OUTRO processo, não a sobrescreve
   idAtualRef.current = currentAnalysisId || null;
   // Sinal para a esteira da extensão: enquanto a pessoa conversa com o chat (digitando ou aguardando a resposta) ou adapta a minuta a um paradigma, a esteira ESPERA para não trocar o processo na tela
-  const ocupadoComMinuta = isChatSending || chatInput.trim().length > 0 || adaptarAberto;
+  const ocupadoComMinuta = isChatSending || chatInput.trim().length > 0 || adaptarAberto || conferirAberto;
   useEffect(() => {
     try { if (ocupadoComMinuta) document.documentElement.dataset.assessorOcupado = "1"; else delete document.documentElement.dataset.assessorOcupado; } catch { /* sem documento */ }
     return () => { try { delete document.documentElement.dataset.assessorOcupado; } catch { /* sem documento */ } };
@@ -679,6 +681,16 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
     if (currentAnalysisId) { try { await updateAnalysisChatAndMinute(currentAnalysisId, chatMessages, nova, atualizadas); } catch (e) { console.warn("Não gravou a minuta adaptada:", e); } }
     setActiveTab("formatted");
     setUpdateNotification(`Minuta adaptada ao modelo “${tituloModelo}”. A anterior continua nas versões.`);
+    setTimeout(() => setUpdateNotification(null), 6000);
+  };
+
+  const aplicarConferencia = async (nova: MinuteData, resumo: string) => {
+    onUpdateMinute(nova);
+    const nv: MinuteVersion = { id: `v-${Date.now()}-modelos`, versionNumber: versions.length + 1, label: "Conferida com modelos do Projudi", timestamp: Date.now(), minute: nova, source: "editor", author: "Assessor Judicial", changeSummary: `Ajustes pelos modelos do Projudi: ${resumo}` };
+    const atualizadas = [nv, ...versions]; setVersions(atualizadas);
+    if (currentAnalysisId) { try { await updateAnalysisChatAndMinute(currentAnalysisId, chatMessages, nova, atualizadas); } catch (e) { console.warn("Não gravou a minuta conferida:", e); } }
+    setActiveTab("formatted");
+    setUpdateNotification("Minuta ajustada pelos modelos do Projudi. A anterior continua nas versões.");
     setTimeout(() => setUpdateNotification(null), 6000);
   };
 
@@ -1300,6 +1312,14 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
           >
             <span>Adaptar a paradigma</span>
           </button>
+          <button
+            onClick={() => setConferirAberto(true)}
+            className="px-2.5 py-1 border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-900 font-bold rounded flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+            title="Comparar esta minuta com os modelos cadastrados no Projudi (citação, cumprimento, comandos à escrivania…)"
+            data-testid="btn-conferir-modelos"
+          >
+            <span>Conferir modelos do Projudi</span>
+          </button>
           {/* Raio-X da Minuta */}
           {onOpenXRay && (
             <button
@@ -1715,6 +1735,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             onInjectAsParadigm={handleTriggerInjectParadigm}
           />
         )}
+        <ConferirModelosModal aberto={conferirAberto} aoFechar={() => setConferirAberto(false)} minuta={minute} aoAplicar={aplicarConferencia} />
         <AdaptarParadigmoModal aberto={adaptarAberto} aoFechar={() => setAdaptarAberto(false)} minuta={minute} aoAplicar={aplicarParadigmo} />
         {/* Tab 1: Formatted Document View */}
         {activeTab === "formatted" && (

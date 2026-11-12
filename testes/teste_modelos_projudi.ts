@@ -1,0 +1,20 @@
+import { modelosParecidos } from '../src/utils/modelosProjudi';
+import { aplicarAjuste } from '../src/components/ConferirModelosModal';
+const ok = (c: boolean, t: string) => { if (!c) { console.error('FALHOU:', t); process.exit(1); } console.log('ok:', t); };
+const mk = (id: string, nome: string, tipo: string): any => ({ id, projudiId: id, nome, tipo, serventia: 'Vara X - GO', texto: 'texto do modelo '.repeat(5), hash: id, atualizadoEm: 1 });
+const modelos = [mk('1', 'Citação por WhatsApp', 'Citação'), mk('2', 'Sentença Padrão', 'Sentença'), mk('3', 'Cumprimento de Sentença - intimação para pagar', 'Decisão'), mk('4', 'Ofício ao INSS', 'Ofício')];
+const minutaCit: any = { title: 'DESPACHO', relatorio: 'Defiro a citação da parte ré.', fundamentacao: 'A parte informou número de WhatsApp.', dispositivo: 'Cite-se a ré por WhatsApp, no prazo de 15 dias.', closing: 'Cumpra-se.', fullFormattedText: '' };
+let r = modelosParecidos(minutaCit, modelos);
+ok(r[0]?.modelo.id === '1', 'citação por WhatsApp é o primeiro parecido para uma minuta que cita por WhatsApp (' + r.map((x) => x.modelo.nome + ':' + x.pontos.toFixed(1)).join(' | ') + ')');
+ok(!r.some((x) => x.modelo.id === '4'), 'ofício ao INSS não aparece para essa minuta');
+const minutaCump: any = { title: 'DECISÃO', relatorio: 'Cumprimento de sentença.', fundamentacao: 'Recebo o cumprimento.', dispositivo: 'Intime-se o executado para pagar o débito em 15 dias.', closing: '', fullFormattedText: '' };
+r = modelosParecidos(minutaCump, modelos);
+ok(r[0]?.modelo.id === '3', 'cumprimento de sentença acha o modelo de intimação para pagar (' + r.map((x) => x.modelo.nome).join(' | ') + ')');
+// aplicar ajustes
+const base: any = { ...minutaCit, fullFormattedText: 'CAB\n\nIII - DISPOSITIVO\nCite-se a ré por WhatsApp, no prazo de 15 dias.\n\nCumpra-se.' };
+let n = aplicarAjuste(base, { titulo: 't', gravidade: 'alta', noModelo: '', naMinuta: '', aplicavel: true, sugestao: { acao: 'acrescentar', secao: 'dispositivo', de: '', texto: 'Certifique-se o envio.' } } as any);
+ok(!!n && n.dispositivo.endsWith('\n\nCertifique-se o envio.') && n.fullFormattedText.includes('15 dias.\n\nCertifique-se o envio.'), 'acrescentar põe o texto no fim do dispositivo e no texto completo');
+n = aplicarAjuste(base, { titulo: 't', gravidade: 'media', noModelo: '', naMinuta: '', aplicavel: true, sugestao: { acao: 'trocar', secao: 'dispositivo', de: '15 dias', texto: '5 dias' } } as any);
+ok(!!n && n.dispositivo.includes('no prazo de 5 dias') && n.fullFormattedText.includes('no prazo de 5 dias'), 'trocar substitui o trecho exato');
+ok(aplicarAjuste(base, { titulo: 't', gravidade: 'baixa', noModelo: '', naMinuta: '', aplicavel: true, sugestao: { acao: 'trocar', secao: 'dispositivo', de: 'nao existe', texto: 'x' } } as any) === null, 'trocar de trecho inexistente devolve null (não aplica)');
+console.log('TUDO OK');

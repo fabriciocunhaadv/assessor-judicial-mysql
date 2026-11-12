@@ -14,6 +14,7 @@ import { Sidebar } from "./components/Sidebar";
 import { PromptSelectorAndEditor } from "./components/PromptSelectorAndEditor";
 import { SystemTour } from "./components/SystemTour";
 import { AssistenteBoasVindas, AcaoAssistente } from "./components/AssistenteBoasVindas";
+import { receberModelosProjudi } from "./utils/modelosProjudi";
 import { PromptManagerModal } from "./components/PromptManagerModal";
 import { PdfUploadZone } from "./components/PdfUploadZone";
 import { useCoberturaLeitura } from "./components/useCoberturaLeitura";
@@ -446,6 +447,17 @@ export default function App() {
       window.removeEventListener("assessor_data_restored", handleDataRestored);
       window.removeEventListener("assessor_prompts_updated", handleDataRestored);
     };
+  }, []);
+
+  // Ponte com a extensão: ela entrega os modelos capturados do Projudi (window.postMessage) e o app responde quantos gravou
+  useEffect(() => {
+    const ouvir = (ev: MessageEvent) => {
+      const d = ev.data; if (ev.source !== window || !d || d.__projudi !== "modelos" || d.fase !== "enviar") return;
+      const responder = (o: Record<string, unknown>) => window.postMessage({ __projudiResp: "modelos", reqId: d.reqId, ...o }, window.location.origin);
+      receberModelosProjudi(Array.isArray(d.itens) ? d.itens : []).then((r) => { responder({ tipo: "ok", ...r }); if (r.gravados) toast.success(`${r.gravados} modelo(s) do Projudi recebido(s) da extensão.`); }, (e) => responder({ tipo: "erro", erro: String(e?.message || e) }));
+    };
+    window.addEventListener("message", ouvir);
+    return () => window.removeEventListener("message", ouvir);
   }, []);
 
   // Listen to Extension Import Messages

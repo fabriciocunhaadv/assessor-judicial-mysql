@@ -2770,6 +2770,52 @@ app.post("/api/assistente-sugerir", async (req, res) => {
     }
 });
 
+// Conferir a minuta pronta com os modelos cadastrados no Projudi (citação por WhatsApp, cumprimento de sentença, comandos à escrivania…).
+// Não reescreve nada: devolve divergências com sugestão; o usuário aplica uma a uma. O código confere se a troca sugerida existe mesmo na minuta.
+const SECOES_CONFERENCIA = ["relatorio", "fundamentacao", "dispositivo", "closing"] as const;
+app.post("/api/conferir-modelos", async (req, res) => {
+    try {
+        const apiKey = extractApiKey(req);
+        if (!apiKey) return res.status(401).json({ error: "Chave da API Gemini ausente." });
+        const m = req.body?.minute || {};
+        const modelos = (Array.isArray(req.body?.modelos) ? req.body.modelos : []).slice(0, 3).map((x: any) => ({ id: String(x?.id || ""), nome: String(x?.nome || "").slice(0, 200), tipo: String(x?.tipo || ""), texto: String(x?.texto || "").slice(0, 14000) })).filter((x: any) => x.id && x.texto.length > 30);
+        if (!modelos.length) return res.status(400).json({ error: "Nenhum modelo foi enviado para a conferência." });
+        const minutaTxt = [m.title, m.relatorio, m.fundamentacao, m.dispositivo, m.closing].filter(Boolean).join("\n\n");
+        if (minutaTxt.length < 100) return res.status(400).json({ error: "A minuta está vazia." });
+        const sistema = `Você é conferente de minutas judiciais. Recebe a MINUTA PRONTA e MODELOS que o próprio juízo cadastrou no Projudi (com as fórmulas, comandos à escrivania, prazos e formas de comunicação que o juízo adota). Para CADA modelo diga se ele se aplica ao ato da minuta e, se aplicar, aponte onde a minuta não segue o modelo.
+REGRAS:
+1. Só aponte diferenças que importam: comandos à escrivania/serventia, forma e prazo de citação/intimação, fórmula do dispositivo, advertências e cominações que o modelo manda constar, providências de cumprimento. Ignore diferença de estilo e de redação.
+2. NÃO invente fatos, partes, datas, valores nem números. O modelo é só guia do que deve constar: adapte o texto sugerido aos dados da MINUTA (se o modelo tiver espaços/variáveis que a minuta não preenche, deixe de fora ou use os dados da minuta).
+3. Se o modelo trata de assunto/ato diferente da minuta, responda aplica=false com o motivo e nenhum item.
+4. Cada item traz uma sugestão aplicável: acao "acrescentar" (texto a incluir ao FIM da seção indicada) ou "trocar" (de = trecho EXATO e curto da minuta, copiado sem alterar; para = novo texto). Seções: relatorio, fundamentacao, dispositivo, closing.
+5. No máximo 8 itens por modelo, do mais importante ao menos. Se a minuta já segue o modelo, aplica=true e itens vazios.
+Responda SOMENTE JSON: {"resultados":[{"modeloId":"...","aplica":true,"motivo":"...","itens":[{"titulo":"...","gravidade":"alta|media|baixa","noModelo":"o que o modelo manda","naMinuta":"o que a minuta tem (ou 'não consta')","sugestao":{"acao":"acrescentar|trocar","secao":"dispositivo","de":"","texto":"..."}}]}]}`;
+        const usuario = modelos.map((x: any) => `[MODELO ${x.id} — ${x.nome} (${x.tipo})]\n${x.texto}\n[FIM DO MODELO]`).join("\n\n") + `\n\n[MINUTA PRONTA]\nTÍTULO: ${m.title || ""}\n\nRELATÓRIO:\n${m.relatorio || ""}\n\nFUNDAMENTAÇÃO:\n${m.fundamentacao || ""}\n\nDISPOSITIVO:\n${m.dispositivo || ""}\n\nFECHO:\n${m.closing || ""}`;
+        const response = await generateWithFallbackAndRetry({
+            apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res,
+            contents: [{ role: "user", parts: [{ text: usuario }] }],
+            config: { systemInstruction: sistema, temperature: 0.1, maxOutputTokens: 12000, responseMimeType: "application/json" },
+            timeoutMs: 120000,
+        } as any);
+        const p: any = safeParseObj(response.text || "{}") || {};
+        const ids = new Set(modelos.map((x: any) => x.id));
+        const resultados = (Array.isArray(p.resultados) ? p.resultados : []).filter((r: any) => ids.has(String(r?.modeloId))).map((r: any) => ({
+            modeloId: String(r.modeloId), aplica: r.aplica !== false, motivo: String(r.motivo || "").slice(0, 400),
+            itens: (Array.isArray(r.itens) ? r.itens : []).slice(0, 8).map((it: any) => {
+                const sg = it?.sugestao || {}, secao = (SECOES_CONFERENCIA as readonly string[]).includes(String(sg.secao)) ? String(sg.secao) : "";
+                const texto = String(sg.texto || "").trim(), de = String(sg.de || "");
+                let acao: string = sg.acao === "trocar" ? "trocar" : "acrescentar", aplicavel = !!(secao && texto);
+                if (aplicavel && acao === "trocar") { const base = String(m[secao] || ""); aplicavel = !!de && base.split(de).length === 2; }      // a troca só vale se o trecho existe uma única vez na seção
+                return { titulo: String(it?.titulo || "").slice(0, 160), gravidade: ["alta", "media", "baixa"].includes(it?.gravidade) ? it.gravidade : "media", noModelo: String(it?.noModelo || "").slice(0, 600), naMinuta: String(it?.naMinuta || "").slice(0, 600), sugestao: { acao, secao, de: acao === "trocar" ? de : "", texto }, aplicavel };
+            }).filter((it: any) => it.titulo),
+        }));
+        return res.json({ success: true, resultados, usage: response.usageMetadata || {}, modelUsed: (response as any).modelVersion || "" });
+    } catch (err: any) {
+        console.error("Erro em /api/conferir-modelos:", err);
+        return res.status(500).json({ error: formatGeminiError(err) || "Falha ao conferir com os modelos." });
+    }
+});
+
 app.post("/api/reestruturar-minuta", async (req, res) => {
     try {
         const apiKey = extractApiKey(req);
