@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { ModelosProjudiPanel } from "./ModelosProjudiPanel";
 import {
   X,
   Scale,
@@ -238,7 +239,7 @@ export const CabinetTesesModal: React.FC<CabinetTesesModalProps> = ({
   onClearInitialDraft,
 }) => {
   const { isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<"caderno" | "modelos_paradigmas" | "importar_pdf" | "varredura_automatica" | "base_conhecimento">("caderno");
+  const [activeTab, setActiveTab] = useState<"caderno" | "modelos_paradigmas" | "importar_pdf" | "varredura_automatica" | "base_conhecimento" | "modelos_projudi">("caderno");
   
   // Tab 1: Caderno de Teses
   const [text, setText] = useState(tesesData.text || "");
@@ -1912,6 +1913,18 @@ ${cleanText}
             >
               <Database className="w-4 h-4 text-amber-600" />
               <span>Base de Conhecimento</span>
+            </button>
+            <button
+              id="tour-teses-modelos-projudi-tab"
+              onClick={() => setActiveTab("modelos_projudi")}
+              data-testid="aba-modelos-projudi"
+              className={`px-4 py-2 text-xs font-bold rounded-t-lg transition flex items-center gap-2 cursor-pointer border-t shrink-0 border-x ${
+                activeTab === "modelos_projudi"
+                  ? "bg-white text-indigo-900 border-indigo-200 shadow-2xs -mb-px"
+                  : "bg-transparent text-indigo-600 hover:text-indigo-900 border-transparent"
+              }`}
+            >
+              <span>📑 Modelos do Projudi</span>
             </button>
           </div>
 
@@ -3927,6 +3940,7 @@ ${cleanText}
               <KnowledgeBasePanel />
             </div>
           )}
+          {activeTab === "modelos_projudi" && <ModelosProjudiPanel />}
         </div>
 
         {/* Footer */}
