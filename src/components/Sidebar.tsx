@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   Home, ShieldCheck, UserCheck, Activity, History, Scale,
   Sparkles, BookOpen, ClipboardList, Calendar, Gavel, SlidersHorizontal,
-  ChevronLeft, ChevronRight, Bot, KeyRound, Smartphone, LifeBuoy
+  ChevronLeft, ChevronRight, Bot, KeyRound, Smartphone, LifeBuoy, Compass
 } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 
@@ -92,6 +92,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {!isCollapsed && <span>Auditoria Ouro</span>}
             </button>
           )}
+
+          <button
+            onClick={() => window.dispatchEvent(new Event("assessor:abrir-assistente"))}
+            className={`flex items-center gap-2.5 px-3 h-10 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs transition cursor-pointer ${isCollapsed ? "justify-center" : ""}`}
+            title="O que fazer hoje?"
+            data-testid="btn-assistente-do-dia"
+          >
+            <Compass className="w-4 h-4 text-indigo-500" />
+            {!isCollapsed && <span>O que fazer hoje?</span>}
+          </button>
 
           {onOpenPresentation && (
             <button

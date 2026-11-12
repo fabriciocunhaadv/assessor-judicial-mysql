@@ -13,6 +13,7 @@ import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { PromptSelectorAndEditor } from "./components/PromptSelectorAndEditor";
 import { SystemTour } from "./components/SystemTour";
+import { AssistenteBoasVindas, AcaoAssistente } from "./components/AssistenteBoasVindas";
 import { PromptManagerModal } from "./components/PromptManagerModal";
 import { PdfUploadZone } from "./components/PdfUploadZone";
 import { useCoberturaLeitura } from "./components/useCoberturaLeitura";
@@ -354,6 +355,20 @@ export default function App() {
   // o super admin pode excluir a minuta de qualquer usuário no Histórico (os demais, só a própria)
   useEffect(() => { definirSuperAdminHistorico(!!isSuperAdmin); }, [isSuperAdmin]);
   // Só "Nova Análise" (barra lateral) fecha o módulo aberto e volta ao formulário; as demais opções da barra lateral não fecham nada
+  // Assistente do dia: cada botão leva à função certa (os mesmos abridores do menu lateral)
+  const aoAcaoAssistente = (a: AcaoAssistente) => {
+    switch (a) {
+      case "analisar": setIsMinuteAuditorOpen(false); setIsHearingWorkbenchModalOpen(false); setIsTurboModalOpen(false); setTimeout(() => document.getElementById("tour-input-panel")?.scrollIntoView({ behavior: "smooth", block: "center" }), 200); break;
+      case "historico": setIsHistoryModalOpen(true); break;
+      case "lupa": abrirModuloPrincipal("lupa"); break;
+      case "mesa": abrirModuloPrincipal("mesa"); break;
+      case "turbo": abrirModuloPrincipal("turbo"); break;
+      case "gigantes": window.dispatchEvent(new CustomEvent("gigantes:abrir")); break;
+      case "teses": setIsTesesModalOpen(true); break;
+      case "manual": setIsManualModalOpen(true); break;
+      case "guia": setIsAssessorWorkflowGuideOpen(true); break;
+    }
+  };
   const algumModuloAberto = isMinuteAuditorOpen || isHearingWorkbenchModalOpen || isTurboModalOpen;
   useEffect(() => {
     if (!algumModuloAberto) return;
@@ -2253,6 +2268,7 @@ export default function App() {
       <AvisoExtensao />
       <Toaster position="bottom-right" containerStyle={{ zIndex: 99999 }} toastOptions={{ duration: 4000, style: { background: '#1e293b', color: '#fff', border: '1px solid #334155' } }} />
       <AvisoNovaVersao />
+      <AssistenteBoasVindas aoAcao={aoAcaoAssistente} />
       <SystemTour 
         runAppTour={!generationResult && !isHistoryModalOpen && !isPromptManagerOpen && !isTesesModalOpen && !isManualModalOpen} 
         runResultTour={!!generationResult && !isHistoryModalOpen && !isPromptManagerOpen && !isTesesModalOpen && !isManualModalOpen} 
