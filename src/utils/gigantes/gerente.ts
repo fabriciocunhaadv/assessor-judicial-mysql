@@ -57,6 +57,7 @@ class Gerente {
   private jobs = new Map<string, JobGig>();
   private rodando = new Set<string>();
   private sinais = new Map<string, "pausar" | "cancelar">();
+  private ctls = new Map<string, Set<AbortController>>();      // chamadas à IA em andamento, por processo: Pausar/Cancelar as interrompem na hora
   private fontesOcr = new Map<string, { arquivo?: () => Promise<File | null>; paginaInicial: number }[]>();
   private pularOcrDe = new Set<string>();
   private ultimaChamada = 0;
@@ -185,13 +186,18 @@ class Gerente {
   }
 
   pausar(id: string) {
-    if (this.rodando.has(id)) { this.sinais.set(id, "pausar"); return; }
+    if (this.rodando.has(id)) { this.sinais.set(id, "pausar"); this.interromper(id, "Pausando… (interrompendo a etapa em andamento)"); return; }
     if (this.fila.includes(id)) { this.sairDaFila(id); const j = this.jobs.get(id); if (j) { j.status = "pausado"; j.etapa = "Pausado: clique em Retomar para voltar à fila."; void this.gravar(j); } }
   }
   async cancelar(id: string) {
     const j = this.jobs.get(id); if (!j) return;
-    if (this.rodando.has(id)) this.sinais.set(id, "cancelar");
+    if (this.rodando.has(id)) { this.sinais.set(id, "cancelar"); this.interromper(id, "Cancelando… (interrompendo a etapa em andamento)"); }
     else { this.sairDaFila(id); j.status = "cancelado"; j.etapa = "Cancelado."; await this.gravar(j); }
+  }
+  /** Mostra o pedido na hora e derruba a chamada à IA que estiver em andamento (antes o clique só valia na próxima etapa, minutos depois). */
+  private interromper(id: string, etapa: string) {
+    const j = this.jobs.get(id); if (j) { j.etapa = etapa; this.avisar(); }
+    for (const c of this.ctls.get(id) || []) { try { c.abort(); } catch { /* já terminou */ } }
   }
   async remover(id: string) { if (this.rodando.has(id)) return; this.jobs.delete(id); this.avisar(); try { await apagarJob(id); } catch { /* ignora */ } }
   /** Série de partes do mesmo processo (da primeira à última, pela cadeia de antecessores). */
@@ -266,14 +272,16 @@ class Gerente {
       if (this.sinais.has(id)) throw new Error("__parar__");
       try {
         const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 14 * 60000);
+        (this.ctls.get(id) || this.ctls.set(id, new Set()).get(id)!).add(ctl);
         let txt = "";
-        try { const r = await fetch(rota, { method: "POST", headers: getApiHeaders(), body: JSON.stringify(corpo), signal: ctl.signal }); txt = await r.text(); } finally { clearTimeout(to); }
+        try { const r = await fetch(rota, { method: "POST", headers: getApiHeaders(), body: JSON.stringify(corpo), signal: ctl.signal }); txt = await r.text(); } finally { clearTimeout(to); this.ctls.get(id)?.delete(ctl); }
         let data: any; try { data = JSON.parse(txt.trim()); } catch { throw new Error("resposta do servidor incompleta"); }
         if (data?.error || data?.isError) throw Object.assign(new Error(typeof data.error === "string" ? data.error : "erro do servidor"), { codigo: data?.codigo });
         this.registrarUso(id, rota, data);
         return data;
       } catch (e: any) {
         ultimoErro = e;
+        if (this.sinais.has(id)) throw new Error("__parar__");      // a chamada foi derrubada de propósito (Pausar/Cancelar)
         if (e?.message === "__parar__" || e?.codigo) throw e;      // erro com código (autos grandes demais para a chave gratuita): quem chamou decide, sem repetir
         if (!/incompleta|503|indispon|429|cota|quota|rate|Failed to fetch|Network|aborted|timeout/i.test(String(e?.message || e)) || t === 5) throw e;
         const j = this.jobs.get(id); if (j) { j.etapa = `Aguardando a cota da IA renovar (tentativa ${t + 2}/6)…`; this.avisar(); }
@@ -408,7 +416,7 @@ class Gerente {
   private async ouPular<T>(id: string, p: Promise<T>): Promise<T | typeof PULOU> {
     p.catch(() => {});
     return new Promise((ok, no) => {
-      const iv = setInterval(() => { if (this.pularOcrDe.has(id)) { clearInterval(iv); ok(PULOU); } }, 400);
+      const iv = setInterval(() => { if (this.pularOcrDe.has(id) || this.sinais.has(id)) { clearInterval(iv); ok(PULOU); } }, 400);
       p.then((v) => { clearInterval(iv); ok(v); }, (e) => { clearInterval(iv); no(e); });
     });
   }
