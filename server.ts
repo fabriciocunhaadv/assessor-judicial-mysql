@@ -2752,13 +2752,14 @@ app.post("/api/assistente-sugerir", async (req, res) => {
         if (!apiKey) return res.status(401).json({ error: "Chave da API Gemini ausente." });
         const perfil = req.body?.perfil === "magistrado" ? "magistrado" : "assessor";
         const texto = String(req.body?.texto || "").trim().slice(0, 500);
+        const ctxId = String(req.body?.contexto || ""); const ctx = OPCOES_ASSISTENTE[ctxId] ? `\nA pessoa está agora na opção "${ctxId}": ${OPCOES_ASSISTENTE[ctxId]}. Dúvidas dela provavelmente são sobre essa opção.` : "";
         if (texto.length < 3) return res.status(400).json({ error: "Escreva o que você precisa." });
         const permitidas = PERMITIDAS_ASSISTENTE[perfil];
         const lista = permitidas.map((id) => `- ${id}: ${OPCOES_ASSISTENTE[id]}`).join("\n");
         const response = await generateWithFallbackAndRetry({
             apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res,
             contents: [{ role: "user", parts: [{ text: `PEDIDO DO USUÁRIO: "${texto}"` }] }],
-            config: { systemInstruction: `Você é o recepcionista de um sistema judicial. Escolha a UMA opção da lista que melhor atende ao pedido do usuário. Se nenhuma servir, responda id "nenhuma". Responda SOMENTE JSON: {"id":"<id da lista ou nenhuma>","resposta":"<uma frase curta em português simples dizendo o que será aberto>"}.\nOPÇÕES:\n${lista}`, temperature: 0, maxOutputTokens: 300, responseMimeType: "application/json" },
+            config: { systemInstruction: `Você é o recepcionista de um sistema judicial. Se o usuário quer IR a alguma função, escolha a UMA opção da lista e responda uma frase curta dizendo o que será aberto. Se ele apenas faz uma PERGUNTA (o que você faz, como funciona algo, dúvida), responda em até 3 frases simples usando só as opções da lista e devolva id "nenhuma". Se nada servir, id "nenhuma" e resposta vazia. Responda SOMENTE JSON: {"id":"<id da lista ou nenhuma>","resposta":"<texto>"}.${ctx}\nOPÇÕES:\n${lista}`, temperature: 0, maxOutputTokens: 500, responseMimeType: "application/json" },
             timeoutMs: 30000,
         } as any);
         const p: any = safeParseObj(response.text || "{}") || {};

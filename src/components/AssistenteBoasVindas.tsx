@@ -2,7 +2,7 @@
 // pergunta o que a pessoa quer fazer, mostra poucas escolhas grandes por vez e termina no botão que abre a função (o da fila abre a página da extensão numa aba nova).
 // O perfil (assessor ou magistrado) vem SÓ do cadastro do usuário. "Minimizar" vira uma pílula que reabre a conversa do começo; "Fechar" só volta amanhã ou pelo menu lateral.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { X, Minus, MessageCircle, Sparkles, ArrowLeft, Home, Send } from "lucide-react";
+import { X, Minus, MessageCircle, Sparkles, ArrowLeft, Home, Send, Eraser } from "lucide-react";
 import { getApiHeaders } from "../utils/apiKeyManager";
 import { useAuth } from "../lib/AuthContext";
 import { URL_EXTENSAO_CHROME_STORE } from "../config/extensao";
@@ -55,12 +55,15 @@ const RAIZ: Record<Perfil, string[]> = {
 };
 
 // caminho (pais → filho) até uma opção, para abrir direto na resposta certa
-const caminhoDe = (id: string): string[] => { const pai = Object.values(NOS).find((n) => n.filhos?.includes(id)); return pai ? [pai.id, id] : [id]; };
+const paiDe = (id: string): string | null => Object.values(NOS).find((n) => n.filhos?.includes(id))?.id || null;
+// conversa em ordem de acontecimento: o que a pessoa digitou/clicou e o que o assistente respondeu (nada se mistura)
+interface Item { k: "voce" | "bot"; t: string; id?: string; texto?: boolean }
+const PERGUNTA_QUEM_E = /o que (voc[eê]|vc|tu|o assistente) (faz|sabe|pode)|quem (e|é) (voc[eê]|vc)|para que serve|como (voc[eê]|vc) (funciona|ajuda)|como me ajuda/i;
 // palavras-chave locais: respondem na hora, sem IA; se não bater, pergunta à IA
 const CHAVES: [string, RegExp][] = [
   ["lupa_fila", /lupa.*(fila|lote|v[aá]rios)|(fila|lote).*lupa/i], ["lupa", /lupa|conferir.*minuta|auditar|revisar.*assessor/i],
   ["sentenca_fila", /(v[ií]deos?|audi[eê]ncias?).*(fila|lote|v[aá]rias|v[aá]rios)|(fila|lote).*(v[ií]deo|audi[eê]ncia)/i], ["sentenca_individual", /v[ií]deo|mutir[aã]o|sentenciar.*audi[eê]ncia/i],
-  ["mesa", /pauta|ata|audi[eê]ncia/i], ["fila", /fila|lote|v[aá]rios processos|em massa|esteira/i],
+  ["mesa", /pauta|\bata\b|audi[eê]ncia/i], ["fila", /fila|lote|v[aá]rios processos|em massa|esteira/i],
   ["grandes", /grande|muitas p[aá]ginas|gigante|volumos/i], ["turbo", /turbo|r[aá]pid/i], ["teses", /tese|modelo|s[uú]mula|paradigma/i],
   ["historico", /hist[oó]rico|minutas? prontas?|copiar|baixar|docx|lan[cç]ar/i], ["conhecer", /manual|guia|ajuda|conhecer|como funciona/i],
   ["avulso", /um processo|avulso|analisar|minutar|gerar minuta|sentença|decis[aã]o|despacho/i],
@@ -78,13 +81,15 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
   const perfil: Perfil = isJudge ? "magistrado" : "assessor";      // vem SÓ do cadastro: o assessor nunca vê as opções do magistrado
   const [aberto, setAberto] = useState(false);
   const [minimizado, setMinimizado] = useState(false);
-  const [trilha, setTrilha] = useState<string[]>([]);      // escolhas feitas, em ordem
+  const [log, setLog] = useState<Item[]>([]);      // a conversa, em ordem
+  const [atual, setAtual] = useState<string | null>(null);      // opção em que a pessoa está (null = tela inicial)
   const [aviso, setAviso] = useState<{ no: string; texto: React.ReactNode } | null>(null);      // resposta da extensão (aparece na própria conversa)
   const [versaoExt, setVersaoExt] = useState<string>(() => extensaoInstalada());
   const fimRef = useRef<HTMLDivElement>(null);
   const [texto, setTexto] = useState("");
-  const [falas, setFalas] = useState<{ voce: string; bot: string }[]>([]);      // perguntas digitadas e as respostas
   const [pensando, setPensando] = useState(false);
+
+  function limpar() { setLog([]); setAtual(null); setAviso(null); }
 
   // primeira entrada do dia: só depois do tutorial inicial (para não aparecer em cima dele)
   useEffect(() => {
@@ -103,7 +108,7 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
 
   // reabrir pelo botão do menu lateral: sempre do começo da conversa
   useEffect(() => {
-    const abrir = () => { setAberto(true); setMinimizado(false); setTrilha([]); setAviso(null); setFalas([]); };
+    const abrir = () => { setAberto(true); setMinimizado(false); limpar(); };
     window.addEventListener("assessor:abrir-assistente", abrir);
     return () => window.removeEventListener("assessor:abrir-assistente", abrir);
   }, []);
@@ -116,16 +121,17 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
     return () => { clearInterval(t); clearTimeout(parar); };
   }, [aberto, versaoExt]);
 
-  useEffect(() => { fimRef.current?.scrollIntoView?.({ block: "end" }); }, [trilha, aviso, aberto, minimizado, falas, pensando]);
+  useEffect(() => { fimRef.current?.scrollIntoView?.({ block: "end" }); }, [log, atual, aviso, aberto, minimizado, pensando]);
 
   const raiz = useMemo(() => RAIZ[perfil].map((id) => NOS[id]), [perfil]);
-  const atual = trilha.length ? NOS[trilha[trilha.length - 1]] : null;
-  const opcoesAgora = atual ? (atual.filhos || []).map((id) => NOS[id]) : raiz;
+  const noAtual = atual ? NOS[atual] : null;
+  const opcoesAgora = noAtual ? (noAtual.filhos || []).map((id) => NOS[id]) : raiz;
 
   const fechar = () => { try { localStorage.setItem(chaveDia(uid), hojeLocal()); } catch { /* sem armazenamento: volta na próxima abertura */ } setAberto(false); };
-  const reabrir = () => { setTrilha([]); setAviso(null); setFalas([]); setMinimizado(false); };      // a pílula leva ao começo da conversa
-  const escolher = (id: string) => { setAviso(null); setTrilha((t) => [...t, id]); };
-  const voltar = () => { setAviso(null); setTrilha((t) => t.slice(0, -1)); };
+  const reabrir = () => { limpar(); setMinimizado(false); };      // a pílula leva ao começo da conversa
+  const abrirNo = (id: string, rotuloVoce?: string) => { setAviso(null); setAtual(id); setLog((l) => [...l, ...(rotuloVoce === undefined ? [{ k: "voce" as const, t: `${NOS[id].icone} ${NOS[id].rotulo}` }] : []), { k: "bot", t: "", id }]); };
+  const escolher = (id: string) => abrirNo(id);
+  const voltar = () => { setAviso(null); setAtual(paiDe(atual || "")); };
 
   // botões da extensão abrem a página dela numa aba nova; os demais abrem a função aqui dentro do Studio
   const clicar = (no: string, acao: AcaoAssistente) => {
@@ -147,18 +153,21 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
   const enviar = async () => {
     const t = texto.trim(); if (t.length < 3 || pensando) return;
     setTexto(""); setAviso(null); setPensando(true);
-    let id = (CHAVES.find(([k, re]) => permitido(k) && re.test(t)) || [""])[0], resp = "";
+    const falaVoce: Item = { k: "voce", t, texto: true };
+    const resposta = (bot: string, id?: string) => { setLog((l) => [...l, falaVoce, { k: "bot", t: bot, texto: true }, ...(id ? [{ k: "bot" as const, t: "", id }] : [])]); if (id) setAtual(id); };
+    if (PERGUNTA_QUEM_E.test(t)) { setPensando(false); resposta(`Eu sou o assistente do dia: te ajudo a chegar rápido no que você precisa no Studio. ${perfil === "magistrado" ? "Posso abrir a Lupa do Magistrado, as filas de processos, as audiências e o Histórico" : "Posso abrir a fila de processos, a análise de um processo, o Histórico de minutas e as audiências"}. Escolha uma opção ou escreva o que precisa; eu só mostro o caminho, você decide o que abrir.`); return; }
+    const duvidaNaOpcao = !!atual && (/\?/.test(t) || /^(como|o que|qual|quais|por ?que|quando|onde|posso|precisa|d[aá] para)\b/i.test(t));      // dúvida feita DENTRO de uma opção: responde sobre ela, não troca de tela
+    let id = duvidaNaOpcao ? "" : (CHAVES.find(([k, re]) => permitido(k) && re.test(t)) || [""])[0], resp = "", pura = "";
     if (!id) {
       try {
-        const r = await fetch("/api/assistente-sugerir", { method: "POST", headers: getApiHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ perfil, texto: t }) });
+        const r = await fetch("/api/assistente-sugerir", { method: "POST", headers: getApiHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ perfil, texto: t, contexto: atual || "" }) });
         const d = await r.json().catch(() => ({}));
-        if (r.ok && d.id && d.id !== "nenhuma" && permitido(d.id)) { id = d.id; resp = d.resposta || ""; }
+        if (r.ok) { if (d.id && d.id !== "nenhuma" && permitido(d.id)) { id = d.id; resp = d.resposta || ""; } else pura = String(d.resposta || ""); }
       } catch { /* sem rede/IA: cai na mensagem abaixo */ }
     }
     setPensando(false);
-    if (!id) { setFalas((f) => [...f, { voce: t, bot: "Não entendi bem. Escolha uma das opções abaixo ou escreva de outro jeito (ex.: “mandar fila de processos”, “sentença com vídeo”)." }]); return; }
-    setFalas((f) => [...f, { voce: t, bot: resp || "Entendi! Veja abaixo o que abrir." }]);
-    setTrilha(caminhoDe(id));
+    if (id) { resposta(resp || "Entendi! Veja abaixo o que abrir.", id); return; }
+    resposta(pura || "Não entendi bem. Escolha uma das opções abaixo ou escreva de outro jeito (ex.: “mandar fila de processos”, “sentença com vídeo”).");
   };
 
   if (!aberto) return null;
@@ -184,6 +193,7 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
       <header className="flex items-center gap-2 px-3 py-2.5 bg-indigo-600 text-white shrink-0">
         <Sparkles className="w-4 h-4 shrink-0" />
         <div className="min-w-0 flex-1 text-sm font-extrabold leading-tight">Assistente do dia</div>
+        <button onClick={limpar} className="p-1 rounded hover:bg-white/20 cursor-pointer" title="Limpar a conversa" aria-label="Limpar conversa" data-testid="assistente-limpar"><Eraser className="w-4 h-4" /></button>
         <button onClick={() => setMinimizado(true)} className="p-1 rounded hover:bg-white/20 cursor-pointer" title="Minimizar" aria-label="Minimizar" data-testid="assistente-minimizar"><Minus className="w-4 h-4" /></button>
         <button onClick={fechar} className="p-1 rounded hover:bg-white/20 cursor-pointer" title="Fechar (volta amanhã)" aria-label="Fechar" data-testid="assistente-fechar"><X className="w-4 h-4" /></button>
       </header>
@@ -191,37 +201,36 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
         <Balao de="bot" testid="assistente-saudacao">{nome ? `Olá, ${nome}! ` : "Olá! "}<b>O que você quer fazer hoje?</b></Balao>
 
-        {falas.map((f, i) => (<React.Fragment key={"f" + i}><Balao de="voce">{f.voce}</Balao><Balao de="bot" testid="assistente-resposta-texto">{f.bot}</Balao></React.Fragment>))}
-        {pensando && <Balao de="bot" testid="assistente-pensando">Entendendo seu pedido…</Balao>}
-
-        {trilha.map((id, i) => {
-          const no = NOS[id], ultimo = i === trilha.length - 1;
+        {log.map((it, i) => {
+          if (it.k === "voce") return <Balao key={i} de="voce">{it.t}</Balao>;
+          if (!it.id) return <Balao key={i} de="bot" testid={it.texto ? "assistente-resposta-texto" : undefined}>{it.t}</Balao>;
+          const no = NOS[it.id], aqui = atual === it.id && !log.slice(i + 1).some((x) => x.id === it.id);      // botões só enquanto a pessoa está nesta opção
           return (
-            <React.Fragment key={id + i}>
-              <Balao de="voce">{no.icone} {no.rotulo}</Balao>
-              <Balao de="bot" testid={`assistente-resposta-${id}`}>
+            <React.Fragment key={i}>
+              <Balao de="bot" testid={`assistente-resposta-${it.id}`}>
                 {no.resposta}
                 {no.exigeExtensao && !versaoExt && <div className="mt-1 text-[12px] text-amber-800">⚠ Precisa da extensão instalada.</div>}
               </Balao>
-              {ultimo && no.botoes && (
+              {aqui && no.botoes && (
                 <div className="flex flex-col gap-2 pl-1">
                   {no.botoes.map((b, k) => (
-                    <button key={b.acao + b.rotulo} onClick={() => clicar(id, b.acao)} data-testid={`assistente-acao-${b.acao}`}
+                    <button key={b.acao + b.rotulo} onClick={() => clicar(it.id!, b.acao)} data-testid={`assistente-acao-${b.acao}`}
                       className={`px-3 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer text-left ${k === 0 ? "bg-indigo-600 hover:bg-indigo-500 text-white" : "bg-white hover:bg-indigo-50 text-indigo-800 border border-indigo-300"}`}>
                       {k === 0 ? "▶ " : ""}{b.rotulo}
                     </button>
                   ))}
                 </div>
               )}
-              {ultimo && aviso && aviso.no === id && <Balao de="bot" testid="assistente-msg-extensao">{aviso.texto}</Balao>}
+              {aqui && aviso && aviso.no === it.id && <Balao de="bot" testid="assistente-msg-extensao">{aviso.texto}</Balao>}
             </React.Fragment>
           );
         })}
+        {pensando && <Balao de="bot" testid="assistente-pensando">Entendendo seu pedido…</Balao>}
 
         {opcoesAgora.length > 0 && (
           <div className="grid grid-cols-1 gap-2 pt-0.5" data-testid="assistente-opcoes">
             {opcoesAgora.map((n, i) => {
-              const principal = !atual && i === 0;
+              const principal = !noAtual && i === 0;
               return (
                 <button key={n.id} onClick={() => escolher(n.id)} data-testid={`assistente-op-${n.id}`}
                   className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left text-[13px] font-bold cursor-pointer transition ${principal ? "bg-indigo-50 border-indigo-400 text-indigo-900 hover:bg-indigo-100" : "bg-white border-slate-300 text-slate-800 hover:bg-slate-50"}`}>
@@ -234,10 +243,11 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
           </div>
         )}
 
-        {trilha.length > 0 && (
+        {(atual || log.length > 0) && (
           <div className="flex items-center gap-2 pt-1">
-            <button onClick={voltar} data-testid="assistente-voltar" className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[12px] font-bold cursor-pointer flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Voltar</button>
-            <button onClick={() => { setTrilha([]); setAviso(null); }} data-testid="assistente-inicio" className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[12px] font-bold cursor-pointer flex items-center gap-1"><Home className="w-3.5 h-3.5" /> Início</button>
+            {atual && <button onClick={voltar} data-testid="assistente-voltar" className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[12px] font-bold cursor-pointer flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Voltar</button>}
+            <button onClick={() => { setAtual(null); setAviso(null); }} data-testid="assistente-inicio" className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[12px] font-bold cursor-pointer flex items-center gap-1"><Home className="w-3.5 h-3.5" /> Início</button>
+            <button onClick={limpar} data-testid="assistente-limpar-conversa" className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[12px] font-bold cursor-pointer flex items-center gap-1"><Eraser className="w-3.5 h-3.5" /> Limpar conversa</button>
           </div>
         )}
         <div ref={fimRef} />
