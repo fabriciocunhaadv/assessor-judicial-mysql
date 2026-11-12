@@ -2,7 +2,8 @@
 // pergunta o que a pessoa quer fazer, mostra poucas escolhas grandes por vez e termina no botão que abre a função (o da fila abre a página da extensão numa aba nova).
 // O perfil (assessor ou magistrado) vem SÓ do cadastro do usuário. "Minimizar" vira uma pílula que reabre a conversa do começo; "Fechar" só volta amanhã ou pelo menu lateral.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { X, Minus, MessageCircle, Sparkles, ArrowLeft, Home } from "lucide-react";
+import { X, Minus, MessageCircle, Sparkles, ArrowLeft, Home, Send } from "lucide-react";
+import { getApiHeaders } from "../utils/apiKeyManager";
 import { useAuth } from "../lib/AuthContext";
 import { URL_EXTENSAO_CHROME_STORE } from "../config/extensao";
 import { extensaoInstalada } from "./AvisoExtensao";
@@ -53,6 +54,17 @@ const RAIZ: Record<Perfil, string[]> = {
   magistrado: ["lupa", "lupa_fila", "fila", "historico", "avulso", "audiencias", "outras"],
 };
 
+// caminho (pais → filho) até uma opção, para abrir direto na resposta certa
+const caminhoDe = (id: string): string[] => { const pai = Object.values(NOS).find((n) => n.filhos?.includes(id)); return pai ? [pai.id, id] : [id]; };
+// palavras-chave locais: respondem na hora, sem IA; se não bater, pergunta à IA
+const CHAVES: [string, RegExp][] = [
+  ["lupa_fila", /lupa.*(fila|lote|v[aá]rios)|(fila|lote).*lupa/i], ["lupa", /lupa|conferir.*minuta|auditar|revisar.*assessor/i],
+  ["sentenca_fila", /(v[ií]deos?|audi[eê]ncias?).*(fila|lote|v[aá]rias|v[aá]rios)|(fila|lote).*(v[ií]deo|audi[eê]ncia)/i], ["sentenca_individual", /v[ií]deo|mutir[aã]o|sentenciar.*audi[eê]ncia/i],
+  ["mesa", /pauta|ata|audi[eê]ncia/i], ["fila", /fila|lote|v[aá]rios processos|em massa|esteira/i],
+  ["grandes", /grande|muitas p[aá]ginas|gigante|volumos/i], ["turbo", /turbo|r[aá]pid/i], ["teses", /tese|modelo|s[uú]mula|paradigma/i],
+  ["historico", /hist[oó]rico|minutas? prontas?|copiar|baixar|docx|lan[cç]ar/i], ["conhecer", /manual|guia|ajuda|conhecer|como funciona/i],
+  ["avulso", /um processo|avulso|analisar|minutar|gerar minuta|sentença|decis[aã]o|despacho/i],
+];
 const hojeLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const chaveDia = (uid: string) => `assessor_assistente_dia_${uid || "anon"}`;
 const lerLocal = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
@@ -70,6 +82,9 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
   const [aviso, setAviso] = useState<{ no: string; texto: React.ReactNode } | null>(null);      // resposta da extensão (aparece na própria conversa)
   const [versaoExt, setVersaoExt] = useState<string>(() => extensaoInstalada());
   const fimRef = useRef<HTMLDivElement>(null);
+  const [texto, setTexto] = useState("");
+  const [falas, setFalas] = useState<{ voce: string; bot: string }[]>([]);      // perguntas digitadas e as respostas
+  const [pensando, setPensando] = useState(false);
 
   // primeira entrada do dia: só depois do tutorial inicial (para não aparecer em cima dele)
   useEffect(() => {
@@ -88,7 +103,7 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
 
   // reabrir pelo botão do menu lateral: sempre do começo da conversa
   useEffect(() => {
-    const abrir = () => { setAberto(true); setMinimizado(false); setTrilha([]); setAviso(null); };
+    const abrir = () => { setAberto(true); setMinimizado(false); setTrilha([]); setAviso(null); setFalas([]); };
     window.addEventListener("assessor:abrir-assistente", abrir);
     return () => window.removeEventListener("assessor:abrir-assistente", abrir);
   }, []);
@@ -101,14 +116,14 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
     return () => { clearInterval(t); clearTimeout(parar); };
   }, [aberto, versaoExt]);
 
-  useEffect(() => { fimRef.current?.scrollIntoView?.({ block: "end" }); }, [trilha, aviso, aberto, minimizado]);
+  useEffect(() => { fimRef.current?.scrollIntoView?.({ block: "end" }); }, [trilha, aviso, aberto, minimizado, falas, pensando]);
 
   const raiz = useMemo(() => RAIZ[perfil].map((id) => NOS[id]), [perfil]);
   const atual = trilha.length ? NOS[trilha[trilha.length - 1]] : null;
   const opcoesAgora = atual ? (atual.filhos || []).map((id) => NOS[id]) : raiz;
 
   const fechar = () => { try { localStorage.setItem(chaveDia(uid), hojeLocal()); } catch { /* sem armazenamento: volta na próxima abertura */ } setAberto(false); };
-  const reabrir = () => { setTrilha([]); setAviso(null); setMinimizado(false); };      // a pílula leva ao começo da conversa
+  const reabrir = () => { setTrilha([]); setAviso(null); setFalas([]); setMinimizado(false); };      // a pílula leva ao começo da conversa
   const escolher = (id: string) => { setAviso(null); setTrilha((t) => [...t, id]); };
   const voltar = () => { setAviso(null); setTrilha((t) => t.slice(0, -1)); };
 
@@ -126,6 +141,24 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
       return;
     }
     aoAcao(acao); setMinimizado(true);
+  };
+
+  const permitido = (id: string) => RAIZ[perfil].includes(id) || RAIZ[perfil].some((r) => NOS[r].filhos?.includes(id));
+  const enviar = async () => {
+    const t = texto.trim(); if (t.length < 3 || pensando) return;
+    setTexto(""); setAviso(null); setPensando(true);
+    let id = (CHAVES.find(([k, re]) => permitido(k) && re.test(t)) || [""])[0], resp = "";
+    if (!id) {
+      try {
+        const r = await fetch("/api/assistente-sugerir", { method: "POST", headers: getApiHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ perfil, texto: t }) });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.id && d.id !== "nenhuma" && permitido(d.id)) { id = d.id; resp = d.resposta || ""; }
+      } catch { /* sem rede/IA: cai na mensagem abaixo */ }
+    }
+    setPensando(false);
+    if (!id) { setFalas((f) => [...f, { voce: t, bot: "Não entendi bem. Escolha uma das opções abaixo ou escreva de outro jeito (ex.: “mandar fila de processos”, “sentença com vídeo”)." }]); return; }
+    setFalas((f) => [...f, { voce: t, bot: resp || "Entendi! Veja abaixo o que abrir." }]);
+    setTrilha(caminhoDe(id));
   };
 
   if (!aberto) return null;
@@ -157,6 +190,9 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
 
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
         <Balao de="bot" testid="assistente-saudacao">{nome ? `Olá, ${nome}! ` : "Olá! "}<b>O que você quer fazer hoje?</b></Balao>
+
+        {falas.map((f, i) => (<React.Fragment key={"f" + i}><Balao de="voce">{f.voce}</Balao><Balao de="bot" testid="assistente-resposta-texto">{f.bot}</Balao></React.Fragment>))}
+        {pensando && <Balao de="bot" testid="assistente-pensando">Entendendo seu pedido…</Balao>}
 
         {trilha.map((id, i) => {
           const no = NOS[id], ultimo = i === trilha.length - 1;
@@ -206,6 +242,12 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
         )}
         <div ref={fimRef} />
       </div>
+
+      <form onSubmit={(e) => { e.preventDefault(); void enviar(); }} className="px-3 py-2 border-t border-slate-200 flex items-center gap-2 shrink-0 bg-white">
+        <input value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={300} placeholder="Ou escreva o que você precisa…" data-testid="assistente-campo"
+          className="flex-1 min-w-0 px-3 py-2 rounded-full border border-slate-300 text-[13px] focus:outline-none focus:border-indigo-500" />
+        <button type="submit" disabled={pensando || texto.trim().length < 3} data-testid="assistente-enviar" aria-label="Enviar" className="p-2 rounded-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white cursor-pointer"><Send className="w-4 h-4" /></button>
+      </form>
 
       <div className="px-3 py-1.5 border-t border-slate-100 text-[11px] shrink-0 bg-slate-50" data-testid="assistente-extensao">
         {versaoExt

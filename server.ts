@@ -2727,6 +2727,48 @@ const itensDeConteudo = (t: string) => {
         citacoes: [...new Set((x.match(/Mov\.?\s*\d{1,4}\s*,\s*Arq\.?\s*\d{1,3}/gi) || []).map((v) => v.replace(/\s+/g, " ").toLowerCase()))],
     };
 };
+// Assistente do dia (campo de texto): a pessoa escreve o que precisa e a IA só ESCOLHE uma das opções permitidas para o perfil dela. Nada é executado.
+const OPCOES_ASSISTENTE: Record<string, string> = {
+    fila: "mandar uma fila/lote de processos para análise automática (esteira da extensão)",
+    lupa_fila: "mandar uma fila de processos para a Lupa do magistrado (auditoria em lote)",
+    lupa: "conferir/auditar uma minuta do assessor contra os autos (Lupa do Magistrado)",
+    avulso: "analisar um único processo (anexar PDF e gerar minuta)",
+    historico: "ver, copiar, baixar ou lançar minutas já prontas (Histórico)",
+    mesa: "preparar audiência, pauta, ata prévia (Mesa de audiências)",
+    sentenca_individual: "sentença a partir do vídeo da audiência, um processo só (Mutirão Expresso)",
+    sentenca_fila: "sentenças a partir de vídeos de várias audiências, em fila",
+    turbo: "análise rápida em uma etapa só (Turbo)",
+    grandes: "processo muito grande, com muitas páginas, lido em lotes",
+    teses: "cadastrar teses, modelos de decisão, súmulas; aplicar modelo a uma minuta",
+    conhecer: "conhecer o sistema, manual, guia, ajuda",
+};
+const PERMITIDAS_ASSISTENTE: Record<string, string[]> = {
+    assessor: ["fila", "avulso", "historico", "mesa", "sentenca_individual", "sentenca_fila", "turbo", "grandes", "teses", "conhecer"],
+    magistrado: ["lupa", "lupa_fila", "fila", "avulso", "historico", "mesa", "sentenca_individual", "sentenca_fila", "turbo", "grandes", "teses", "conhecer"],
+};
+app.post("/api/assistente-sugerir", async (req, res) => {
+    try {
+        const apiKey = extractApiKey(req);
+        if (!apiKey) return res.status(401).json({ error: "Chave da API Gemini ausente." });
+        const perfil = req.body?.perfil === "magistrado" ? "magistrado" : "assessor";
+        const texto = String(req.body?.texto || "").trim().slice(0, 500);
+        if (texto.length < 3) return res.status(400).json({ error: "Escreva o que você precisa." });
+        const permitidas = PERMITIDAS_ASSISTENTE[perfil];
+        const lista = permitidas.map((id) => `- ${id}: ${OPCOES_ASSISTENTE[id]}`).join("\n");
+        const response = await generateWithFallbackAndRetry({
+            apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res,
+            contents: [{ role: "user", parts: [{ text: `PEDIDO DO USUÁRIO: "${texto}"` }] }],
+            config: { systemInstruction: `Você é o recepcionista de um sistema judicial. Escolha a UMA opção da lista que melhor atende ao pedido do usuário. Se nenhuma servir, responda id "nenhuma". Responda SOMENTE JSON: {"id":"<id da lista ou nenhuma>","resposta":"<uma frase curta em português simples dizendo o que será aberto>"}.\nOPÇÕES:\n${lista}`, temperature: 0, maxOutputTokens: 300, responseMimeType: "application/json" },
+            timeoutMs: 30000,
+        } as any);
+        const p: any = safeParseObj(response.text || "{}") || {};
+        const id = permitidas.includes(String(p.id)) ? String(p.id) : "nenhuma";      // nunca devolve opção fora do perfil
+        return res.json({ success: true, id, resposta: String(p.resposta || "").slice(0, 300) });
+    } catch (err: any) {
+        return res.status(500).json({ error: formatGeminiError(err) || "Falha ao entender o pedido." });
+    }
+});
+
 app.post("/api/reestruturar-minuta", async (req, res) => {
     try {
         const apiKey = extractApiKey(req);
