@@ -32,13 +32,10 @@ try:
         ok(caixa["x"] + caixa["width"] <= 1280 and caixa["x"] > 800 and caixa["y"] >= 100 and caixa["y"] + caixa["height"] <= 800, f"fica no canto direito, abaixo do cabeçalho e dentro da tela ({caixa})")
         ids = pg.eval_on_selector_all("[data-testid^=assistente-tarefa-]", "els => els.map(e => e.dataset.testid.replace('assistente-tarefa-',''))")
         ok(all(x in ids for x in ["avulso", "historico", "mesa", "sentenca_individual", "sentenca_fila", "turbo", "grandes", "teses", "conhecer"]) and "lupa" not in ids, f"as demais funções estão lá e a Lupa não aparece para assessor ({ids})")
-        # 2) magistrado
-        pg.click("[data-testid=assistente-perfil-magistrado]")
-        ids2 = pg.eval_on_selector_all("[data-testid^=assistente-tarefa-]", "els => els.map(e => e.dataset.testid.replace('assistente-tarefa-',''))")
-        ok(ids2[0] == "lupa" and "lupa_fila" in ids2, f"para o magistrado a Lupa vem primeiro e há a fila para a Lupa ({ids2[:3]})")
+        ok(pg.locator("[data-testid^=assistente-perfil-]").count() == 0, "não há pergunta 'eu sou assessor ou magistrado': o perfil vem do cadastro")
         # 3) ação e minimizar
-        pg.click("[data-testid=assistente-acao-lupa]")
-        ok(pg.evaluate("window.acoes") == ["lupa"] and pg.locator("[data-testid=assistente-pilula]").count() == 1, "o botão abre a função e o assistente vira uma pílula (sai do caminho)")
+        pg.click("[data-testid=assistente-acao-historico]")
+        ok(pg.evaluate("window.acoes") == ["historico"] and pg.locator("[data-testid=assistente-pilula]").count() == 1, "o botão abre a função e o assistente vira uma pílula (sai do caminho)")
         pg.click("[data-testid=assistente-pilula]"); pg.wait_for_selector("[data-testid=assistente-boas-vindas]")
         # 4) fechar guarda o dia
         pg.click("[data-testid=assistente-fechar]")
@@ -60,7 +57,8 @@ try:
         pg.close()
         # 7) perfil magistrado pelo cadastro
         pg = pagina(TOUR + "window.__juiz = true;"); pg.wait_for_selector("[data-testid=assistente-boas-vindas]", timeout=8000)
-        ok(pg.locator("[data-testid^=assistente-tarefa-]").first.get_attribute("data-testid") == "assistente-tarefa-lupa", "usuário magistrado já abre no perfil de magistrado")
+        ids3 = pg.eval_on_selector_all("[data-testid^=assistente-tarefa-]", "els => els.map(e => e.dataset.testid.replace('assistente-tarefa-',''))")
+        ok(ids3[0] == "lupa" and "lupa_fila" in ids3, f"usuário com função de magistrado vê as opções do magistrado: Lupa primeiro e fila para a Lupa ({ids3[:3]})")
         pg.close()
         # 8) celular: não estoura a tela
         pg = pagina(TOUR, {"width": 390, "height": 760}); pg.wait_for_selector("[data-testid=assistente-boas-vindas]", timeout=8000)

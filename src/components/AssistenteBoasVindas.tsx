@@ -22,7 +22,7 @@ const CATALOGO: Record<string, Tarefa> = {
     descricao: "A extensão baixa e analisa vários processos sozinha, enquanto você trabalha nas minutas.",
     passos: [
       "No Projudi, clique no ícone da extensão Conclusões Projudi e em “Abrir painel completo”.",
-      "Marque os processos da fila e escolha quem vai analisar: o Agaia, outra IA ou o Studio (e o modo: análise normal, Turbo ou Lupa).",
+      "Marque os processos da fila e escolha quem vai analisar: o Agaia, outra IA ou o Studio (e o modo de análise: normal ou Turbo).",
       "Envie e deixe a aba da Esteira aberta: os processos são feitos um por vez, sem você esperar.",
       "Enquanto isso, trabalhe aqui: abra o Histórico, clique em “Carregar minuta”, ajuste e use “Lançar no Projudi” (ou copie para o documento que preferir).",
     ],
@@ -141,16 +141,14 @@ const lerLocal = (k: string) => { try { return localStorage.getItem(k); } catch 
 interface Props { aoAcao: (acao: AcaoAssistente) => void }
 
 export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
-  const { user, userProfile, isJudge, isSuperAdmin } = useAuth() as any;
+  const { user, userProfile, isJudge } = useAuth() as any;
   const uid: string = user?.uid || "";
   const nome = String(userProfile?.name || user?.displayName || "").split(" ")[0];
   const [aberto, setAberto] = useState(false);
   const [minimizado, setMinimizado] = useState(false);
-  const [perfil, setPerfil] = useState<Perfil>(isJudge ? "magistrado" : "assessor");
+  const perfil: Perfil = isJudge ? "magistrado" : "assessor";      // vem SÓ do cadastro: o assessor nunca vê as opções do magistrado
   const [expandida, setExpandida] = useState<string | null>(null);
   const [versaoExt, setVersaoExt] = useState<string>(() => extensaoInstalada());
-
-  useEffect(() => { setPerfil(isJudge ? "magistrado" : "assessor"); }, [isJudge]);
 
   // primeira entrada do dia: só depois do tutorial inicial (para não aparecer em cima dele)
   useEffect(() => {
@@ -182,7 +180,7 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
     return () => { clearInterval(t); clearTimeout(parar); };
   }, [aberto, versaoExt]);
 
-  const tarefas = useMemo(() => ORDEM[perfil].map((id) => CATALOGO[id]).filter((t) => t && (!t.soMagistrado || perfil === "magistrado" || isSuperAdmin)), [perfil, isSuperAdmin]);
+  const tarefas = useMemo(() => ORDEM[perfil].map((id) => CATALOGO[id]).filter(Boolean), [perfil]);
 
   const fechar = () => { try { localStorage.setItem(chaveDia(uid), hojeLocal()); } catch { /* sem armazenamento: volta na próxima abertura */ } setAberto(false); };
   if (!aberto) return null;
@@ -209,17 +207,7 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
         <button onClick={fechar} className="p-1 rounded hover:bg-white/20 cursor-pointer" title="Fechar (volta amanhã)" aria-label="Fechar" data-testid="assistente-fechar"><X className="w-4 h-4" /></button>
       </header>
 
-      <div className="px-3 pt-2 pb-1 flex items-center gap-1.5 text-[11px] shrink-0">
-        <span className="text-slate-500">Eu sou:</span>
-        {(["assessor", "magistrado"] as Perfil[]).map((p) => (
-          <button key={p} onClick={() => { setPerfil(p); setExpandida(null); }} data-testid={`assistente-perfil-${p}`}
-            className={`px-2 py-0.5 rounded-full border font-bold cursor-pointer ${perfil === p ? "bg-indigo-600 border-indigo-700 text-white" : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"}`}>
-            {p === "assessor" ? "Assessor" : "Magistrado"}
-          </button>
-        ))}
-      </div>
-
-      <div className="px-3 pb-1 text-[10px] shrink-0" data-testid="assistente-extensao">
+      <div className="px-3 pt-2 pb-1 text-[10px] shrink-0" data-testid="assistente-extensao">
         {versaoExt
           ? <span className="text-emerald-700">✔ Extensão instalada (versão {versaoExt}): filas disponíveis.</span>
           : <span className="text-amber-800">⚠ Extensão não detectada. As filas dependem dela. <a href={URL_EXTENSAO_CHROME_STORE} target="_blank" rel="noreferrer" className="underline font-bold" data-testid="assistente-instalar">Instalar a extensão</a></span>}
