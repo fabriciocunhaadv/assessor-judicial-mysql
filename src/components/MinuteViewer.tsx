@@ -201,7 +201,8 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
   // Versions management
   const baseOriginalMinute = result?.originalMinute || result?.minute;
   const [conferirAberto, setConferirAberto] = useState(false);
-  const [adaptarAberto, setAdaptarAberto] = useState(false);      // ganchos ficam ANTES de qualquer 'return' antecipado (senão: erro React #310 ao carregar uma minuta)
+  const [adaptarAberto, setAdaptarAberto] = useState(false);
+  const [adaptarModelo, setAdaptarModelo] = useState<string | undefined>(undefined);      // modelo já escolhido (vem da conferência com os modelos do Projudi)      // ganchos ficam ANTES de qualquer 'return' antecipado (senão: erro React #310 ao carregar uma minuta)
   const idAtualRef = useRef<string | null>(currentAnalysisId || null);      // a resposta do chat compara com este id: se a tela já mostra OUTRO processo, não a sobrescreve
   idAtualRef.current = currentAnalysisId || null;
   // Sinal para a esteira da extensão: enquanto a pessoa conversa com o chat (digitando ou aguardando a resposta) ou adapta a minuta a um paradigma, a esteira ESPERA para não trocar o processo na tela
@@ -1305,12 +1306,12 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             </button>
           )}
           <button
-            onClick={() => setAdaptarAberto(true)}
+            onClick={() => { setAdaptarModelo(undefined); setAdaptarAberto(true); }}
             className="px-2.5 py-1 border border-amber-300 bg-white hover:bg-amber-50 text-amber-900 font-bold rounded flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
             title="Reorganizar esta minuta conforme um modelo (paradigma) do juiz, sem reler os autos"
             data-testid="btn-adaptar-paradigma"
           >
-            <span>Adaptar a paradigma</span>
+            <span>Aplicar modelo / paradigma</span>
           </button>
           <button
             onClick={() => setConferirAberto(true)}
@@ -1735,8 +1736,8 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             onInjectAsParadigm={handleTriggerInjectParadigm}
           />
         )}
-        <ConferirModelosModal aberto={conferirAberto} aoFechar={() => setConferirAberto(false)} minuta={minute} aoAplicar={aplicarConferencia} />
-        <AdaptarParadigmoModal aberto={adaptarAberto} aoFechar={() => setAdaptarAberto(false)} minuta={minute} aoAplicar={aplicarParadigmo} />
+        <ConferirModelosModal aberto={conferirAberto} aoFechar={() => setConferirAberto(false)} minuta={minute} aoAplicar={aplicarConferencia} aoAplicarInteiro={(id) => { setAdaptarModelo("pj:" + id); setAdaptarAberto(true); }} />
+        <AdaptarParadigmoModal modeloInicial={adaptarModelo} aberto={adaptarAberto} aoFechar={() => setAdaptarAberto(false)} minuta={minute} aoAplicar={aplicarParadigmo} />
         {/* Tab 1: Formatted Document View */}
         {activeTab === "formatted" && (
           <div className="space-y-4">

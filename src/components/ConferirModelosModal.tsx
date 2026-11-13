@@ -12,7 +12,7 @@ interface Resultado { modeloId: string; aplica: boolean; motivo: string; itens: 
 const NOME_SECAO: Record<Secao, string> = { relatorio: "Relatório", fundamentacao: "Fundamentação", dispositivo: "Dispositivo", closing: "Fecho" };
 const textoCompleto = (m: MinuteData) => [m.header, m.title, m.relatorio && `I - RELATÓRIO\n${m.relatorio}`, m.fundamentacao && `II - FUNDAMENTAÇÃO\n${m.fundamentacao}`, m.dispositivo && `III - DISPOSITIVO\n${m.dispositivo}`, m.closing].filter(Boolean).join("\n\n");
 
-interface Props { aberto: boolean; aoFechar: () => void; minuta: MinuteData; aoAplicar: (nova: MinuteData, resumo: string) => void }
+interface Props { aberto: boolean; aoFechar: () => void; minuta: MinuteData; aoAplicar: (nova: MinuteData, resumo: string) => void; aoAplicarInteiro?: (modeloId: string) => void }
 
 /** Aplica um ajuste na minuta de trabalho (cópia). Devolve null se o trecho a trocar não existe mais. */
 export function aplicarAjuste(m: MinuteData, it: Item): MinuteData | null {
@@ -26,7 +26,7 @@ export function aplicarAjuste(m: MinuteData, it: Item): MinuteData | null {
   return nova;
 }
 
-export const ConferirModelosModal: React.FC<Props> = ({ aberto, aoFechar, minuta, aoAplicar }) => {
+export const ConferirModelosModal: React.FC<Props> = ({ aberto, aoFechar, minuta, aoAplicar, aoAplicarInteiro }) => {
   const [modelos, setModelos] = useState<ModeloProjudi[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [marcados, setMarcados] = useState<string[]>([]);
@@ -94,6 +94,7 @@ export const ConferirModelosModal: React.FC<Props> = ({ aberto, aoFechar, minuta
               <button onClick={rodar} disabled={!marcados.length || rodando} className="mt-1 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer flex items-center gap-2" data-testid="conferir-rodar">
                 {rodando ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Conferindo…</> : "Conferir"}
               </button>
+              {aoAplicarInteiro && marcados.length === 1 && <button onClick={() => { aoAplicarInteiro(marcados[0]); aoFechar(); }} className="mt-1 ml-2 px-3 py-1.5 rounded-lg border border-indigo-400 text-indigo-800 bg-white hover:bg-indigo-50 text-xs font-bold cursor-pointer" data-testid="conferir-aplicar-inteiro-direto" title="Aplica o modelo marcado por inteiro, trocando só os dados do processo">Aplicar o modelo marcado inteiro</button>}
             </div>
           )}
           {erro && <div className="text-xs text-red-700 bg-red-50 rounded p-2" data-testid="conferir-erro">{erro}</div>}
@@ -102,7 +103,8 @@ export const ConferirModelosModal: React.FC<Props> = ({ aberto, aoFechar, minuta
               {resultados.length === 0 && <div className="text-xs text-slate-600 bg-slate-50 rounded p-2">A IA não devolveu conferência para os modelos escolhidos. Tente de novo.</div>}
               {resultados.map((r) => (
                 <div key={r.modeloId} className="border border-slate-200 rounded-lg p-2 space-y-2">
-                  <div className="text-xs font-black text-slate-800">{nomeDe(r.modeloId)}</div>
+                  <div className="flex items-center gap-2"><div className="text-xs font-black text-slate-800 flex-1 min-w-0">{nomeDe(r.modeloId)}</div>
+                    {aoAplicarInteiro && <button onClick={() => { aoAplicarInteiro(r.modeloId); aoFechar(); }} className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold cursor-pointer shrink-0" data-testid="conferir-aplicar-inteiro" title="Usa o modelo inteiro e troca só os dados do processo">Aplicar o modelo inteiro</button>}</div>
                   {!r.aplica && <div className="text-xs text-slate-600 bg-slate-50 rounded p-2">Este modelo não se aplica a esta minuta{r.motivo ? `: ${r.motivo}` : "."}</div>}
                   {r.aplica && r.itens.length === 0 && <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-2 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> A minuta já segue este modelo.</div>}
                   {r.aplica && r.itens.map((it, i) => {

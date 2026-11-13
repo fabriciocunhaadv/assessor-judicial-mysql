@@ -2826,15 +2826,15 @@ app.post("/api/reestruturar-minuta", async (req, res) => {
         const originalTxt = [m.title, m.relatorio, m.fundamentacao, m.dispositivo, m.closing].filter(Boolean).join("\n\n");
         if (modelo.length < 200) return res.status(400).json({ error: "O modelo escolhido está vazio ou é curto demais para servir de molde." });
         if (originalTxt.length < 200) return res.status(400).json({ error: "A minuta está vazia." });
-        const sistema = `Você reorganiza minutas judiciais já prontas. Recebe (A) um MODELO DE REFERÊNCIA do magistrado e (B) uma MINUTA PRONTA. Reescreva a minuta B seguindo a ESTRUTURA e o ESTILO do modelo A: ordem das seções, títulos, modo de redigir o relatório, modo de enfrentar preliminares e mérito, fórmula do dispositivo, intimações e fecho.
+        const sistema = `Você reorganiza minutas judiciais já prontas aplicando INTEIRAMENTE um modelo. Recebe (A) o MODELO adotado pelo magistrado/juízo e (B) a MINUTA PRONTA do caso concreto. Produza o documento FINAL: o modelo A aplicado NA ÍNTEGRA ao caso de B.
 REGRAS INEGOCIÁVEIS:
-1. CONTEÚDO DA MINUTA B INTACTO: nada pode ser perdido, alterado ou inventado: partes, números, datas, valores, prazos, decisões, resultado (procedência, improcedência, recebimento etc.), comandos do dispositivo, artigos de lei, súmulas, citações Mov./Arq./Pág. e transcrições entre aspas permanecem exatamente como estão.
-2. O MODELO A É SÓ MOLDE: NÃO copie dele nomes, números, datas, valores, fatos nem fundamentos do processo dele. Se o modelo tem uma seção que não se aplica à minuta B, omita-a; se a minuta B tem conteúdo que o modelo não prevê, mantenha-o no lugar mais natural.
-3. NÃO RESUMA nem corte análise: a minuta B inteira permanece, apenas reorganizada e reescrita no estilo do modelo.
-4. Só use títulos que o MODELO usa. Não crie títulos sobre a dinâmica de análise.
-5. Mantenha o texto em português claro, corrido e pronto para uso.
-Responda SOMENTE com JSON válido: {"title": "...", "relatorio": "...", "fundamentacao": "...", "dispositivo": "...", "closing": "...", "fullFormattedText": "..."}. "fullFormattedText" é o documento COMPLETO (cabeçalho ao fecho) na estrutura do modelo; "relatorio", "fundamentacao" e "dispositivo" são as partes correspondentes desse documento (se o modelo não as separa, divida do modo mais natural: o que antecede a decisão em relatorio/fundamentacao e os comandos finais em dispositivo).`;
-        const usuario = `[MODELO DE REFERÊNCIA A — ${tituloModelo}]\n${modelo}\n[FIM DO MODELO]\n\n[MINUTA PRONTA B — A REORGANIZAR]\nCABEÇALHO: ${m.header || ""}\nTÍTULO: ${m.title || ""}\nPROCESSO: ${m.processNumber || ""}\nPARTES: ${m.parties?.author || ""} x ${m.parties?.defendant || ""}\n\nRELATÓRIO:\n${m.relatorio || ""}\n\nFUNDAMENTAÇÃO:\n${m.fundamentacao || ""}\n\nDISPOSITIVO:\n${m.dispositivo || ""}\n\nFECHO:\n${m.closing || ""}`;
+1. O MODELO A VALE POR INTEIRO: mantenha TODAS as seções, títulos, parágrafos, fórmulas, comandos à escrivania/serventia, prazos, advertências, cominações, cláusulas e o fecho do modelo, na mesma ordem e com as mesmas palavras. Não resuma, não omita, não reescreva nem "melhore" o que não for dado do processo. Se o modelo trouxer alternativas (ex.: procedência/improcedência, deferido/indeferido), fique com a que corresponde ao resultado da minuta B e mantenha a redação do modelo para ela.
+2. SÓ OS DADOS DO PROCESSO MUDAM: troque os dados do caso do modelo (nomes e qualificação das partes, número do processo, datas, valores, números de telefone, endereços, Mov./Arq./Pág., fatos do caso do modelo) pelos dados do caso de B, no mesmo lugar do texto. Campos em branco ou marcados ([...], ___, XXX, "Fulano", "(nome)") são preenchidos com os dados de B. Se B não tiver o dado, deixe o campo com a marca [PREENCHER: o que falta]; nunca invente e nunca deixe dado do processo do modelo no texto.
+3. Onde o modelo narra os fatos ou os fundamentos do caso do próprio modelo, reescreva SÓ esse trecho com os fatos e fundamentos de B, no mesmo lugar e no mesmo jeito de redigir do modelo. Se B tiver análise relevante que o modelo não prevê (preliminar, prova, testemunha, súmula), acrescente-a no lugar mais natural, SEM retirar nada do modelo.
+4. O RESULTADO da minuta B (procedência, improcedência, deferimento etc.), os valores, prazos e comandos que decorrem dos fatos de B prevalecem sobre o que o modelo dizia do caso dele; use a fórmula do modelo para expressá-los.
+5. Só use títulos que o MODELO usa. Mantenha o texto em português claro, corrido e pronto para uso.
+Responda SOMENTE com JSON válido: {"title": "...", "relatorio": "...", "fundamentacao": "...", "dispositivo": "...", "closing": "...", "fullFormattedText": "..."}. "fullFormattedText" é o documento COMPLETO (cabeçalho ao fecho) com o modelo aplicado na íntegra; "relatorio", "fundamentacao" e "dispositivo" são as partes correspondentes desse documento (se o modelo não as separa, divida do modo mais natural: o que antecede a decisão em relatorio/fundamentacao e os comandos finais em dispositivo).`;
+        const usuario = `[MODELO A — APLICAR NA ÍNTEGRA — ${tituloModelo}]\n${modelo}\n[FIM DO MODELO]\n\n[MINUTA PRONTA B — A REORGANIZAR]\nCABEÇALHO: ${m.header || ""}\nTÍTULO: ${m.title || ""}\nPROCESSO: ${m.processNumber || ""}\nPARTES: ${m.parties?.author || ""} x ${m.parties?.defendant || ""}\n\nRELATÓRIO:\n${m.relatorio || ""}\n\nFUNDAMENTAÇÃO:\n${m.fundamentacao || ""}\n\nDISPOSITIVO:\n${m.dispositivo || ""}\n\nFECHO:\n${m.closing || ""}`;
         const response = await generateWithFallbackAndRetry({
             apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res,
             contents: [{ role: "user", parts: [{ text: usuario }] }],
@@ -2854,8 +2854,19 @@ Responda SOMENTE com JSON válido: {"title": "...", "relatorio": "...", "fundame
         if (c.length) avisos.push(`Citações da minuta original que não aparecem na reorganizada: ${c.slice(0, 6).join("; ")}.`);
         const vazou = [...depois.valores.filter((x) => !antes.valores.includes(x) && doModelo.valores.includes(x)), ...depois.datas.filter((x) => !antes.datas.includes(x) && doModelo.datas.includes(x))];
         if (vazou.length) avisos.push(`Apareceram dados que são do MODELO e não da minuta original: ${vazou.slice(0, 8).join(", ")}. Confira.`);
-        const t0 = originalTxt.length, t1 = [nova.relatorio, nova.fundamentacao, nova.dispositivo].join("").length || nova.fullFormattedText.length;
-        if (t1 < t0 * 0.7) avisos.push(`A minuta reorganizada ficou bem menor (${Math.round((t1 / t0) * 100)}% do tamanho original): confira se algo foi condensado.`);
+        // o modelo tem de aparecer por inteiro: confere, por parágrafo, quanto do texto do modelo ficou no resultado (parágrafos que narram o caso do modelo mudam de propósito)
+        const norma = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean);
+        const saida = [nova.title, nova.relatorio, nova.fundamentacao, nova.dispositivo, nova.closing, nova.fullFormattedText].join("\n\n");
+        const gramas = (w: string[]) => { const g = new Set<string>(); for (let i = 0; i + 4 <= w.length; i++) g.add(w.slice(i, i + 4).join(" ")); return g; };
+        const gSaida = gramas(norma(saida));
+        const paragrafos = modelo.split(/\n+/).map((x: string) => x.trim()).filter((x: string) => norma(x).length >= 8);
+        const faltando = paragrafos.filter((x: string) => { const g = [...gramas(norma(x))]; return g.length > 0 && g.filter((k) => gSaida.has(k)).length / g.length < 0.5; });
+        if (paragrafos.length && faltando.length / paragrafos.length > 0.3) avisos.push(`O modelo pode não ter sido aplicado por inteiro: ${faltando.length} de ${paragrafos.length} parágrafos dele não aparecem no resultado (os que narram o caso do próprio modelo mudam de propósito). Ex.: “${faltando[0].slice(0, 90)}…”. Confira.`);
+        const resultadoDe = (x: string) => { const t = norma(x).join(" "); return /improcedent/.test(t) ? "improcedente" : /parcial(mente)? procedent|procedencia parcial/.test(t) ? "parcial" : /procedent/.test(t) ? "procedente" : ""; };
+        const rB = resultadoDe(m.dispositivo || ""), rN = resultadoDe(nova.dispositivo || "");
+        if (rB && rN && rB !== rN) avisos.push(`O resultado mudou: a minuta original era “${rB}” e o resultado ficou “${rN}”. O resultado da minuta original deve prevalecer: confira.`);
+        const t1 = [nova.relatorio, nova.fundamentacao, nova.dispositivo].join("").length || nova.fullFormattedText.length;
+        if (t1 < modelo.length * 0.7) avisos.push(`O resultado ficou bem menor que o modelo (${Math.round((t1 / modelo.length) * 100)}% do tamanho dele): confira se algo foi condensado.`);
         return res.json({ success: true, minute: nova, avisos, usage: response.usageMetadata || {}, modelUsed: (response as any).modelVersion || "" });
     } catch (err: any) {
         console.error("Erro em /api/reestruturar-minuta:", err);

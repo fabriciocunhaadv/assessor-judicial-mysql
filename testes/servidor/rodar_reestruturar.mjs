@@ -22,6 +22,9 @@ try {
   ok(a.j.avisos.some((x) => /R\$4\.000,00/.test(x)), "valor que sumiu na reorganização gera aviso");
   a = await post({ minute: { ...minuta, relatorio: minuta.relatorio + " [[VAZA]]" }, paradigmText: modelo + " valor do modelo R$ 7.777,00", paradigmTitle: "x" });
   ok(a.j.avisos.some((x) => /MODELO/.test(x) && /7\.777,00/.test(x)), "dado do modelo que vazou para a minuta gera aviso");
+  const modeloLongo = ["Determino a citação da parte requerida por aplicativo de mensagem instantânea, no número informado pela parte autora.", "O servidor certificará nos autos o envio da mensagem e a confirmação de recebimento pelo destinatário citado.", "Decorrido o prazo sem manifestação, intime-se a parte autora para impulsionar o feito em quinze dias úteis.", "Ausente a confirmação de recebimento, fica a citação por oficial de justiça no endereço indicado na petição inicial."].join("\n");
+  a = await post({ minute: minuta, paradigmText: modeloLongo, paradigmTitle: "Citação por WhatsApp" });
+  ok(a.j.avisos.some((x) => /não ter sido aplicado por inteiro/.test(x)), "modelo cujos parágrafos não aparecem no resultado gera aviso de que não foi aplicado por inteiro");
   a = await post({ minute: minuta, paradigmText: "curto", paradigmTitle: "x" });
   ok(a.status === 400 && /vazio ou é curto/.test(a.j.error), "modelo vazio: erro claro em português");
   a = await post({ minute: { title: "x" }, paradigmText: modelo });

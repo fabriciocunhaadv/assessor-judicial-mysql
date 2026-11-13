@@ -3036,7 +3036,7 @@ export default function App() {
         onTesesUpdated={setTesesData}
         onInjectDirectParadigm={() => {
           // o modelo do juiz agora é aplicado DEPOIS da minuta pronta (botão "Adaptar a paradigma"), não mais na geração
-          toast("O modelo do juiz agora é aplicado depois: gere a minuta e use o botão “Adaptar a paradigma” no resultado.", { icon: "ℹ️", duration: 7000 });
+          toast("O modelo do juiz agora é aplicado depois: gere a minuta e use o botão “Aplicar modelo / paradigma” no resultado.", { icon: "ℹ️", duration: 7000 });
           setIsTesesModalOpen(false);
         }}
         initialParadigmDraft={initialParadigmDraft}

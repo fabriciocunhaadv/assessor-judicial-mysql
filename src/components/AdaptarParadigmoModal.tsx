@@ -6,27 +6,34 @@ import { MinuteData } from "../types";
 import { getJudgeParadigms, PARADIGMS_UPDATE_EVENT } from "../utils/judgeParadigmsDb";
 import { detectMatchingParadigms } from "../utils/paradigmMatcher";
 import { getApiHeaders } from "../utils/apiKeyManager";
+import { listarModelosProjudi, modelosParecidos, ModeloProjudi, MODELOS_PROJUDI_EVENTO } from "../utils/modelosProjudi";
 
 const textoDaMinuta = (m: MinuteData) => (m.fullFormattedText && m.fullFormattedText.trim().length > 200 ? m.fullFormattedText : [m.header, m.title, m.relatorio && `I - RELATÓRIO\n${m.relatorio}`, m.fundamentacao && `II - FUNDAMENTAÇÃO\n${m.fundamentacao}`, m.dispositivo && `III - DISPOSITIVO\n${m.dispositivo}`, m.closing].filter(Boolean).join("\n\n")).replace(/\\n/g, "\n");
 
-interface Props { aberto: boolean; aoFechar: () => void; minuta: MinuteData; tituloDoPrompt?: string; aoAplicar: (nova: MinuteData, tituloModelo: string, avisos: string[]) => void }
+interface Props { aberto: boolean; aoFechar: () => void; minuta: MinuteData; tituloDoPrompt?: string; modeloInicial?: string; aoAplicar: (nova: MinuteData, tituloModelo: string, avisos: string[]) => void }
 
-export const AdaptarParadigmoModal: React.FC<Props> = ({ aberto, aoFechar, minuta, tituloDoPrompt, aoAplicar }) => {
+export const AdaptarParadigmoModal: React.FC<Props> = ({ aberto, aoFechar, minuta, tituloDoPrompt, modeloInicial, aoAplicar }) => {
   const [modelos, setModelos] = useState(() => getJudgeParadigms());
+  const [projudi, setProjudi] = useState<ModeloProjudi[]>([]);      // modelos cadastrados no Projudi (chegam pela extensão)
   const [escolhido, setEscolhido] = useState<string>("");
   const [rodando, setRodando] = useState(false);
   const [erro, setErro] = useState("");
   const [proposta, setProposta] = useState<{ minute: any; avisos: string[] } | null>(null);
 
   useEffect(() => { const f = () => setModelos(getJudgeParadigms()); window.addEventListener(PARADIGMS_UPDATE_EVENT, f); return () => window.removeEventListener(PARADIGMS_UPDATE_EVENT, f); }, []);
+  useEffect(() => { if (!aberto) return; const f = () => { listarModelosProjudi().then(setProjudi).catch(() => setProjudi([])); }; f(); window.addEventListener(MODELOS_PROJUDI_EVENTO, f); return () => window.removeEventListener(MODELOS_PROJUDI_EVENTO, f); }, [aberto]);
+  const parecidosProjudi = useMemo(() => modelosParecidos(minuta, projudi, undefined, 5), [minuta, projudi]);
   const sugestoes = useMemo(() => {
     try { return detectMatchingParadigms([textoDaMinuta(minuta), tituloDoPrompt || ""].join(" "), modelos, minuta.processNumber); } catch { return []; }
   }, [minuta, modelos, tituloDoPrompt]);
   const sugerido = sugestoes[0]?.paradigm.id || "";
-  useEffect(() => { if (aberto) { setProposta(null); setErro(""); setEscolhido((x) => x || sugerido); } }, [aberto, sugerido]);
+  useEffect(() => { if (aberto) { setProposta(null); setErro(""); setEscolhido((x) => modeloInicial || x || sugerido); } }, [aberto, sugerido, modeloInicial]);
   if (!aberto) return null;
 
-  const modelo = modelos.find((p) => p.id === escolhido);
+  // uma lista só: paradigmas do juiz e modelos do Projudi (os do Projudi levam o prefixo "pj:")
+  const projudiEscolhido = escolhido.startsWith("pj:") ? projudi.find((m) => "pj:" + m.id === escolhido) : undefined;
+  const paradigma = modelos.find((p) => p.id === escolhido);
+  const modelo = projudiEscolhido ? { id: escolhido, title: projudiEscolhido.nome, fullText: projudiEscolhido.texto } : paradigma ? { id: paradigma.id, title: paradigma.title, fullText: paradigma.fullText } : undefined;
   const rodar = async () => {
     if (!modelo) return;
     setRodando(true); setErro(""); setProposta(null);
@@ -49,24 +56,25 @@ export const AdaptarParadigmoModal: React.FC<Props> = ({ aberto, aoFechar, minut
     <div className="fixed inset-0 z-[9500] bg-slate-900/60 flex items-center justify-center p-3" role="dialog" aria-modal="true" data-testid="adaptar-paradigma">
       <div className="bg-white text-slate-800 rounded-2xl shadow-2xl border border-amber-300 w-[min(98vw,72rem)] max-h-[94vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-amber-200 bg-amber-50">
-          <h3 className="text-sm font-black text-amber-900 flex items-center gap-2"><Gavel className="w-4 h-4" /> Adaptar a minuta a um paradigma</h3>
+          <h3 className="text-sm font-black text-amber-900 flex items-center gap-2"><Gavel className="w-4 h-4" /> Aplicar um modelo à minuta</h3>
           <button onClick={aoFechar} className="text-slate-500 hover:text-slate-800 cursor-pointer" aria-label="Fechar"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-4 space-y-3 overflow-y-auto">
-          <p className="text-xs text-slate-600">O sistema reorganiza <strong>só a estrutura e o estilo</strong> desta minuta conforme o modelo escolhido, <strong>sem reler os autos</strong>. Fatos, partes, datas, valores, citações e o resultado ficam como estão. Você vê o antes e o depois e só então decide.</p>
-          {modelos.length === 0 ? <div className="text-xs text-red-700 bg-red-50 rounded p-2">Nenhum modelo cadastrado. Cadastre em Teses & Modelos → “Modelos de Decisões”.</div> : (
+          <p className="text-xs text-slate-600">O sistema aplica o modelo escolhido <strong>por inteiro</strong> (todas as seções, comandos, prazos, advertências e o fecho, com as mesmas palavras) e troca <strong>só os dados do processo</strong> (partes, número, telefone, datas, valores, fatos) pelos desta minuta, <strong>sem reler os autos</strong>. O resultado da minuta (procedência, improcedência…) é mantido. Você vê o antes e o depois e só então decide.</p>
+          {modelos.length === 0 && projudi.length === 0 ? <div className="text-xs text-red-700 bg-red-50 rounded p-2">Nenhum modelo cadastrado. Cadastre em Teses & Modelos → “Modelos de Decisões” ou envie os modelos do Projudi pela extensão.</div> : (
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-700" htmlFor="par-esc">Modelo (paradigma)</label>
+              <label className="text-[11px] font-bold text-slate-700" htmlFor="par-esc">Modelo (paradigma do juiz ou modelo do Projudi)</label>
               <select id="par-esc" value={escolhido} onChange={(e) => { setEscolhido(e.target.value); setProposta(null); }} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs" data-testid="adaptar-select">
                 <option value="">— escolha um modelo —</option>
-                {modelos.map((p) => <option key={p.id} value={p.id}>{p.id === sugerido ? "★ Sugerido: " : ""}{p.title}{p.category ? ` · ${p.category}` : ""}</option>)}
+                {modelos.length > 0 && <optgroup label="Meus paradigmas (Modelos de Decisões)">{modelos.map((p) => <option key={p.id} value={p.id}>{p.id === sugerido ? "★ Sugerido: " : ""}{p.title}{p.category ? ` · ${p.category}` : ""}</option>)}</optgroup>}
+                {projudi.length > 0 && <optgroup label="Modelos do Projudi">{projudi.map((m) => <option key={m.id} value={"pj:" + m.id}>{parecidosProjudi.some((x) => x.modelo.id === m.id) ? "★ Parecido: " : ""}{m.nome} · {m.tipo}</option>)}</optgroup>}
               </select>
               {!sugerido && <div className="text-[11px] text-slate-500">O sistema não achou um modelo claramente parecido: escolha o que preferir.</div>}
               {sugerido && escolhido === sugerido && <div className="text-[11px] text-emerald-700">Sugerido pelo sistema ({sugestoes[0].confidenceScore}% de semelhança: {sugestoes[0].reason}).</div>}
             </div>
           )}
           <button onClick={rodar} disabled={!modelo || rodando} className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer flex items-center gap-2" data-testid="adaptar-rodar">
-            {rodando ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Reorganizando…</> : "Reestruturar"}
+            {rodando ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Reorganizando…</> : "Aplicar o modelo inteiro"}
           </button>
           {erro && <div className="text-xs text-red-700 bg-red-50 rounded p-2" data-testid="adaptar-erro">{erro}</div>}
           {proposta && (
