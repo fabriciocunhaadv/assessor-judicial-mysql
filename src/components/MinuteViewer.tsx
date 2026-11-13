@@ -1169,6 +1169,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
           outputTokens: data.usage.candidatesTokenCount,
           totalTokens: data.usage.totalTokenCount,
           module: 'chat_refino',
+          registradoNoServidor: true,      // o servidor já contou (rota /api/chat-agaia)
         }).catch((e) => console.warn("Could not record chat api execution:", e));
       }
 

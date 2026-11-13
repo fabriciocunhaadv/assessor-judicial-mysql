@@ -28,6 +28,20 @@ try {
   ok(linha && linha.excluidasManual === 2, `a pessoa tem 2 minutas excluídas registradas (veio ${linha && linha.excluidasManual})`);
   ok(u.totais.excluidasManual === 2 && u.totais.excluidasRetencao === 0, "totais: 2 excluídas manualmente, 0 por prazo");
   ok(u.totais.exclusoesDesde > 0, "informa desde quando as exclusões são registradas");
+  // lançadas no Projudi e mudança de unidade (ato e3 foi movido de gabinete acima; e4 continua no gabinete)
+  const l1 = await hist("PATCH", "/e4", { op: "lancado", quando: Date.now() });
+  const l2 = await hist("PATCH", "/e4", { op: "lancado", quando: Date.now() });      // marcar de novo o mesmo valor não é novo evento? (muda o instante: conta)
+  const un = await hist("PATCH", "/e4", { op: "unidade", unitId: "crixas", judicialUnit: "Crixás / Vara Única" });
+  ok(l1.status === 200 && un.status === 200, `marca lançado e muda a unidade (${l1.status}/${un.status})`);
+  u = await util(); linha = (u.usuarios || []).find((l) => l.email === "teste@tjgo.jus.br");
+  ok(linha.lancadas >= 1 && linha.mudancasUnidade === 1 && linha.mudancasGabinete === 1, `contadores por pessoa: lançadas=${linha.lancadas} unidade=${linha.mudancasUnidade} gabinete=${linha.mudancasGabinete}`);
+  ok(u.totais.lancadas >= 1 && u.totais.mudancasUnidade === 1 && u.totais.mudancasGabinete === 1, "totais de lançadas e mudanças");
+  const det = async (tipo) => (await (await fetch(B + "/utilizacao/detalhe?tipo=" + tipo, { headers: H })).json());
+  const dx = await det("excluidas"), dl = await det("lancada"), du = await det("unidade"), dg = await det("gabinete");
+  ok(dx.linhas.length === 2 && dx.linhas.every((x) => x.quemFez === "teste@tjgo.jus.br" && x.dono === "teste@tjgo.jus.br" && x.processo), `lista das excluídas com quem apagou (${dx.linhas.length})`);
+  ok(dl.linhas.length >= 1 && du.linhas.length === 1 && du.linhas[0].detalhe.includes("crixas") && dg.linhas.length === 1 && dg.linhas[0].detalhe.includes("gab_b"), "listas de lançadas, mudança de unidade (de → para) e de gabinete");
+  const ruim = await fetch(B + "/utilizacao/detalhe?tipo=xyz", { headers: H });
+  ok(ruim.status === 400, "tipo inválido: erro claro");
   ok(!(u.avisos || []).some((x) => /excluídas/.test(x)), `sem aviso de falha na fonte de exclusões (${JSON.stringify(u.avisos)})`);
 } finally { for (const p of filhos) { try { process.kill(-p.pid, 9); } catch {} } }
 if (falhas) process.exit(1); console.log("TUDO OK");

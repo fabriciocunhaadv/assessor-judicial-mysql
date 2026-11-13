@@ -6,14 +6,22 @@ import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
 import { calculateCostBrl } from "../src/utils/custoIA";
 
-type Modulo = "minuta" | "turbo" | "lupa_magistrado" | "audiencia" | "ia_externa" | "sentenca_video" | "outros";
+type Modulo = "minuta" | "turbo" | "lupa_magistrado" | "audiencia" | "ia_externa" | "sentenca_video" | "copiloto" | "chat_refino" | "modelos" | "apoio" | "gigante" | "outros";
 const ROTAS: Record<string, { modulo: Modulo; rotulo: string }> = {
   "/api/generate-minute": { modulo: "minuta", rotulo: "Minuta" },
   "/api/generate-minute-turbo": { modulo: "turbo", rotulo: "Minuta Turbo" },
   "/api/audit-assessor-draft": { modulo: "lupa_magistrado", rotulo: "Auditoria: Lupa do Magistrado" },
   "/api/hearing-copilot": { modulo: "audiencia", rotulo: "Mesa de Audiência" },
   "/api/mutirao-video": { modulo: "sentenca_video", rotulo: "Sentença com vídeo da audiência (degravação + motor principal)" },
-  "/api/mapa-processo": { modulo: "outros", rotulo: "Mapa do processo (leitura completa dos autos)" },
+  "/api/mapa-processo": { modulo: "apoio", rotulo: "Mapa do processo (leitura completa dos autos)" },
+  "/api/chat-agaia": { modulo: "chat_refino", rotulo: "Chat da minuta (consulta / reescrita)" },
+  "/api/lateral-agent-chat": { modulo: "copiloto", rotulo: "Copiloto IA" },
+  "/api/reestruturar-minuta": { modulo: "modelos", rotulo: "Aplicar modelo / paradigma à minuta" },
+  "/api/conferir-modelos": { modulo: "modelos", rotulo: "Conferir minuta com os modelos do Projudi" },
+  "/api/assistente-sugerir": { modulo: "apoio", rotulo: "Assistente do dia (sugestão)" },
+  "/api/ocr-paginas": { modulo: "apoio", rotulo: "OCR de páginas por IA" },
+  "/api/gigante-lote": { modulo: "gigante", rotulo: "Processo gigante: leitura de um trecho" },
+  "/api/gigante-fusao": { modulo: "gigante", rotulo: "Processo gigante: fusão das fichas" },
   "/api/advogado-peticao/auto-extract-evidence": { modulo: "outros", rotulo: "Petição 360°: leitura dos autos e provas" },
   "/api/advogado-peticao/generate-full-petition": { modulo: "outros", rotulo: "Petição 360°: redação da peça" },
 };

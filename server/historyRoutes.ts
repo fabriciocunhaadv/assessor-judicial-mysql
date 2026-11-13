@@ -51,7 +51,22 @@ export const garantirEsquema = (): Promise<void> => (esquemaPronto ||= (async ()
     criador_email VARCHAR(190) NOT NULL DEFAULT '', processo VARCHAR(64) NOT NULL DEFAULT '', titulo VARCHAR(200) NOT NULL DEFAULT '', gerado_em BIGINT NOT NULL DEFAULT 0, apagado_em BIGINT NOT NULL,
     motivo VARCHAR(24) NOT NULL, apagado_por VARCHAR(190) NOT NULL DEFAULT '', PRIMARY KEY (id_seq), KEY ix_excl_data (apagado_em), KEY ix_excl_tenant (tenant, apagado_em)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // eventos do Histórico para o painel Utilização: minuta lançada/desmarcada no Projudi, mudança de unidade e de gabinete
+  await b.query(`CREATE TABLE IF NOT EXISTS history_eventos (
+    id_seq BIGINT NOT NULL AUTO_INCREMENT, tenant VARCHAR(64) NOT NULL, tipo VARCHAR(16) NOT NULL, ato_id VARCHAR(128) NOT NULL DEFAULT '', processo VARCHAR(64) NOT NULL DEFAULT '',
+    ator_email VARCHAR(190) NOT NULL DEFAULT '', dono_email VARCHAR(190) NOT NULL DEFAULT '', de_valor VARCHAR(190) NOT NULL DEFAULT '', para_valor VARCHAR(190) NOT NULL DEFAULT '', em BIGINT NOT NULL,
+    PRIMARY KEY (id_seq), KEY ix_ev_data (em), KEY ix_ev_tipo (tipo, em)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 })().catch((e) => { esquemaPronto = null; throw e; }));
+
+export type TipoEvento = "lancada" | "desmarcada" | "unidade" | "gabinete";
+/** Anota um evento do Histórico (nunca derruba a operação principal). */
+export async function anotarEvento(tenant: string, tipo: TipoEvento, o: { atoId?: string; processo?: string; ator?: string; dono?: string; de?: string; para?: string }) {
+  try {
+    await banco().query("INSERT INTO history_eventos (tenant, tipo, ato_id, processo, ator_email, dono_email, de_valor, para_valor, em) VALUES (?,?,?,?,?,?,?,?,?)",
+      [tenant, tipo, String(o.atoId || "").slice(0, 128), String(o.processo || "").slice(0, 64), String(o.ator || "").toLowerCase().slice(0, 190), String(o.dono || "").toLowerCase().slice(0, 190), String(o.de || "").slice(0, 190), String(o.para || "").slice(0, 190), Date.now()]);
+  } catch (e: any) { console.error("[eventos] não anotei o evento:", e?.message || e); }
+}
 
 // ---------- autenticação (sessão própria: server/authRoutes.ts) ----------
 interface Usuario { uid: string; email: string; superAdmin: boolean; tenant: string; ids: string[] }
@@ -173,6 +188,7 @@ historyRouter.patch("/:id", rota(async (req, res, u) => {
   const ato = await lerAto(u, req.params.id);
   if (!ato) return void res.json({ ok: false });
   const b = req.body || {};
+  const unidadeAntes = String(ato.unitId || ""), lancadoAntes = ato.lancadoProjudi;
   if (b.op === "lancado") ato.lancadoProjudi = b.quando ?? null;
   else if (b.op === "unidade") {
     if (b.unitId) ato.unitId = b.unitId;
@@ -191,6 +207,9 @@ historyRouter.patch("/:id", rota(async (req, res, u) => {
     }
   } else throw Object.assign(new Error("operação desconhecida"), { status: 400 });
   await gravarAto(u, limparNaoDefinidos(ato));
+  const base = { atoId: String(ato.id || req.params.id), processo: String(ato.processNumber || ""), ator: u.email, dono: String(ato.creatorEmail || "") };
+  if (b.op === "lancado" && (b.quando ?? null) !== (lancadoAntes ?? null)) await anotarEvento(u.tenant, b.quando ? "lancada" : "desmarcada", base);
+  if (b.op === "unidade" && b.unitId && String(b.unitId) !== unidadeAntes) await anotarEvento(u.tenant, "unidade", { ...base, de: unidadeAntes, para: String(b.unitId) });
   res.json({ ok: true });
 }));
 
@@ -205,6 +224,7 @@ historyRouter.post("/processo/atualizar", rota(async (req, res, u) => {
     else throw Object.assign(new Error("operação desconhecida"), { status: 400 });
     await gravarAto(u, limparNaoDefinidos(ato));
   }
+  if (b.op === "unidade" && atos.length) await anotarEvento(u.tenant, "unidade", { processo: String(b.processNumber), ator: u.email, dono: String(atos[0].creatorEmail || ""), para: String(b.unitId || b.judicialUnit || "") });
   res.json({ atualizados: atos.length });
 }));
 
@@ -216,7 +236,7 @@ historyRouter.post("/lote/unidade", rota(async (req, res, u) => {
   const atos = new Map<string, any>();
   for (const id of p.ids) { const a = await lerAto(u, id); if (a) atos.set(String(a.id || id), a); }
   for (const num of p.processos) for (const a of await atosDoProcesso(u, num)) atos.set(String(a.id), a);
-  for (const a of atos.values()) await gravarAto(u, limparNaoDefinidos(aplicarUnidade(a, p.destino)));      // um ato por vez: leve para o banco
+  for (const a of atos.values()) { const antes = String(a.unitId || ""); await gravarAto(u, limparNaoDefinidos(aplicarUnidade(a, p.destino))); await anotarEvento(u.tenant, "unidade", { atoId: String(a.id || ""), processo: String(a.processNumber || ""), ator: u.email, dono: String(a.creatorEmail || ""), de: antes, para: String(p.destino?.unitId || "") }); }      // um ato por vez: leve para o banco
   res.json({ atualizados: atos.size });
 }));
 
@@ -233,7 +253,7 @@ historyRouter.post("/lote/mover-gabinete", rota(async (req, res, u) => {
   for (const id of p.ids) { const a = await lerAto(u, id); if (a) atos.set(String(a.id || id), a); }
   for (const num of p.processos) for (const a of await atosDoProcesso(u, num)) atos.set(String(a.id), a);
   for (const a of atos.values()) await gravarAtoDoTenant(tenantDestino, limparNaoDefinidos({ ...aplicarUnidade(a, p.destino), tenant: tenantDestino }));
-  for (const id of atos.keys()) await apagarAtoDoTenant(u.tenant, id, "transferencia", u.email);
+  for (const [id, a] of atos) { await apagarAtoDoTenant(u.tenant, id, "transferencia", u.email); await anotarEvento(u.tenant, "gabinete", { atoId: id, processo: String(a.processNumber || ""), ator: u.email, dono: String(a.creatorEmail || ""), de: u.tenant, para: tenantDestino }); }
   res.json({ movidos: atos.size, atualizados: atos.size });
 }));
 

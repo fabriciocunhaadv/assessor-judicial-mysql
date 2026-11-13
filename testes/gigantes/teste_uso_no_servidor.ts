@@ -14,5 +14,11 @@ mw({ method: "POST", headers: { "x-uso-no-servidor": "1" }, baseUrl: "/api/outra
 ok(chamou === 2 && res.end === fim0, "rota fora da lista não interfere");
 mw({ method: "POST", headers: { "x-uso-no-servidor": "1" }, baseUrl: "/api/generate-minute", usuarioSessao: {} } as any, res, () => chamou++);
 ok(chamou === 3 && res.end !== fim0, "rota de IA com o cabeçalho passa a ser observada");
+// rotas novas contadas no servidor (antes o Chat/Refino dependia do navegador e aparecia zerado)
+for (const rota of ["/api/chat-agaia", "/api/lateral-agent-chat", "/api/reestruturar-minuta", "/api/conferir-modelos", "/api/assistente-sugerir", "/api/ocr-paginas", "/api/gigante-lote", "/api/gigante-fusao"]) {
+  const r2: any = { statusCode: 200, write() { return true; }, end() { return true; } }; const f0 = r2.end;
+  mw({ method: "POST", headers: { "x-uso-no-servidor": "1" }, baseUrl: rota, usuarioSessao: {} } as any, r2, () => {});
+  ok(r2.end !== f0, `${rota} passa a ser contada no servidor`);
+}
 res.end("{ \"erro\": 1"); // JSON inválido não pode quebrar
 process.exit(falhas ? 1 : 0);

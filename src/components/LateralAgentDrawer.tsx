@@ -417,6 +417,7 @@ export const LateralAgentDrawer: React.FC<LateralAgentDrawerProps> = ({
         outputTokens: candToks,
         totalTokens: totalToks,
         module: 'copiloto',
+        registradoNoServidor: true,      // o servidor já contou (rota /api/lateral-agent-chat)
       }).catch((telemetryErr) => console.warn("[Copiloto] Aviso telemetria:", telemetryErr));
     } catch (err: any) {
       console.error("Erro na comunicação com Agente Lateral:", err);

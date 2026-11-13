@@ -1181,6 +1181,9 @@ export interface InitialPetitionRecord {
 // ==========================================
 
 export type ExecutionModuleType = 
+  | 'modelos'          // Aplicar modelo/paradigma e conferir com os modelos do Projudi
+  | 'apoio'            // Apoio: mapa do processo, OCR por IA, assistente do dia (não geram minuta)
+  | 'gigante'          // Processo gigante: leitura em lotes e fusão das fichas
   | 'sentenca_video'   // Sentença com o vídeo da audiência (esteira da extensão / Mutirão): degravação + motor principal
   | 'ia_externa'       // Minuta feita no ChatGPT/Gemini/Claude/Agaia pela esteira da extensão e entregue ao Studio (sem tokens)
   | 'minuta'           // Geração de Minutas (Sentença, Decisão, Despacho)

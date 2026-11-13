@@ -6,13 +6,13 @@ import { garantirDocs } from "./docsRoutes";
 
 export const utilizacaoRouter = express.Router();
 
-const MODULOS = ["minuta", "turbo", "copiloto", "audiencia", "lupa_magistrado", "chat_refino", "ia_externa", "sentenca_video", "outros"] as const;
+const MODULOS = ["minuta", "turbo", "copiloto", "audiencia", "lupa_magistrado", "chat_refino", "modelos", "gigante", "apoio", "ia_externa", "sentenca_video", "outros"] as const;
 type Modulo = (typeof MODULOS)[number];
 interface Uso { n: number; tokens: number; custo: number }
 interface Linha {
   email: string; nome: string; tenant: string; papel: string; status: string; peticao360Liberada: boolean; chaveNativaLiberada: boolean;
   modulos: Record<Modulo, Uso>; execucoes: number; tokens: number; custo: number; chaveNativa: number;
-  minutasSalvas: number; excluidasManual: number; excluidasRetencao: number; peticoes360: number; ultimoUso: number; extensao: Record<string, number>; extensaoTotal: number;
+  minutasSalvas: number; excluidasManual: number; excluidasRetencao: number; lancadas: number; mudancasUnidade: number; mudancasGabinete: number; peticoes360: number; ultimoUso: number; extensao: Record<string, number>; extensaoTotal: number;
 }
 const vazio = (): Record<Modulo, Uso> => Object.fromEntries(MODULOS.map((m) => [m, { n: 0, tokens: 0, custo: 0 }])) as Record<Modulo, Uso>;
 const dia = (s: any, fim: boolean, padrao: number) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || "")); return m ? Date.parse(`${m[1]}-${m[2]}-${m[3]}T${fim ? "23:59:59.999" : "00:00:00"}-03:00`) : padrao; };      // dias no horário de Brasília
@@ -34,12 +34,12 @@ utilizacaoRouter.get("/", async (req: any, res) => {
       const email = String(u.email || "").toLowerCase(), extras = json(u.extras);
       const legados: string[] = Array.isArray(extras.uidsAntigos) ? extras.uidsAntigos.map(String) : [];
       porUid.set(String(u.id), email); legados.forEach((x) => porUid.set(x, email));
-      linhas.set(email, { email, nome: u.name || email.split("@")[0], tenant: u.tenant_id || "", papel: u.role, status: u.status, peticao360Liberada: u.role === "super_admin" || extras.peticao360 === true, chaveNativaLiberada: !!u.can_use_native_key || u.role === "super_admin", modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, excluidasManual: 0, excluidasRetencao: 0, peticoes360: 0, ultimoUso: 0, extensao: {}, extensaoTotal: 0 });
+      linhas.set(email, { email, nome: u.name || email.split("@")[0], tenant: u.tenant_id || "", papel: u.role, status: u.status, peticao360Liberada: u.role === "super_admin" || extras.peticao360 === true, chaveNativaLiberada: !!u.can_use_native_key || u.role === "super_admin", modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, excluidasManual: 0, excluidasRetencao: 0, lancadas: 0, mudancasUnidade: 0, mudancasGabinete: 0, peticoes360: 0, ultimoUso: 0, extensao: {}, extensaoTotal: 0 });
     }
     const pegar = (email: string, nome = "", tenant = ""): Linha => {
       email = email.toLowerCase();
       let l = linhas.get(email);
-      if (!l) { l = { email, nome: nome || email.split("@")[0] || "(sem identificação)", tenant, papel: "", status: "fora do cadastro", peticao360Liberada: false, chaveNativaLiberada: false, modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, excluidasManual: 0, excluidasRetencao: 0, peticoes360: 0, ultimoUso: 0, extensao: {}, extensaoTotal: 0 }; linhas.set(email, l); }
+      if (!l) { l = { email, nome: nome || email.split("@")[0] || "(sem identificação)", tenant, papel: "", status: "fora do cadastro", peticao360Liberada: false, chaveNativaLiberada: false, modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, excluidasManual: 0, excluidasRetencao: 0, lancadas: 0, mudancasUnidade: 0, mudancasGabinete: 0, peticoes360: 0, ultimoUso: 0, extensao: {}, extensaoTotal: 0 }; linhas.set(email, l); }
       return l;
     };
 
@@ -116,11 +116,22 @@ utilizacaoRouter.get("/", async (req: any, res) => {
     }
     });
 
+    // 5) eventos do Histórico: minutas lançadas no Projudi, mudanças de unidade e de gabinete (por dono da minuta)
+    await tentar("lançamentos e mudanças", async () => {
+    const [ev] = await banco().query<any[]>("SELECT tipo, dono_email AS email, COUNT(*) AS n, MAX(em) AS ultimo FROM history_eventos WHERE em BETWEEN ? AND ? GROUP BY tipo, email", [de, ate]);
+    for (const r of ev) {
+      const email = String(r.email || "").toLowerCase(); if (!email) { semDono += Number(r.n) || 0; continue; }
+      const l = pegar(email), n = Number(r.n) || 0;
+      if (r.tipo === "lancada") l.lancadas += n; else if (r.tipo === "unidade") l.mudancasUnidade += n; else if (r.tipo === "gabinete") l.mudancasGabinete += n;
+      l.ultimoUso = Math.max(l.ultimoUso, Number(r.ultimo) || 0);
+    }
+    });
+
     const usuarios = [...linhas.values()].sort((a, b) => (b.execucoes + b.peticoes360 + b.minutasSalvas + b.excluidasManual + b.excluidasRetencao) - (a.execucoes + a.peticoes360 + a.minutasSalvas + a.excluidasManual + a.excluidasRetencao) || a.email.localeCompare(b.email));
     const soma = (f: (l: Linha) => number) => usuarios.reduce((n, l) => n + f(l), 0);
     const totais = {
       usuariosAtivos: usuarios.filter((l) => l.execucoes + l.peticoes360 + l.minutasSalvas + l.excluidasManual + l.excluidasRetencao + l.extensaoTotal > 0).length, usuariosCadastrados: us.length,
-      extensao: soma((l) => l.extensaoTotal), execucoes: soma((l) => l.execucoes), tokens: soma((l) => l.tokens), custo: soma((l) => l.custo), minutasSalvas: soma((l) => l.minutasSalvas), excluidasManual: soma((l) => l.excluidasManual), excluidasRetencao: soma((l) => l.excluidasRetencao), exclusoesDesde, geradasExcluidas, outrosPorRotulo: [...outrosPorRotulo].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([rotulo, n]) => ({ rotulo, n })), peticoes360: soma((l) => l.peticoes360),
+      extensao: soma((l) => l.extensaoTotal), execucoes: soma((l) => l.execucoes), tokens: soma((l) => l.tokens), custo: soma((l) => l.custo), minutasSalvas: soma((l) => l.minutasSalvas), lancadas: soma((l) => l.lancadas), mudancasUnidade: soma((l) => l.mudancasUnidade), mudancasGabinete: soma((l) => l.mudancasGabinete), excluidasManual: soma((l) => l.excluidasManual), excluidasRetencao: soma((l) => l.excluidasRetencao), exclusoesDesde, geradasExcluidas, outrosPorRotulo: [...outrosPorRotulo].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([rotulo, n]) => ({ rotulo, n })), peticoes360: soma((l) => l.peticoes360),
       porModulo: Object.fromEntries(MODULOS.map((m) => [m, { n: soma((l) => l.modulos[m].n), tokens: soma((l) => l.modulos[m].tokens), custo: soma((l) => l.modulos[m].custo) }])),
       semDono,
     };
@@ -133,5 +144,27 @@ utilizacaoRouter.get("/", async (req: any, res) => {
   } catch (e: any) {
     console.error("[utilizacao]", e?.message || e);
     res.status(500).json({ erro: `não foi possível calcular a utilização (${String(e?.code || e?.message || e).slice(0, 160)})` });
+  }
+});
+
+/** Registro detalhado de operações (Super Admin): { tipo: "excluidas" | "lancada" | "unidade" | "gabinete", de, ate, email? } → até 500 linhas, da mais recente para a mais antiga. */
+utilizacaoRouter.get("/detalhe", async (req: any, res) => {
+  try {
+    if (!req.usuarioSessao?.superAdmin) return void res.status(403).json({ erro: "somente o super administrador" });
+    await garantirDocs();
+    const agora = Date.now(), d0 = new Date(agora - 3 * 3600_000);
+    const inicioMes = Date.parse(`${d0.getUTCFullYear()}-${String(d0.getUTCMonth() + 1).padStart(2, "0")}-01T00:00:00-03:00`);
+    const de = dia(req.query.de, false, inicioMes), ate = dia(req.query.ate, true, agora), email = String(req.query.email || "").toLowerCase().trim();
+    const tipo = String(req.query.tipo || "excluidas");
+    if (tipo === "excluidas") {
+      const [rows] = await banco().query<any[]>(`SELECT tenant, processo, titulo, criador_email, apagado_por, motivo, gerado_em, apagado_em FROM history_exclusoes WHERE apagado_em BETWEEN ? AND ?${email ? " AND criador_email=?" : ""} ORDER BY apagado_em DESC LIMIT 500`, email ? [de, ate, email] : [de, ate]);
+      return void res.json({ tipo, linhas: rows.map((r) => ({ quando: Number(r.apagado_em), gabinete: r.tenant, processo: r.processo, titulo: r.titulo, dono: r.criador_email, quemFez: r.apagado_por, detalhe: r.motivo === "retencao" ? "venceu o prazo do Histórico" : r.motivo === "dossie" ? "dossiê excluído" : "excluída", geradaEm: Number(r.gerado_em) || 0 })) });
+    }
+    if (!["lancada", "desmarcada", "unidade", "gabinete"].includes(tipo)) return void res.status(400).json({ erro: "tipo inválido" });
+    const [rows] = await banco().query<any[]>(`SELECT tenant, processo, dono_email, ator_email, de_valor, para_valor, em FROM history_eventos WHERE tipo=? AND em BETWEEN ? AND ?${email ? " AND dono_email=?" : ""} ORDER BY em DESC LIMIT 500`, email ? [tipo, de, ate, email] : [tipo, de, ate]);
+    res.json({ tipo, linhas: rows.map((r) => ({ quando: Number(r.em), gabinete: r.tenant, processo: r.processo, dono: r.dono_email, quemFez: r.ator_email, detalhe: r.de_valor || r.para_valor ? `${r.de_valor || "?"} → ${r.para_valor || "?"}` : "" })) });
+  } catch (e: any) {
+    console.error("[utilizacao/detalhe]", e?.message || e);
+    res.status(500).json({ erro: `não foi possível listar (${String(e?.code || e?.message || e).slice(0, 160)})` });
   }
 });
