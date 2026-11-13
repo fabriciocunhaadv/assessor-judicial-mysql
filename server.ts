@@ -4070,7 +4070,9 @@ export function checkIsDispositivoSentenca(text: string): boolean {
         lower.includes("condeno a parte requerida a pagar") ||
         lower.includes("condeno o réu a pagar") ||
         lower.includes("condeno o requerido a pagar") ||
-        lower.includes("condeno a reclamada a pagar")
+        lower.includes("condeno a reclamada a pagar") ||
+        // extinção da EXECUÇÃO / do CUMPRIMENTO (arts. 924 e 925 do CPC) também é sentença
+        /\b(?:declaro|julgo|extingo)\s+(?:extint[ao]\s+|satisfeit[ao]\s+)?(?:a\s+execu[cç][aã]o|o\s+cumprimento(?:\s+de\s+senten[cç]a)?)|\bextin[gç][oã]o\s+da\s+execu[cç][aã]o|julgo\s+(?:satisfeita|cumprida)\s+a\s+obriga[cç][aã]o|art(?:igo|\.)\s*925\b/.test(lower)
     );
 }
 
