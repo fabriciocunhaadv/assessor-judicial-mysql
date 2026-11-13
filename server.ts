@@ -1,4 +1,5 @@
 
+import { normalizarMinutaDoChat } from './src/utils/normalizarMinutaChat';
 import express from 'express';
 import path from 'path';
 import multer from 'multer';
@@ -1012,7 +1013,7 @@ ${REGRA_ESTRUTURA_POR_ATO}${REGRA_DISPOSITIVO_CARTORIO}${REGRAS_MECANICA_JUDICIA
      "reply": "Explicação técnica clara e cortês sobre as modificações realizadas na decisão para o assessor/juiz.",
      "hasMinuteUpdate": true,
      "updatedMinute": {
-       "title": "TÍTULO DO ATO",
+       "title": "TÍTULO CURTO DO ATO (ex.: DECISÃO INTERLOCUTÓRIA) — NUNCA o texto da minuta",
        "relatorio": "Texto completo e detalhado do relatório...",
        "fundamentacao": "Texto completo, denso e exaustivo da fundamentação judicial...",
        "dispositivo": "Texto completo do dispositivo com todos os comandos judiciais..."
@@ -1028,7 +1029,7 @@ ${REGRA_ESTRUTURA_POR_ATO}${REGRA_DISPOSITIVO_CARTORIO}${REGRAS_MECANICA_JUDICIA
         }
         
         const userPrompt = `${historyPrompt}\nUsuário: ${message}` + await blocoLegislacao([message, currentMinute?.fundamentacao, currentMinute?.dispositivo, originalProcessText]);
-        const lembreteFormato = `\n\n[FORMATO OBRIGATÓRIO DA RESPOSTA] Responda SOMENTE com um objeto JSON {"reply": "...", "hasMinuteUpdate": true|false, "updatedMinute": {"title": "...", "relatorio": "...", "fundamentacao": "...", "dispositivo": "...", "closing": "..."}, "suggestedActions": []}. Se o pedido do usuário muda a minuta, use hasMinuteUpdate=true e devolva em updatedMinute os campos COMPLETOS (nunca só o trecho alterado). Se for só uma dúvida, hasMinuteUpdate=false e responda em "reply".`;
+        const lembreteFormato = `\n\n[FORMATO OBRIGATÓRIO DA RESPOSTA] Responda SOMENTE com um objeto JSON {"reply": "...", "hasMinuteUpdate": true|false, "updatedMinute": {"title": "...", "relatorio": "...", "fundamentacao": "...", "dispositivo": "...", "closing": "..."}, "suggestedActions": []}. Se o pedido do usuário muda a minuta, use hasMinuteUpdate=true e devolva em updatedMinute os campos COMPLETOS (nunca só o trecho alterado). Se for só uma dúvida, hasMinuteUpdate=false e responda em "reply". REGRAS DO ENVELOPE: \"title\" tem SÓ o título curto do ato (ex.: DECISÃO INTERLOCUTÓRIA); NUNCA ponha o texto da minuta no title; relatório, fundamentação e dispositivo vão cada um no seu campo, com quebra de linha entre os parágrafos; se nada mudar no texto, use hasMinuteUpdate=false.`;
         
         const options = {
             apiKey: apiKey,
@@ -1080,6 +1081,16 @@ ${REGRA_ESTRUTURA_POR_ATO}${REGRA_DISPOSITIVO_CARTORIO}${REGRAS_MECANICA_JUDICIA
             return res.json({ reply: "A IA não devolveu a alteração pedida (a resposta veio fora do formato). Nada foi mudado na minuta: tente de novo ou reformule o pedido.", hasMinuteUpdate: false, suggestedActions: [] });
         }
         if (!data.reply) data.reply = "Minuta atualizada conforme o seu pedido.";
+        // a IA às vezes põe a minuta inteira num só campo (ex.: no título): separa em relatório/fundamentação/dispositivo; se o texto não mudou, não finge que atualizou
+        if (data.updatedMinute && typeof data.updatedMinute === 'object') {
+            const norm = normalizarMinutaDoChat(data.updatedMinute, currentMinute);
+            data.updatedMinute = norm.minuta;
+            if (norm.reparada) console.warn("[chat-agaia] a IA devolveu a minuta fora dos campos certos; reparada pelo servidor");
+            if (norm.semMudanca && data.hasMinuteUpdate !== false) {
+                data.hasMinuteUpdate = false; data.updatedMinute = undefined;
+                data.reply = `${data.reply}\n\n⚠ A IA respondeu fora do formato e o texto da minuta NÃO foi alterado. Nada foi mudado; peça de novo (pode reformular o pedido).`;
+            }
+        }
         let finalUpdatedMinute = undefined;
         if (data.updatedMinute && typeof data.updatedMinute === 'object') {
             finalUpdatedMinute = { ...currentMinute, ...data.updatedMinute };

@@ -30,5 +30,11 @@ try {
   ok(alt.j.hasMinuteUpdate && alt.j.updatedMinute?.relatorio === "Relatório direto." && !/processada com base/.test(alt.j.reply), "se a IA devolve a minuta sem o envelope, a minuta é aplicada (e a resposta diz que foi atualizada)");
   const vazio = await post({ message: "refaça [[VAZIO]]", currentMinute: { title: "DECISÃO", processNumber: "1", parties: { author: "A", defendant: "B" }, relatorio: "r", fundamentacao: "f", dispositivo: "d" } });
   ok(!vazio.j.hasMinuteUpdate && /fora do formato/.test(vazio.j.reply), "resposta vazia da IA: aviso claro, sem fingir que processou");
+  const base = { title: "DECISÃO", processNumber: "1", parties: { author: "A", defendant: "B" }, relatorio: "r", fundamentacao: "f", dispositivo: "d" };
+  const blob = await post({ message: "altere [[BLOB]]", currentMinute: base });
+  ok(blob.j.hasMinuteUpdate && blob.j.updatedMinute.title === "DECISÃO" && /Relatório novo/.test(blob.j.updatedMinute.relatorio) && /Fundamentação nova/.test(blob.j.updatedMinute.fundamentacao) && /INDEFIRO/.test(blob.j.updatedMinute.dispositivo), "minuta inteira no título: o servidor separa nas três partes e o título fica curto");
+  ok(/I - RELATÓRIO\n\nRelatório novo/.test(blob.j.updatedMinute.fullFormattedText) && /III - DISPOSITIVO/.test(blob.j.updatedMinute.fullFormattedText), "o texto completo é montado com as partes certas (formatação preservada)");
+  const igual = await post({ message: "altere [[IGUAL]]", currentMinute: base });
+  ok(!igual.j.hasMinuteUpdate && !igual.j.updatedMinute && /NÃO foi alterado/.test(igual.j.reply), "IA diz que alterou mas o texto é o mesmo: avisa que nada mudou (sem criar versão falsa)");
 } finally { for (const p of filhos) { try { process.kill(-p.pid, 9); } catch {} } }
 if (falhas) process.exit(1); console.log("TUDO OK");
