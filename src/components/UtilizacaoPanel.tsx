@@ -4,11 +4,11 @@ import { BarChart3, RefreshCw, Loader2, Download, Search } from "lucide-react";
 interface Uso { n: number; tokens: number; custo: number }
 interface Linha {
   email: string; nome: string; tenant: string; papel: string; status: string; peticao360Liberada: boolean; chaveNativaLiberada: boolean;
-  modulos: Record<string, Uso>; execucoes: number; tokens: number; custo: number; chaveNativa: number; minutasSalvas: number; peticoes360: number; ultimoUso: number; extensao: Record<string, number>; extensaoTotal: number;
+  modulos: Record<string, Uso>; execucoes: number; tokens: number; custo: number; chaveNativa: number; minutasSalvas: number; excluidasManual?: number; excluidasRetencao?: number; peticoes360: number; ultimoUso: number; extensao: Record<string, number>; extensaoTotal: number;
 }
 interface Resposta {
   periodo: { de: number; ate: number }; geradoEm: number; avisos?: string[];
-  totais: { extensao: number; usuariosAtivos: number; usuariosCadastrados: number; execucoes: number; tokens: number; custo: number; minutasSalvas: number; peticoes360: number; porModulo: Record<string, Uso>; semDono: number };
+  totais: { extensao: number; usuariosAtivos: number; usuariosCadastrados: number; execucoes: number; tokens: number; custo: number; minutasSalvas: number; excluidasManual?: number; excluidasRetencao?: number; exclusoesDesde?: number; geradasExcluidas?: number; outrosPorRotulo?: { rotulo: string; n: number }[]; peticoes360: number; porModulo: Record<string, Uso>; semDono: number };
   usuarios: Linha[];
   liberados: { id: string; nome: string; unidade: string; pessoas: { email: string; nome: string; usos: number; ultimoUso: number }[] }[];
 }
@@ -46,13 +46,13 @@ export function UtilizacaoPanel() {
   useEffect(() => { void carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const atalho = (dias: number | "mes") => { const f = hoje(), i = hoje(); if (dias === "mes") i.setDate(1); else i.setDate(i.getDate() - dias + 1); setDe(iso(i)); setAte(iso(f)); };
-  const visiveis = useMemo(() => (dados?.usuarios || []).filter((l) => (!soAtivos || l.execucoes + l.peticoes360 + l.minutasSalvas + l.extensaoTotal > 0) && (!busca.trim() || `${l.nome} ${l.email} ${l.tenant}`.toLowerCase().includes(busca.trim().toLowerCase()))), [dados, busca, soAtivos]);
+  const visiveis = useMemo(() => (dados?.usuarios || []).filter((l) => (!soAtivos || l.execucoes + l.peticoes360 + l.minutasSalvas + (l.excluidasManual || 0) + (l.excluidasRetencao || 0) + l.extensaoTotal > 0) && (!busca.trim() || `${l.nome} ${l.email} ${l.tenant}`.toLowerCase().includes(busca.trim().toLowerCase()))), [dados, busca, soAtivos]);
 
   const exportar = () => {
     if (!dados) return;
-    const cab = ["Nome", "E-mail", "Gabinete", "Execuções de IA", ...MODULOS.map(([, r]) => r), "Uso da extensão", "Minutas salvas", "Petições 360°", "Tokens", "Custo estimado (R$)", "Último uso"];
+    const cab = ["Nome", "E-mail", "Gabinete", "Execuções de IA", ...MODULOS.map(([, r]) => r), "Uso da extensão", "Minutas salvas", "Excluídas (por pessoa)", "Excluídas (prazo do Histórico)", "Petições 360°", "Tokens", "Custo estimado (R$)", "Último uso"];
     const aspas = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const linhas = visiveis.map((l) => [l.nome, l.email, l.tenant, l.execucoes, ...MODULOS.map(([m]) => l.modulos[m]?.n || 0), l.extensaoTotal, l.minutasSalvas, l.peticoes360, l.tokens, l.custo.toFixed(2).replace(".", ","), quando(l.ultimoUso)]);
+    const linhas = visiveis.map((l) => [l.nome, l.email, l.tenant, l.execucoes, ...MODULOS.map(([m]) => l.modulos[m]?.n || 0), l.extensaoTotal, l.minutasSalvas, l.excluidasManual || 0, l.excluidasRetencao || 0, l.peticoes360, l.tokens, l.custo.toFixed(2).replace(".", ","), quando(l.ultimoUso)]);
     const csv = "﻿" + [cab, ...linhas].map((r) => r.map(aspas).join(";")).join("\r\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = `utilizacao_${de}_a_${ate}.csv`; a.click(); URL.revokeObjectURL(a.href);
   };
@@ -76,10 +76,15 @@ export function UtilizacaoPanel() {
 
       {dados && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5">
-            {[["Pessoas que usaram", `${num(dados.totais.usuariosAtivos)} de ${num(dados.totais.usuariosCadastrados)}`], ["Ações na extensão", num(dados.totais.extensao || 0)], ["Execuções de IA", num(dados.totais.execucoes)], ["Minutas salvas", num(dados.totais.minutasSalvas)], ["Petições 360°", num(dados.totais.peticoes360)], ["Tokens / custo", `${num(dados.totais.tokens)} · ${brl(dados.totais.custo)}`]].map(([t, v]) => (
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-2.5">
+            {[["Pessoas que usaram", `${num(dados.totais.usuariosAtivos)} de ${num(dados.totais.usuariosCadastrados)}`], ["Ações na extensão", num(dados.totais.extensao || 0)], ["Execuções de IA", num(dados.totais.execucoes)], ["Minutas salvas (no Histórico)", num(dados.totais.minutasSalvas)], ["Minutas excluídas", `${num((dados.totais.excluidasManual || 0) + (dados.totais.excluidasRetencao || 0))} (${num(dados.totais.excluidasManual || 0)} manual · ${num(dados.totais.excluidasRetencao || 0)} prazo)`], ["Petições 360°", num(dados.totais.peticoes360)], ["Tokens / custo", `${num(dados.totais.tokens)} · ${brl(dados.totais.custo)}`]].map(([t, v]) => (
               <div key={t} className="bg-slate-900 border border-slate-800 rounded-xl p-3"><div className="text-[10px] uppercase font-bold text-slate-400">{t}</div><div className="text-sm font-black text-white mt-0.5">{v}</div></div>
             ))}
+          </div>
+          <div className="text-[11px] text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg p-2.5 space-y-1" data-testid="nota-utilizacao">
+            <div><b className="text-slate-200">Como ler:</b> “Execuções de IA” contam quando a análise roda e continuam contadas mesmo que a minuta seja apagada depois. “Minutas salvas” são só as que <b>ainda estão no Histórico</b>. Por isso o número de execuções costuma ser maior que o de minutas que você vê no Histórico da pessoa: as outras foram excluídas (manualmente ou pelo prazo de guarda do Histórico) ou eram execuções de apoio (mapa do processo, OCR), que não geram minuta.</div>
+            <div>{dados.totais.exclusoesDesde ? <>As exclusões estão sendo registradas desde <b className="text-slate-200">{quando(dados.totais.exclusoesDesde)}</b>; antes disso não há registro de quem apagou.</> : <>Ainda não há exclusão registrada (o registro começou com a última atualização do sistema).</>}{dados.totais.geradasExcluidas ? <> · Neste período, {num(dados.totais.geradasExcluidas)} minuta(s) geradas já foram excluídas.</> : null}</div>
+            {dados.totais.outrosPorRotulo && dados.totais.outrosPorRotulo.length > 0 && <div data-testid="outros-por-rotulo"><b className="text-slate-200">O que há em “Outros”:</b> {dados.totais.outrosPorRotulo.map((o) => `${o.rotulo} (${num(o.n)})`).join(" · ")}</div>}
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">
             <div className="text-[10px] uppercase font-bold text-slate-400 mb-1.5">Execuções de IA por módulo</div>
@@ -106,7 +111,7 @@ export function UtilizacaoPanel() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead><tr><th className={th}>Pessoa</th><th className={th}>Gabinete</th><th className={th}>Execuções IA</th>{MODULOS.map(([m, r]) => <th key={m} className={th}>{r}</th>)}<th className={th}>Uso da extensão</th><th className={th}>Minutas salvas</th><th className={th}>Petições 360°</th><th className={th}>Tokens</th><th className={th}>Custo</th><th className={th}>Último uso</th></tr></thead>
+                <thead><tr><th className={th}>Pessoa</th><th className={th}>Gabinete</th><th className={th}>Execuções IA</th>{MODULOS.map(([m, r]) => <th key={m} className={th}>{r}</th>)}<th className={th}>Uso da extensão</th><th className={th}>Minutas salvas</th><th className={th} title="Minutas apagadas do Histórico pela própria pessoa ou pelo administrador">Excluídas</th><th className={th} title="Minutas apagadas sozinhas quando venceu o prazo do Histórico">Venceram (prazo)</th><th className={th}>Petições 360°</th><th className={th}>Tokens</th><th className={th}>Custo</th><th className={th}>Último uso</th></tr></thead>
                 <tbody>
                   {visiveis.map((l) => (
                     <tr key={l.email} className="border-t border-slate-800" data-testid="linha-utilizacao">
@@ -116,6 +121,8 @@ export function UtilizacaoPanel() {
                       {MODULOS.map(([m]) => <td key={m} className={td}>{l.modulos[m]?.n ? num(l.modulos[m].n) : "—"}</td>)}
                       <td className={td} title={Object.entries(l.extensao || {}).map(([k, n]) => `${ROTULOS_EXT[k] || k}: ${n}`).join("\n")} data-testid="uso-extensao">{l.extensaoTotal ? num(l.extensaoTotal) : "—"}</td>
                       <td className={td}>{l.minutasSalvas ? num(l.minutasSalvas) : "—"}</td>
+                      <td className={td} data-testid="excluidas-manual">{l.excluidasManual ? num(l.excluidasManual) : "—"}</td>
+                      <td className={td} data-testid="excluidas-prazo">{l.excluidasRetencao ? num(l.excluidasRetencao) : "—"}</td>
                       <td className={td}>{l.peticoes360 ? num(l.peticoes360) : "—"}</td>
                       <td className={td}>{l.tokens ? num(l.tokens) : "—"}</td>
                       <td className={td}>{l.custo ? brl(l.custo) : "—"}</td>

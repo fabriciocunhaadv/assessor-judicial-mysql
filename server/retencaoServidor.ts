@@ -30,7 +30,7 @@ export async function varrerRetencao(opcoes: { simular?: boolean; parte?: "histo
       if (rows.length === 0) break;
       const vencidos = rows.filter((r) => situacaoValidade(Number(r.date), cfg).fase === "vencido");
       out.historico.candidatos += vencidos.length;
-      if (!opcoes.simular) for (const r of vencidos) { await apagarAtoDoTenant(r.tenant, r.id); out.historico.apagados++; }
+      if (!opcoes.simular) for (const r of vencidos) { await apagarAtoDoTenant(r.tenant, r.id, "retencao", "sistema (prazo do Histórico)"); out.historico.apagados++; }
       const ult = rows[rows.length - 1]; dAnt = Number(ult.date); tAnt = ult.tenant; iAnt = ult.id;
       if (rows.length < 500) break;
     }

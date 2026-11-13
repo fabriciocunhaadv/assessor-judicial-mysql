@@ -12,7 +12,7 @@ interface Uso { n: number; tokens: number; custo: number }
 interface Linha {
   email: string; nome: string; tenant: string; papel: string; status: string; peticao360Liberada: boolean; chaveNativaLiberada: boolean;
   modulos: Record<Modulo, Uso>; execucoes: number; tokens: number; custo: number; chaveNativa: number;
-  minutasSalvas: number; peticoes360: number; ultimoUso: number; extensao: Record<string, number>; extensaoTotal: number;
+  minutasSalvas: number; excluidasManual: number; excluidasRetencao: number; peticoes360: number; ultimoUso: number; extensao: Record<string, number>; extensaoTotal: number;
 }
 const vazio = (): Record<Modulo, Uso> => Object.fromEntries(MODULOS.map((m) => [m, { n: 0, tokens: 0, custo: 0 }])) as Record<Modulo, Uso>;
 const dia = (s: any, fim: boolean, padrao: number) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || "")); return m ? Date.parse(`${m[1]}-${m[2]}-${m[3]}T${fim ? "23:59:59.999" : "00:00:00"}-03:00`) : padrao; };      // dias no horário de Brasília
@@ -34,12 +34,12 @@ utilizacaoRouter.get("/", async (req: any, res) => {
       const email = String(u.email || "").toLowerCase(), extras = json(u.extras);
       const legados: string[] = Array.isArray(extras.uidsAntigos) ? extras.uidsAntigos.map(String) : [];
       porUid.set(String(u.id), email); legados.forEach((x) => porUid.set(x, email));
-      linhas.set(email, { email, nome: u.name || email.split("@")[0], tenant: u.tenant_id || "", papel: u.role, status: u.status, peticao360Liberada: u.role === "super_admin" || extras.peticao360 === true, chaveNativaLiberada: !!u.can_use_native_key || u.role === "super_admin", modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, peticoes360: 0, ultimoUso: 0, extensao: {}, extensaoTotal: 0 });
+      linhas.set(email, { email, nome: u.name || email.split("@")[0], tenant: u.tenant_id || "", papel: u.role, status: u.status, peticao360Liberada: u.role === "super_admin" || extras.peticao360 === true, chaveNativaLiberada: !!u.can_use_native_key || u.role === "super_admin", modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, excluidasManual: 0, excluidasRetencao: 0, peticoes360: 0, ultimoUso: 0, extensao: {}, extensaoTotal: 0 });
     }
     const pegar = (email: string, nome = "", tenant = ""): Linha => {
       email = email.toLowerCase();
       let l = linhas.get(email);
-      if (!l) { l = { email, nome: nome || email.split("@")[0] || "(sem identificação)", tenant, papel: "", status: "fora do cadastro", peticao360Liberada: false, chaveNativaLiberada: false, modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, peticoes360: 0, ultimoUso: 0, extensao: {}, extensaoTotal: 0 }; linhas.set(email, l); }
+      if (!l) { l = { email, nome: nome || email.split("@")[0] || "(sem identificação)", tenant, papel: "", status: "fora do cadastro", peticao360Liberada: false, chaveNativaLiberada: false, modulos: vazio(), execucoes: 0, tokens: 0, custo: 0, chaveNativa: 0, minutasSalvas: 0, excluidasManual: 0, excluidasRetencao: 0, peticoes360: 0, ultimoUso: 0, extensao: {}, extensaoTotal: 0 }; linhas.set(email, l); }
       return l;
     };
 
@@ -47,6 +47,7 @@ utilizacaoRouter.get("/", async (req: any, res) => {
     const avisos: string[] = [];
     const tentar = async (nome: string, f: () => Promise<void>) => { try { await f(); } catch (e: any) { console.error(`[utilizacao] ${nome}:`, e?.message || e); avisos.push(`${nome}: ${String(e?.code || e?.message || e).slice(0, 160)}`); } };
     let semDono = 0;
+    const outrosPorRotulo = new Map<string, number>();      // o que está dentro de “Outros” (para o painel mostrar, em vez de um número solto)
 
     // 1) execuções de IA registradas (todos os gabinetes)
     await tentar("execuções de IA", async () => {
@@ -58,6 +59,7 @@ utilizacaoRouter.get("/", async (req: any, res) => {
       if (!email) { semDono++; continue; }
       const l = pegar(email, d.userName, String(r.col).split("/")[1] || "");
       const m: Modulo = (MODULOS as readonly string[]).includes(d.module) ? d.module : "outros";
+      if (m === "outros") { const rot = String(d.label || "Execução sem rótulo").replace(/\s*[\d.\-/]{6,}\s*/g, " ").replace(/\s+/g, " ").trim().slice(0, 80); outrosPorRotulo.set(rot, (outrosPorRotulo.get(rot) || 0) + 1); }
       const tok = Number(d.totalTokens) || 0, custo = Number(d.costBrl) || 0;
       l.modulos[m].n++; l.modulos[m].tokens += tok; l.modulos[m].custo += custo;
       l.execucoes++; l.tokens += tok; l.custo += custo;
@@ -99,11 +101,26 @@ utilizacaoRouter.get("/", async (req: any, res) => {
     }
     });
 
-    const usuarios = [...linhas.values()].sort((a, b) => (b.execucoes + b.peticoes360 + b.minutasSalvas) - (a.execucoes + a.peticoes360 + a.minutasSalvas) || a.email.localeCompare(b.email));
+    // 4) minutas EXCLUÍDAS do Histórico (livro de exclusões): por dono da minuta e por motivo. Mudança de gabinete não conta (a minuta continua existindo).
+    let exclusoesDesde = 0, geradasExcluidas = 0;
+    await tentar("minutas excluídas", async () => {
+    const [exc] = await banco().query<any[]>("SELECT created_by, criador_email AS email, motivo, gerado_em, apagado_em FROM history_exclusoes WHERE apagado_em BETWEEN ? AND ? LIMIT 200000", [de, ate]);
+    const [prim] = await banco().query<any[]>("SELECT MIN(apagado_em) AS primeira FROM history_exclusoes");
+    exclusoesDesde = Number(prim[0]?.primeira) || 0;
+    for (const r of exc) {
+      const email = String(r.email || porUid.get(String(r.created_by)) || "").toLowerCase();
+      if (!email) { semDono++; continue; }
+      const l = pegar(email); if (r.motivo === "retencao") l.excluidasRetencao++; else l.excluidasManual++;
+      l.ultimoUso = Math.max(l.ultimoUso, Number(r.apagado_em) || 0);
+      if (Number(r.gerado_em) >= de && Number(r.gerado_em) <= ate) geradasExcluidas++;
+    }
+    });
+
+    const usuarios = [...linhas.values()].sort((a, b) => (b.execucoes + b.peticoes360 + b.minutasSalvas + b.excluidasManual + b.excluidasRetencao) - (a.execucoes + a.peticoes360 + a.minutasSalvas + a.excluidasManual + a.excluidasRetencao) || a.email.localeCompare(b.email));
     const soma = (f: (l: Linha) => number) => usuarios.reduce((n, l) => n + f(l), 0);
     const totais = {
-      usuariosAtivos: usuarios.filter((l) => l.execucoes + l.peticoes360 + l.minutasSalvas + l.extensaoTotal > 0).length, usuariosCadastrados: us.length,
-      extensao: soma((l) => l.extensaoTotal), execucoes: soma((l) => l.execucoes), tokens: soma((l) => l.tokens), custo: soma((l) => l.custo), minutasSalvas: soma((l) => l.minutasSalvas), peticoes360: soma((l) => l.peticoes360),
+      usuariosAtivos: usuarios.filter((l) => l.execucoes + l.peticoes360 + l.minutasSalvas + l.excluidasManual + l.excluidasRetencao + l.extensaoTotal > 0).length, usuariosCadastrados: us.length,
+      extensao: soma((l) => l.extensaoTotal), execucoes: soma((l) => l.execucoes), tokens: soma((l) => l.tokens), custo: soma((l) => l.custo), minutasSalvas: soma((l) => l.minutasSalvas), excluidasManual: soma((l) => l.excluidasManual), excluidasRetencao: soma((l) => l.excluidasRetencao), exclusoesDesde, geradasExcluidas, outrosPorRotulo: [...outrosPorRotulo].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([rotulo, n]) => ({ rotulo, n })), peticoes360: soma((l) => l.peticoes360),
       porModulo: Object.fromEntries(MODULOS.map((m) => [m, { n: soma((l) => l.modulos[m].n), tokens: soma((l) => l.modulos[m].tokens), custo: soma((l) => l.modulos[m].custo) }])),
       semDono,
     };

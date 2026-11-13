@@ -45,6 +45,12 @@ export const garantirEsquema = (): Promise<void> => (esquemaPronto ||= (async ()
     date BIGINT NOT NULL DEFAULT 0, numero_limpo VARCHAR(32) NOT NULL DEFAULT '', atualizado_em BIGINT NOT NULL DEFAULT 0, data MEDIUMTEXT NOT NULL,
     PRIMARY KEY (tenant, id), KEY ix_idx_unidade (tenant, unit_id, date), KEY ix_idx_criador (tenant, created_by), KEY ix_idx_numero (tenant, numero_limpo)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // livro das exclusões: toda minuta apagada do Histórico (por quem, quando, por qual motivo) para o painel Utilização do Super Admin
+  await b.query(`CREATE TABLE IF NOT EXISTS history_exclusoes (
+    id_seq BIGINT NOT NULL AUTO_INCREMENT, tenant VARCHAR(64) NOT NULL, ato_id VARCHAR(128) NOT NULL, unit_id VARCHAR(64) NOT NULL DEFAULT '', created_by VARCHAR(128) NOT NULL DEFAULT '',
+    criador_email VARCHAR(190) NOT NULL DEFAULT '', processo VARCHAR(64) NOT NULL DEFAULT '', titulo VARCHAR(200) NOT NULL DEFAULT '', gerado_em BIGINT NOT NULL DEFAULT 0, apagado_em BIGINT NOT NULL,
+    motivo VARCHAR(24) NOT NULL, apagado_por VARCHAR(190) NOT NULL DEFAULT '', PRIMARY KEY (id_seq), KEY ix_excl_data (apagado_em), KEY ix_excl_tenant (tenant, apagado_em)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 })().catch((e) => { esquemaPronto = null; throw e; }));
 
 // ---------- autenticação (sessão própria: server/authRoutes.ts) ----------
@@ -227,7 +233,7 @@ historyRouter.post("/lote/mover-gabinete", rota(async (req, res, u) => {
   for (const id of p.ids) { const a = await lerAto(u, id); if (a) atos.set(String(a.id || id), a); }
   for (const num of p.processos) for (const a of await atosDoProcesso(u, num)) atos.set(String(a.id), a);
   for (const a of atos.values()) await gravarAtoDoTenant(tenantDestino, limparNaoDefinidos({ ...aplicarUnidade(a, p.destino), tenant: tenantDestino }));
-  for (const id of atos.keys()) await apagarAtoDoTenant(u.tenant, id);
+  for (const id of atos.keys()) await apagarAtoDoTenant(u.tenant, id, "transferencia", u.email);
   res.json({ movidos: atos.size, atualizados: atos.size });
 }));
 
@@ -240,15 +246,28 @@ historyRouter.delete("/processo/:numero", rota(async (req, res, u) => {
     if (alvo === "montes_claros" && unid !== "montes_claros" && !!a.unitId) return false;
     return ehDono(u, a.createdBy) && (limpo.length >= 5 || a.processNumber === req.params.numero);
   });
-  for (const a of atos) await apagarAto(u, a.id);
+  for (const a of atos) await apagarAto(u, a.id, "dossie");
   res.json({ apagados: atos.length });
 }));
 
-export async function apagarAtoDoTenant(tenant: string, id: string) {
+export type MotivoExclusao = "manual" | "dossie" | "retencao" | "transferencia";
+/** Apaga a minuta do Histórico. Antes de apagar, anota no livro de exclusões (quem, quando, motivo): é o que o painel Utilização conta como "excluídas".
+ *  "transferencia" (mudar de gabinete) NÃO é exclusão: a minuta continua existindo no outro gabinete, então nada é anotado. Falha ao anotar nunca impede de apagar. */
+export async function apagarAtoDoTenant(tenant: string, id: string, motivo: MotivoExclusao = "manual", por = "") {
+  if (motivo !== "transferencia") {
+    try {
+      const [rows] = await banco().query<any[]>("SELECT unit_id, created_by, date, data FROM history WHERE tenant=? AND id=?", [tenant, id]);
+      if (rows.length) {
+        const r = rows[0]; let d: any = {}; try { d = JSON.parse(r.data); } catch { /* ato sem JSON legível: anota só o básico */ }
+        await banco().query("INSERT INTO history_exclusoes (tenant, ato_id, unit_id, created_by, criador_email, processo, titulo, gerado_em, apagado_em, motivo, apagado_por) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+          [tenant, id, String(r.unit_id || ""), String(r.created_by || ""), String(d.creatorEmail || "").toLowerCase().slice(0, 190), String(d.processNumber || "").slice(0, 64), String(d.title || d.minute?.title || "").slice(0, 200), Number(r.date) || 0, Date.now(), motivo, String(por || "").slice(0, 190)]);
+      }
+    } catch (e: any) { console.error("[exclusões] não anotei a exclusão:", e?.message || e); }
+  }
   await banco().query("DELETE FROM history WHERE tenant=? AND id=?", [tenant, id]);
   await banco().query("DELETE FROM history_index WHERE tenant=? AND id=?", [tenant, id]);
 }
-const apagarAto = (u: Usuario, id: string) => apagarAtoDoTenant(u.tenant, id);
+const apagarAto = (u: Usuario, id: string, motivo: MotivoExclusao = "manual") => apagarAtoDoTenant(u.tenant, id, motivo, u.email);
 
 historyRouter.delete("/:id", rota(async (req, res, u) => {
   const [rows] = await banco().query<any[]>("SELECT created_by FROM history_index WHERE tenant=? AND id=?", [u.tenant, req.params.id]);

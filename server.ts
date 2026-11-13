@@ -2830,23 +2830,44 @@ app.post("/api/reestruturar-minuta", async (req, res) => {
 REGRAS INEGOCIÁVEIS:
 1. O MODELO A VALE POR INTEIRO: mantenha TODAS as seções, títulos, parágrafos, fórmulas, comandos à escrivania/serventia, prazos, advertências, cominações, cláusulas e o fecho do modelo, na mesma ordem e com as mesmas palavras. Não resuma, não omita, não reescreva nem "melhore" o que não for dado do processo. Se o modelo trouxer alternativas (ex.: procedência/improcedência, deferido/indeferido), fique com a que corresponde ao resultado da minuta B e mantenha a redação do modelo para ela.
 2. SÓ OS DADOS DO PROCESSO MUDAM: troque os dados do caso do modelo (nomes e qualificação das partes, número do processo, datas, valores, números de telefone, endereços, Mov./Arq./Pág., fatos do caso do modelo) pelos dados do caso de B, no mesmo lugar do texto. Campos em branco ou marcados ([...], ___, XXX, "Fulano", "(nome)") são preenchidos com os dados de B. Se B não tiver o dado, deixe o campo com a marca [PREENCHER: o que falta]; nunca invente e nunca deixe dado do processo do modelo no texto.
-3. Onde o modelo narra os fatos ou os fundamentos do caso do próprio modelo, reescreva SÓ esse trecho com os fatos e fundamentos de B, no mesmo lugar e no mesmo jeito de redigir do modelo. Se B tiver análise relevante que o modelo não prevê (preliminar, prova, testemunha, súmula), acrescente-a no lugar mais natural, SEM retirar nada do modelo.
+3. O RELATÓRIO E OS FATOS DO CASO DE B NUNCA SOMEM: o relatório da minuta B (histórico e marcha processual, pedidos, provas e documentos com as citações Mov./Arq./Pág., decisões anteriores) é DADO DO PROCESSO e tem de constar COMPLETO no resultado, com todas as datas e citações. Se o modelo tem seção de relatório, substitua o texto genérico dela pelo relatório de B; se o modelo NÃO tem relatório, insira o relatório de B numa seção "RELATÓRIO" logo depois do título do ato e antes do restante do modelo. Do mesmo modo, onde o modelo narra os fatos ou os fundamentos do caso do próprio modelo, reescreva SÓ esse trecho com os fatos e fundamentos de B; e se B tiver análise relevante que o modelo não prevê (preliminar, prova, testemunha, súmula), acrescente-a no lugar mais natural, SEM retirar nada do modelo.
 4. O RESULTADO da minuta B (procedência, improcedência, deferimento etc.), os valores, prazos e comandos que decorrem dos fatos de B prevalecem sobre o que o modelo dizia do caso dele; use a fórmula do modelo para expressá-los.
 5. Só use títulos que o MODELO usa. Mantenha o texto em português claro, corrido e pronto para uso.
 Responda SOMENTE com JSON válido: {"title": "...", "relatorio": "...", "fundamentacao": "...", "dispositivo": "...", "closing": "...", "fullFormattedText": "..."}. "fullFormattedText" é o documento COMPLETO (cabeçalho ao fecho) com o modelo aplicado na íntegra; "relatorio", "fundamentacao" e "dispositivo" são as partes correspondentes desse documento (se o modelo não as separa, divida do modo mais natural: o que antecede a decisão em relatorio/fundamentacao e os comandos finais em dispositivo).`;
         const usuario = `[MODELO A — APLICAR NA ÍNTEGRA — ${tituloModelo}]\n${modelo}\n[FIM DO MODELO]\n\n[MINUTA PRONTA B — A REORGANIZAR]\nCABEÇALHO: ${m.header || ""}\nTÍTULO: ${m.title || ""}\nPROCESSO: ${m.processNumber || ""}\nPARTES: ${m.parties?.author || ""} x ${m.parties?.defendant || ""}\n\nRELATÓRIO:\n${m.relatorio || ""}\n\nFUNDAMENTAÇÃO:\n${m.fundamentacao || ""}\n\nDISPOSITIVO:\n${m.dispositivo || ""}\n\nFECHO:\n${m.closing || ""}`;
-        const response = await generateWithFallbackAndRetry({
-            apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res,
-            contents: [{ role: "user", parts: [{ text: usuario }] }],
-            config: { systemInstruction: sistema, temperature: 0.2, maxOutputTokens: 32000, responseMimeType: "application/json" },
-            timeoutMs: 240000,
-        } as any);
-        const p: any = safeParseObj(response.text || "{}") || {};
-        const nova = { title: String(p.title || m.title || ""), relatorio: String(p.relatorio || ""), fundamentacao: String(p.fundamentacao || ""), dispositivo: String(p.dispositivo || ""), closing: String(p.closing || m.closing || ""), fullFormattedText: String(p.fullFormattedText || "") };
+        const gerar = async (nota: string) => {
+            const resp = await generateWithFallbackAndRetry({
+                apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res,
+                contents: [{ role: "user", parts: [{ text: usuario + nota }] }],
+                config: { systemInstruction: sistema, temperature: 0.2, maxOutputTokens: 32000, responseMimeType: "application/json" },
+                timeoutMs: 240000,
+            } as any);
+            const q: any = safeParseObj(resp.text || "{}") || {};
+            return { resp, n: { title: String(q.title || m.title || ""), relatorio: String(q.relatorio || ""), fundamentacao: String(q.fundamentacao || ""), dispositivo: String(q.dispositivo || ""), closing: String(q.closing || m.closing || ""), fullFormattedText: String(q.fullFormattedText || "") } };
+        };
+        // o relatório de B (fatos do caso) tem de estar no resultado: mede quanto dele aparece (trechos de 4 palavras) e, se faltar, pede de novo uma vez
+        const palavrasN = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean);
+        const gramasN = (w: string[]) => { const g = new Set<string>(); for (let i = 0; i + 4 <= w.length; i++) g.add(w.slice(i, i + 4).join(" ")); return g; };
+        const relB = String(m.relatorio || "").trim(), gRelB = [...gramasN(palavrasN(relB))];
+        const cobertura = (n: any) => { if (gRelB.length < 8) return 1; const gs = gramasN(palavrasN([n.title, n.relatorio, n.fundamentacao, n.dispositivo, n.closing, n.fullFormattedText].join("\n\n"))); return gRelB.filter((k) => gs.has(k)).length / gRelB.length; };
+        let { resp: response, n: nova } = await gerar("");
+        const avisosExtra: string[] = [];
+        if (cobertura(nova) < 0.6) {
+            const r2 = await gerar("\n\nATENÇÃO: na tentativa anterior o RELATÓRIO da minuta B foi omitido ou cortado. Refaça o documento INCLUINDO O RELATÓRIO DE B INTEGRALMENTE (todas as datas, partes, pedidos, provas e citações Mov./Arq./Pág.), no lugar indicado na regra 3, sem retirar nada do modelo.");
+            if (cobertura(r2.n) > cobertura(nova)) { response = r2.resp; nova = r2.n; }
+            if (cobertura(nova) < 0.6) {      // a IA insistiu em omitir: o sistema insere o relatório de B (texto original) logo depois do título do ato
+                const bloco = "RELATÓRIO\n" + relB;
+                const ft = nova.fullFormattedText;
+                const t = ft.search(/^(DESPACHO|DECIS[ÃA]O( INTERLOCUT[ÓO]RIA)?|SENTEN[ÇC]A)\s*$/m);
+                nova.fullFormattedText = t >= 0 ? ft.replace(/^((DESPACHO|DECIS[ÃA]O( INTERLOCUT[ÓO]RIA)?|SENTEN[ÇC]A)\s*)$/m, (x) => x + "\n\n" + bloco) : bloco + "\n\n" + ft;
+                nova.relatorio = nova.relatorio && nova.relatorio.length > 50 ? nova.relatorio + "\n\n" + relB : relB;
+                avisosExtra.push("O relatório da minuta original não veio na adaptação, então o sistema o inseriu, sem alterações, logo depois do título do ato. Confira a posição.");
+            }
+        }
         if (!nova.fullFormattedText && !(nova.relatorio || nova.fundamentacao || nova.dispositivo)) return res.status(502).json({ error: "A IA não devolveu a minuta reorganizada. Tente de novo." });
         // conferência por código (sem IA): o que existia na minuta original e sumiu; o que apareceu e é do modelo
         const antes = itensDeConteudo(originalTxt), depois = itensDeConteudo([nova.title, nova.relatorio, nova.fundamentacao, nova.dispositivo, nova.closing, nova.fullFormattedText].join("\n\n")), doModelo = itensDeConteudo(modelo);
-        const avisos: string[] = [];
+        const avisos: string[] = [...avisosExtra];
         const sumiu = (a: string[], b: string[]) => a.filter((x) => !b.includes(x));
         const v = sumiu(antes.valores, depois.valores), d = sumiu(antes.datas, depois.datas), c = sumiu(antes.citacoes, depois.citacoes);
         if (v.length) avisos.push(`Valores da minuta original que não aparecem na reorganizada: ${v.slice(0, 8).join(", ")}.`);

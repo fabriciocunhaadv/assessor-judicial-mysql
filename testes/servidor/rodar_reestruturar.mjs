@@ -19,12 +19,16 @@ try {
   ok(a.status === 200 && a.j.success && /Reorganizada/.test(a.j.minute.relatorio) && a.j.minute.fullFormattedText.length > 50, "devolve a minuta reorganizada com o texto completo");
   ok(a.j.avisos.length === 0, "valores, datas e citações preservados: sem avisos");
   a = await post({ minute: { ...minuta, relatorio: minuta.relatorio + " [[PERDE]]" }, paradigmText: modelo, paradigmTitle: "x" });
-  ok(a.j.avisos.some((x) => /R\$4\.000,00/.test(x)), "valor que sumiu na reorganização gera aviso");
+  ok(a.j.avisos.some((x) => /R\$4\.000,00/.test(x)) || (/R\$ ?4\.000,00/.test(a.j.minute.fullFormattedText) && a.j.avisos.some((x) => /sistema o inseriu/.test(x))), "valor que sumiu na reorganização: ou gera aviso, ou o relatório original é reinserido com o valor (e avisa)");
   a = await post({ minute: { ...minuta, relatorio: minuta.relatorio + " [[VAZA]]" }, paradigmText: modelo + " valor do modelo R$ 7.777,00", paradigmTitle: "x" });
   ok(a.j.avisos.some((x) => /MODELO/.test(x) && /7\.777,00/.test(x)), "dado do modelo que vazou para a minuta gera aviso");
   const modeloLongo = ["Determino a citação da parte requerida por aplicativo de mensagem instantânea, no número informado pela parte autora.", "O servidor certificará nos autos o envio da mensagem e a confirmação de recebimento pelo destinatário citado.", "Decorrido o prazo sem manifestação, intime-se a parte autora para impulsionar o feito em quinze dias úteis.", "Ausente a confirmação de recebimento, fica a citação por oficial de justiça no endereço indicado na petição inicial."].join("\n");
   a = await post({ minute: minuta, paradigmText: modeloLongo, paradigmTitle: "Citação por WhatsApp" });
   ok(a.j.avisos.some((x) => /não ter sido aplicado por inteiro/.test(x)), "modelo cujos parágrafos não aparecem no resultado gera aviso de que não foi aplicado por inteiro");
+  const relLongo = "A parte autora, Raysa Valdivino Mota, ajuizou ação de alimentos em 03/02/2020 (Mov. 1, Arq. 1, Págs. 1 a 12), pedindo alimentos provisórios de 75% do salário mínimo; o juízo deferiu a gratuidade em 10/11/2026 (Mov. 5, Arq. 1, Pág. 3) e determinou a citação do réu pelo aplicativo WhatsApp no telefone (88) 98189-9702 (Mov. 33, Arq. 1, Pág. 1).";
+  a = await post({ minute: { ...minuta, relatorio: relLongo }, paradigmText: modeloLongo, paradigmTitle: "Citação por WhatsApp" });
+  ok(a.status === 200 && a.j.minute.fullFormattedText.includes("03/02/2020") && a.j.minute.fullFormattedText.includes("(88) 98189-9702") && a.j.minute.relatorio.includes("Raysa Valdivino Mota"), "o relatório da minuta nunca some: se a IA o omite, o sistema o insere inteiro");
+  ok(a.j.avisos.some((x) => /sistema o inseriu/.test(x)), "avisa que o relatório foi inserido pelo sistema");
   a = await post({ minute: minuta, paradigmText: "curto", paradigmTitle: "x" });
   ok(a.status === 400 && /vazio ou é curto/.test(a.j.error), "modelo vazio: erro claro em português");
   a = await post({ minute: { title: "x" }, paradigmText: modelo });

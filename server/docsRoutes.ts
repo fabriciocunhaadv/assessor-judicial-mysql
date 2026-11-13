@@ -245,7 +245,7 @@ docsRouter.post("/escrever", rota(async (req, res, u) => {
     const atual = h.length ? JSON.parse(h[0].data) : undefined;
     if (a.tipo === "delete") {
       if (atual && !u.superAdmin && atual.createdBy && atual.createdBy !== "anonymous" && atual.createdBy !== u.uid && !idsAntigosDoUsuario(u).includes(atual.createdBy)) throw erro(403, "Só quem gerou a minuta pode excluí-la.");
-      await apagarAtoDoTenant(gh, a.id); continue;
+      await apagarAtoDoTenant(gh, a.id, "manual", u.email); continue;
     }
     if (a.tipo === "update" && atual === undefined) throw erro(404, "documento não existe: " + a.col + "/" + a.id);
     let novo: any;
