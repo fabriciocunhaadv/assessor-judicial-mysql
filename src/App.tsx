@@ -14,6 +14,7 @@ import { Sidebar } from "./components/Sidebar";
 import { PromptSelectorAndEditor } from "./components/PromptSelectorAndEditor";
 import { SystemTour } from "./components/SystemTour";
 import { AssistenteBoasVindas, AcaoAssistente } from "./components/AssistenteBoasVindas";
+import { DockLateral } from "./components/DockLateral";
 import { receberModelosProjudi } from "./utils/modelosProjudi";
 import { PromptManagerModal } from "./components/PromptManagerModal";
 import { PdfUploadZone } from "./components/PdfUploadZone";
@@ -2973,6 +2974,7 @@ export default function App() {
         currentPromptId={activePrompt.id}
       />
 
+      <DockLateral />
       <MapaSegundoPlano />
       <EntradaAgaia onVerHistorico={() => setIsHistoryModalOpen(true)} />
       <MinhaFilaModal />

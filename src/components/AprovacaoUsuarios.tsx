@@ -1,3 +1,4 @@
+import { NoDock } from "./DockLateral";
 import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { chamarAuth } from "../lib/sessao";
@@ -43,9 +44,9 @@ export const AprovacaoUsuarios: React.FC = () => {
 
   return (
     <>
-      <button id="btn-cadastros-aprovacao" onClick={() => setAberto(true)} className="fixed bottom-4 left-4 z-40 px-3 py-2 rounded-full bg-[#673de6] text-white text-xs font-bold shadow-lg cursor-pointer hover:bg-[#5025d1]">
+      <NoDock ordem={5}><button id="btn-cadastros-aprovacao" onClick={() => setAberto(true)} className="px-3 py-2 rounded-full bg-[#673de6] text-white text-xs font-bold shadow-lg cursor-pointer hover:bg-[#5025d1]">
         Cadastros{pendentes > 0 ? ` (${pendentes} pendente${pendentes > 1 ? "s" : ""})` : ""}
-      </button>
+      </button></NoDock>
       {aberto && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setAberto(false)}>
           <div className="bg-white text-[#1d1e20] border border-[#e4e5ed] rounded-3xl w-full max-w-3xl max-h-[85vh] overflow-auto p-5 space-y-3" onClick={(e) => e.stopPropagation()}>

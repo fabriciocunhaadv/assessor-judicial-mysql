@@ -1,3 +1,4 @@
+import { NoDock } from "./DockLateral";
 import React, { useEffect, useRef, useState } from "react";
 import { gerenteGigantes, ConfigGigante } from "../utils/gigantes/gerente";
 import type { JobGig } from "../utils/gigantes/db";
@@ -58,14 +59,14 @@ export function GigantesPanel({ config, onVerHistorico }: { config: ConfigGigant
 
   return (
     <>
-      <button
+      <NoDock ordem={4}><button
         onClick={() => setAberto((v) => !v)}
-        className="fixed bottom-3 left-3 z-[9000] px-3 py-2 rounded-full bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold shadow-lg border border-sky-400 cursor-pointer flex items-center gap-2"
+        className="px-3 py-2 rounded-full bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold shadow-lg border border-sky-400 cursor-pointer flex items-center gap-2"
         data-testid="gigantes-selo" title="Processos gigantes lidos em lotes, em segundo plano"
       >
         <span>📚 Gigantes</span>
         {ativos.length > 0 ? <span className="px-1.5 rounded-full bg-white/20">{ativos.length} em andamento · {pct(ativos[0])}%</span> : <span className="px-1.5 rounded-full bg-white/20">{jobs.length}</span>}
-      </button>
+      </button></NoDock>
       {aberto && (
         <div className={`${CLASSE_PAINEL_FLUTUANTE} w-[min(96vw,30rem)] overflow-y-auto bg-white text-slate-800 rounded-2xl shadow-2xl border border-sky-300 p-3 space-y-3`} data-testid="gigantes-painel">
           <div className="flex items-center justify-between">

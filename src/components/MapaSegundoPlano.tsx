@@ -1,3 +1,4 @@
+import { NoDock } from "./DockLateral";
 import React, { useEffect, useState } from "react";
 import { gerenteMapas, VALIDADE_MAPA_MS, type TarefaMapa } from "../utils/mapaEmSegundoPlano";
 import { useUmAbertoPorVez, CLASSE_PAINEL_FLUTUANTE } from "../utils/flutuantes";
@@ -21,10 +22,10 @@ export function MapaSegundoPlano() {
   const pct = (t: TarefaMapa) => (t.status === "consolidando" ? 95 : t.partesTotal ? Math.round((t.partesFeitas / t.partesTotal) * 90) : 2);
   return (
     <>
-      <button onClick={() => setAberto((v) => !v)} className="fixed bottom-[3.75rem] left-3 z-[8999] px-3 py-2 rounded-full bg-violet-700 hover:bg-violet-600 text-white text-xs font-bold shadow-lg border border-violet-400 cursor-pointer flex items-center gap-2" data-testid="mapa-selo" title="Mapa do processo, em segundo plano">
+      <NoDock ordem={3}><button onClick={() => setAberto((v) => !v)} className="px-3 py-2 rounded-full bg-violet-700 hover:bg-violet-600 text-white text-xs font-bold shadow-lg border border-violet-400 cursor-pointer flex items-center gap-2" data-testid="mapa-selo" title="Mapa do processo, em segundo plano">
         <span>🗺️ Mapa</span>
         {ativos.length > 0 ? <span className="px-1.5 rounded-full bg-white/20">{ativos.length} em andamento · {pct(ativos[0])}%</span> : <span className="px-1.5 rounded-full bg-white/20">{visiveis.length}</span>}
-      </button>
+      </button></NoDock>
       {aberto && (
         <div className={`${CLASSE_PAINEL_FLUTUANTE} w-[min(96vw,28rem)] overflow-y-auto bg-white text-slate-800 rounded-2xl shadow-2xl border border-violet-300 p-3 space-y-2`} data-testid="mapa-painel">
           <div className="flex items-center justify-between"><h3 className="text-sm font-black text-violet-900">🗺️ Mapa do processo (segundo plano)</h3><button onClick={() => setAberto(false)} className="text-xs text-slate-500 cursor-pointer">fechar</button></div>

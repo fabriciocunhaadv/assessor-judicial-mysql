@@ -65,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {isCollapsed ? <ChevronRight className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" /> : <ChevronLeft className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />}
       </button>
 
-      <div className="p-4 flex flex-col gap-6 flex-1 overflow-y-auto overflow-x-hidden no-scrollbar pt-6">
+      <div className="p-4 flex flex-col gap-6 flex-1 overflow-y-auto overflow-x-hidden no-scrollbar pt-6" style={{ paddingBottom: "calc(var(--dock-h, 0px) + 1rem)" }}>
         
         {/* GRUPO 1: AÇÕES PRINCIPAIS */}
         <div className="flex flex-col gap-1.5">

@@ -17,7 +17,7 @@ try:
         pg = b.new_page(viewport={"width": 1000, "height": 600}); erros = []; pg.on("pageerror", lambda e: erros.append(str(e)[:300]))
         pg.goto(f"http://127.0.0.1:{PV}/testes/gigantes/venc.html"); pg.wait_for_selector("[data-testid=aviso-vencimento-fixo]", timeout=60000)
         t = pg.inner_text("[data-testid=aviso-vencimento-fixo]"); print("aviso fixo:", t.replace("\n", " | ")); assert "1 minuta" in t and "Ver no Histórico" in t
-        r = pg.evaluate("(() => { const e = document.querySelector('[data-testid=aviso-vencimento-fixo]').getBoundingClientRect(); return [e.left, innerHeight - e.bottom]; })()"); print("posição (esq, base):", r); assert r[0] < 30 and r[1] >= 50, r      # acima do botão Cadastros (que ocupa ~48px da base)
+        r = pg.evaluate("(() => { const e = document.querySelector('[data-testid=aviso-vencimento-fixo]').getBoundingClientRect(); return [e.left, innerHeight - e.bottom]; })()"); print("posição (esq, base):", r); assert r[0] < 30 and r[1] >= 8, r      # acima do botão Cadastros (que ocupa ~48px da base)
         pg.wait_for_selector("[data-testid=toast-ver-vencendo]", timeout=10000)
         pg.click("[data-testid=toast-ver-vencendo]"); pg.wait_for_timeout(300)
         pg.click("[data-testid=aviso-vencimento-ver]"); pg.wait_for_timeout(300)

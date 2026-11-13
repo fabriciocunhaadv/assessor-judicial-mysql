@@ -1,12 +1,13 @@
 import React, { useSyncExternalStore } from "react";
 import { filaSentencaVideo } from "../utils/sentencaComVideo";
+import { NoDock } from "./DockLateral";
 
 /** Quadro fixo (canto inferior esquerdo) com o andamento das sentenças com vídeo que a esteira da extensão entregou ao Studio: a fila roda sem tela. */
 export function SentencaVideoSelo({ aoAbrirHistorico }: { aoAbrirHistorico?: () => void }) {
   const itens = useSyncExternalStore(filaSentencaVideo.assinar, filaSentencaVideo.lista, filaSentencaVideo.lista);
   if (!itens.length) return null;
   return (
-    <div className="fixed left-3 bottom-16 z-[60] w-80 max-w-[calc(100vw-1.5rem)] space-y-2" data-testid="selo-sentenca-video">
+    <NoDock ordem={1}><div className="w-80 max-w-[calc(100vw-1.5rem)] space-y-2" data-testid="selo-sentenca-video">
       {itens.map((i) => (
         <div key={i.reqId} className={`rounded-xl border shadow-lg p-3 text-xs bg-white text-slate-800 ${i.estado === "erro" ? "border-red-300" : i.estado === "ok" ? "border-emerald-300" : "border-indigo-300"}`}>
           <div className="flex items-start justify-between gap-2">
@@ -18,6 +19,6 @@ export function SentencaVideoSelo({ aoAbrirHistorico }: { aoAbrirHistorico?: () 
           {i.estado === "ok" && aoAbrirHistorico && <button onClick={aoAbrirHistorico} className="mt-2 px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold cursor-pointer">Abrir Histórico</button>}
         </div>
       ))}
-    </div>
+    </div></NoDock>
   );
 }
