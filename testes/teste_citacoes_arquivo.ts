@@ -1,4 +1,4 @@
-import { blocoIndiceArquivos, corrigirCitacoesDaMinuta, citacoesInexistentes } from '../src/utils/localizacaoAutos';
+import { arquivosDoQuadro, blocoIndiceArquivos, corrigirCitacoesDaMinuta, citacoesInexistentes } from '../src/utils/localizacaoAutos';
 import { blocoPerfilMateria } from '../src/utils/perfisMateria';
 const ok = (c: boolean, t: string) => { if (!c) { console.error('FALHOU:', t); process.exit(1); } console.log('ok:', t); };
 const pag = (g: number, mov: number, arq: number, nome: string, k: number, t: number, txt: string) => `[Página ${g} de 9]\n${txt}\nMovimentacao ${mov} : Contestação / \nArquivo ${arq}: ${nome} - Pag.${k}/${t}\n`;
@@ -16,4 +16,13 @@ ok(corrigirCitacoesDaMinuta(m2, autos) === 0 && /Arq\. 27/.test(m2.fundamentacao
 const perfil = blocoPerfilMateria({ titulo: 'Outros Área Judicial - Juizado Especial Cível', categoria: 'civel' });
 ok(/GRATUIDADE E HONORÁRIOS \(Juizados\)/.test(perfil) && /NÃO ignore os pedidos/.test(perfil), 'perfil de Juizado manda registrar que gratuidade e honorários não se aplicam');
 ok(!/GRATUIDADE E HONORÁRIOS \(Juizados\)/.test(blocoPerfilMateria({ titulo: 'Outros Área Judicial - Cível', categoria: 'civel' })), 'cível comum não recebe a regra de Juizado');
+// lista de arquivos lida da TELA do Projudi (extensão 3.0.0): inclui áudio/vídeo; confere a citação pelo total da tela
+const quadroTela = '[QUADRO DE MOVIMENTAÇÕES DO PROJUDI — processo x]\nMov. 7 · 01/01/2026 · Mídia Publicada · com arquivo(s) · arquivos: 1=audiencia.mp4; 2=ata.pdf\nMov. 8 · 02/01/2026 · Juntada · arquivos: 1=peticao.pdf\nMov. 9 · 03/01/2026 · Concluso\n[FIM DO QUADRO DE MOVIMENTAÇÕES]\n\n';
+const q = arquivosDoQuadro(quadroTela);
+ok(q.get(7)?.length === 2 && q.get(7)?.[0] === 'audiencia.mp4' && q.get(8)?.[0] === 'peticao.pdf' && !q.has(9), 'lê os arquivos de cada movimentação do quadro, na ordem da tela');
+const indTela = blocoIndiceArquivos(quadroTela);
+ok(/LISTA OFICIAL DE ARQUIVOS LIDA DA TELA/.test(indTela) && /Mov\. 7 \(2 arquivos na tela\): Arq\. 1 = audiencia\.mp4; Arq\. 2 = ata\.pdf/.test(indTela), 'o índice traz a lista da tela (inclui vídeo)');
+ok(citacoesInexistentes('Conforme Mov. 8, Arq. 3, Pág. 1.', quadroTela).some((c) => /só 1 arquivo\(s\) na tela/.test(c.motivo)), 'citação de arquivo que a tela não tem é avisada');
+ok(citacoesInexistentes('Conforme Mov. 7, Arq. 2, Pág. 1.', quadroTela).length === 0, 'citação de arquivo que existe na tela passa');
+ok(blocoIndiceArquivos('sem nada') === '', 'sem carimbos e sem lista da tela não inventa índice');
 console.log('TUDO OK');

@@ -136,7 +136,7 @@ const chaveAutor = (it: any): string => {
   return it?.createdBy && it.createdBy !== "anonymous" ? String(it.createdBy) : "__sem__";
 };
 
-import { origemExterna, origemVideo } from "../utils/origemDaMinuta";
+import { origemExterna, origemVideo, motorDaMinuta } from "../utils/origemDaMinuta";
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
   isOpen,
@@ -976,6 +976,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                         {origemExterna(item) && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-teal-100 text-teal-900 border-teal-400 whitespace-nowrap" title={origemExterna(item)!.dica} data-testid="etiqueta-agaia">{origemExterna(item)!.rotulo}</span>}
                         {origemVideo(item) && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-violet-100 text-violet-900 border-violet-400 whitespace-nowrap" title={origemVideo(item)!.dica} data-testid="etiqueta-video">{origemVideo(item)!.rotulo}</span>}
+                        {!origemExterna(item) && motorDaMinuta(item) && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-slate-100 text-slate-700 border-slate-300 whitespace-nowrap" title={motorDaMinuta(item)!.dica} data-testid="etiqueta-motor">{motorDaMinuta(item)!.rotulo}</span>}
+                        {item.result?.conferenciaFase?.avisos?.length > 0 && !item.result.conferenciaFase.resolvido && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-red-50 text-red-800 border-red-300 whitespace-nowrap" title={item.result.conferenciaFase.avisos.join(" ")} data-testid="etiqueta-fase">🧭 Fora da fase?</span>}
                         {getSafeUnitText(item.result?.minute?.judicialUnit) ? (
                           <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 text-[10px] font-bold">
                             <span className="text-slate-900">📍</span>

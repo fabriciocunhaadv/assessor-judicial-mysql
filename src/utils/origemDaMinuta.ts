@@ -15,10 +15,20 @@ export const origemVideo = (a: any): { rotulo: string; dica: string } | null => 
 };
 
 
+/** Motor do Studio que gerou a minuta (Principal, Turbo ou Gigante). Minutas antigas não têm etiqueta. */
+export const motorDaMinuta = (a: any): { rotulo: string; dica: string } | null => {
+  const m = String(a?.result?.motor || ""); if (!m) return null;
+  if (m === "turbo") return { rotulo: "⚡ Turbo", dica: "Gerada pelo motor Turbo (rápido)." };
+  if (m === "gigante") return { rotulo: "🐘 Gigante", dica: "Gerada pelo motor de autos gigantes (leitura em lotes, mapa do processo e dossiê)." };
+  return { rotulo: "🧠 Principal", dica: "Gerada pelo motor principal (duas etapas: análise probatória e redação)." };
+};
+
 export type OrigemDoAto = "agaia" | "colada" | "video" | "studio";
 /** Classifica o ato para o destaque visual: vídeo > externa (Agaia/colada) > Studio. */
 export function origemDoAto(a: any): { tipo: OrigemDoAto; rotulo: string; dica: string } {
   const v = origemVideo(a); if (v) return { tipo: "video", ...v };
   const e = origemExterna(a); if (e) return { tipo: /colada/i.test(String(a?.result?.origemExterna?.sistema || "")) ? "colada" : "agaia", ...e };
+  const mo = motorDaMinuta(a);
+  if (mo) return { tipo: "studio", rotulo: `✨ Studio · ${mo.rotulo.replace(/^\S+\s/, "")}`, dica: mo.dica };
   return { tipo: "studio", rotulo: "✨ Studio", dica: "Minuta gerada pelo Studio (motor do Assessor Judicial)" };
 }

@@ -75,7 +75,10 @@ export function corrigirCitacoesDaMinuta(minuta: any, autos: string): number {
 /** Citações "Mov. X, Arq. Y, Pág. Z" da minuta que NÃO existem nos autos, conferidas só pelos carimbos (sem IA): arquivo que a movimentação não tem, ou página além do total do arquivo.
  *  Movimentação que nem aparece nos carimbos fica de fora (essa conferência é outra). Só confere onde os carimbos provam. */
 export function citacoesInexistentes(minuta: string, autos: string): Array<{ citacao: string; motivo: string }> {
-  const mapa = mapaDeLocalizacao(autos); if (!mapa.size || typeof minuta !== "string") return [];
+  if (typeof minuta !== "string") return [];
+  const outTela: Array<{ citacao: string; motivo: string }> = [], daTela = arquivosDoQuadro(autos);
+  if (daTela.size) { const vistasT = new Set<string>(); for (const m of minuta.matchAll(CITACAO)) { const mov = +m[1], arq = +m[2], cit = m[0].trim(), nomes = daTela.get(mov); if (nomes && arq > nomes.length && !vistasT.has(cit)) { vistasT.add(cit); outTela.push({ citacao: cit, motivo: `a Mov. ${mov} tem só ${nomes.length} arquivo(s) na tela do Projudi (não existe o Arq. ${arq})` }); } } }
+  const mapa = mapaDeLocalizacao(autos); if (!mapa.size) return outTela.slice(0, 8);
   const totais = new Map<string, number>(), arqsDaMov = new Map<number, Set<number>>();
   for (const l of mapa.values()) { totais.set(`${l.mov}|${l.arq}`, l.tot); (arqsDaMov.get(l.mov) || arqsDaMov.set(l.mov, new Set()).get(l.mov)!).add(l.arq); }
   const out: Array<{ citacao: string; motivo: string }> = [], vistas = new Set<string>();
@@ -86,7 +89,7 @@ export function citacoesInexistentes(minuta: string, autos: string): Array<{ cit
     if (tot === undefined) { vistas.add(cit); out.push({ citacao: cit, motivo: `a Mov. ${mov} não tem o Arq. ${arq} nos autos (arquivos que ela tem: ${[...arqs].sort((a, b) => a - b).join(", ")})` }); }
     else if (p1 > tot || (p2 && p2 > tot)) { vistas.add(cit); out.push({ citacao: cit, motivo: `o Arq. ${arq} da Mov. ${mov} tem só ${tot} página(s)` }); }
   }
-  return out.slice(0, 8);
+  return [...outTela, ...out.filter((o) => !outTela.some((t) => t.citacao === o.citacao))].slice(0, 8);
 }
 
 
@@ -105,16 +108,35 @@ export function arquivosPorMovimentacao(autos: string): Map<number, Map<number, 
   return m;
 }
 
+/** mov -> nomes dos arquivos, na ordem da tela do Projudi (Arq. 1, 2, 3…), lidos do QUADRO DE MOVIMENTAÇÕES ("· arquivos: 1=nome; 2=nome"). Só existe se a extensão (3.0.0+) abriu a lista de arquivos de cada movimentação. */
+export function arquivosDoQuadro(autos: string): Map<number, string[]> {
+  const out = new Map<number, string[]>();
+  const t = String(autos || ""), i = t.indexOf("[QUADRO DE MOVIMENTA"); if (i < 0) return out;
+  const f = t.indexOf("[FIM DO QUADRO", i), corpo = t.slice(i, f > 0 ? f : i + 400000);
+  for (const linha of corpo.split("\n")) {
+    const m = linha.match(/^Mov\.\s*(\d{1,4})\s*·.*?·\s*arquivos:\s*(.+)$/); if (!m) continue;
+    const nomes = m[2].split(/;\s*(?=\d{1,3}=)/).map((x) => x.replace(/^\d{1,3}=/, "").trim()).filter(Boolean);
+    if (nomes.length) out.set(+m[1], nomes);
+  }
+  return out;
+}
+
 /** Bloco para o pedido da IA: quais arquivos (e quantas páginas) cada movimentação TEM de verdade, com o nome. Evita citar "Arq. 27" numa movimentação que só tem 23. */
 export function blocoIndiceArquivos(autos: string, maxChars = 24000): string {
-  const m = arquivosPorMovimentacao(autos); if (!m.size) return "";
+  const m = arquivosPorMovimentacao(autos), q = arquivosDoQuadro(autos); if (!m.size && !q.size) return "";
   const linhas: string[] = [];
   for (const mov of [...m.keys()].sort((a, b) => a - b)) {
     const arqs = m.get(mov)!;
     linhas.push(`Mov. ${mov} (${arqs.size} arquivo${arqs.size > 1 ? "s" : ""}): ` + [...arqs.entries()].sort((a, b) => a[0] - b[0]).map(([a, v]) => `Arq. ${a} = ${v.nome.slice(0, 60)} (${v.tot} pág.)`).join("; "));
   }
+  let tela = "";
+  if (q.size) {      // lista da TELA do Projudi (extensão 3.0.0+): completa, com áudio/vídeo/HTML que não entram no PDF; a numeração é a da tela
+    const l2 = [...q.keys()].sort((a, b) => a - b).map((mov) => `Mov. ${mov} (${q.get(mov)!.length} arquivo${q.get(mov)!.length > 1 ? "s" : ""} na tela): ` + q.get(mov)!.map((n, i) => `Arq. ${i + 1} = ${n.slice(0, 60)}`).join("; "));
+    tela = `\n\n[LISTA OFICIAL DE ARQUIVOS LIDA DA TELA DO PROJUDI (completa; inclui áudio, vídeo e documentos “online” que não entram no PDF; vale para o NÚMERO do arquivo)]\n${l2.join("\n").slice(0, maxChars)}\n[FIM DA LISTA DA TELA]`;
+  }
   let txt = linhas.join("\n"); if (txt.length > maxChars) txt = txt.slice(0, maxChars) + "\n[... índice cortado ...]";
-  return `\n\n[ÍNDICE OFICIAL DE ARQUIVOS POR MOVIMENTAÇÃO (lido dos carimbos das páginas; é a ÚNICA fonte válida do número do arquivo)]\nRegra: em "Mov. N, Arq. M, Pág. K", o ARQUIVO M é o número do arquivo DENTRO da movimentação N e a PÁGINA K é a página DENTRO desse arquivo (de 1 ao total dele). NUNCA cite um arquivo que não esteja neste índice para a movimentação, nem página além do total do arquivo. Para citar um documento, ache o nome dele aqui e use o número do arquivo correspondente.\n${txt}\n[FIM DO ÍNDICE]\n`;
+  if (!txt) return tela + "\n";
+  return tela + `\n\n[ÍNDICE OFICIAL DE ARQUIVOS POR MOVIMENTAÇÃO (lido dos carimbos das páginas; é a ÚNICA fonte válida do número do arquivo)]\nRegra: em "Mov. N, Arq. M, Pág. K", o ARQUIVO M é o número do arquivo DENTRO da movimentação N e a PÁGINA K é a página DENTRO desse arquivo (de 1 ao total dele). NUNCA cite um arquivo que não esteja neste índice para a movimentação, nem página além do total do arquivo. Para citar um documento, ache o nome dele aqui e use o número do arquivo correspondente.\n${txt}\n[FIM DO ÍNDICE]\n`;
 }
 
 /** Citação com arquivo que a movimentação NÃO tem: tenta achar o arquivo certo pelo nome (palavras do arquivo que aparecem logo antes da citação). Só troca se um único arquivo se destaca. */

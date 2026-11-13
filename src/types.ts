@@ -220,6 +220,10 @@ export interface GenerationResult {
   avisoFundamentoLegal?: string[];
   avisoDescumprimento?: { tipo: string; movDeterminacao?: number; movDecurso?: number; parcial: boolean; possivelCumprimento: boolean; decide: boolean; atoSugerido: string; motivo: string; minutaSentenciou?: boolean };
   espolioQualificado?: string[];
+  /** Motor que gerou a minuta (etiqueta do Histórico). */
+  motor?: "principal" | "turbo" | "gigante";
+  /** Conferência por código da minuta com a fase do processo (cumprimento, execução, embargos, pós-sentença). */
+  conferenciaFase?: { fase: string; confianca: string; sinais: string[]; avisos: string[]; refeita: boolean; resolvido: boolean; tesesOmitidas: number };
   /** Artigos citados na minuta que o Planalto marca como revogados, vetados ou inexistentes (conferência automática). */
   alertasLegislacao?: { lei: string; artigo: string; tipo: "revogado" | "vetado" | "inexistente" | "cpc1973"; nota?: string }[];
   legislacaoConferida?: string[];

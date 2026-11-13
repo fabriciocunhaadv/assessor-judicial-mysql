@@ -102,6 +102,16 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
 
   const dd = result?.avisoDescumprimento;
   if (dd) itens.push({ id: "descumprimento", tom: dd.decide && dd.minutaSentenciou === false ? "perigo" : "atencao", rotulo: dd.decide ? "⏱️ Parte não cumpriu determinação" : "⏱️ Conferir cumprimento da determinação", conteudo: caixa(dd.decide && dd.minutaSentenciou === false ? "border-red-400 bg-red-50 text-red-900" : "border-amber-300 bg-amber-50 text-amber-900", "aviso-descumprimento", <><strong>{dd.decide ? "Descumprimento de determinação detectado nos autos:" : "Possível cumprimento — confira:"}</strong> {dd.motivo}{dd.decide && <> Ato sugerido: <strong>{dd.atoSugerido}</strong>.{dd.minutaSentenciou === false ? " ATENÇÃO: a minuta gerada não indeferiu a inicial nem extinguiu o processo; confira se o ato certo foi minutado." : ""}</>}</>) });
+  const cf = result?.conferenciaFase;
+  if (cf && (cf.avisos?.length || cf.tesesOmitidas)) {
+    const pendente = !!cf.avisos?.length && !cf.resolvido;
+    itens.push({ id: "fase", tom: pendente ? "perigo" : "info", rotulo: pendente ? "🧭 Minuta pode estar fora da fase" : cf.refeita ? "🧭 Minuta corrigida pela fase" : "🧭 Conferida com a fase", conteudo: caixa(pendente ? "border-red-400 bg-red-50 text-red-900" : "border-sky-300 bg-sky-50 text-sky-900", "aviso-fase",
+      <><strong>Fase do processo (lida do quadro de movimentações): {String(cf.fase).replace("_", "-")}</strong> <span className="opacity-70">(confiança {cf.confianca})</span>.
+        {cf.avisos?.length ? <ul className="list-disc pl-5 mt-1">{cf.avisos.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul> : null}
+        {pendente ? <div className="mt-1">{cf.refeita ? "O sistema tentou refazer uma vez e o problema continuou: " : ""}confira o ato antes de assinar; a conferência é automática e pode errar.</div> : cf.refeita ? <div className="mt-1">O sistema refez a minuta uma vez para ajustá-la à fase e a nova versão passou na conferência.</div> : null}
+        {cf.tesesOmitidas ? <div className="mt-1">{cf.tesesOmitidas} tese(s) de mérito do Caderno deixaram de ser enviadas ao motor por causa da fase.</div> : null}
+        {cf.sinais?.length ? <div className="mt-1 opacity-70">Sinais: {cf.sinais.join("; ")}.</div> : null}</>) });
+  }
   const fl = result?.avisoFundamentoLegal;
   if (fl?.length) itens.push({ id: "fundamento-legal", tom: "atencao", rotulo: `📚 Fundamento do indeferimento (${fl.length})`, conteudo: caixa("border-amber-300 bg-amber-50 text-amber-900", "aviso-fundamento-legal", <><strong>Conferir o fundamento legal:</strong><ul className="list-disc list-inside">{fl.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></>) });
   const esp = result?.espolioQualificado;

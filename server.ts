@@ -50,6 +50,7 @@ import { gravarNormaDeTexto } from './server/outrasLeis';
 import { extrairEnunciadosFonaje } from './src/utils/enunciadosFonaje';
 import { REGRAS_MECANICA_JUDICIAL, REGRAS_FIDELIDADE_AUTOS, conferenciasMecanica } from './src/utils/mecanicaJudicial';
 import { corrigirCitacoesDaMinuta, citacoesInexistentes, blocoIndiceArquivos } from './src/utils/localizacaoAutos';
+import { faseDaRequisicao, blocoFaseDaRequisicao, tesesPorFase, motorDaRequisicao, conferirERefazerPorFase, motoresFaseLigado } from './server/faseNoMotor';
 // Abertura padrão do relatório de TODA minuta (pedido do magistrado). Vale para qualquer área e ato; entra nas etapas 1 e 2 e no Turbo.
 const REGRA_ABERTURA_RELATORIO = `
 
@@ -1463,7 +1464,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
                 { role: "user", parts: [{ text: userPrompt }, ...cobT.partes] }
             ],
             config: {
-                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, accumulatedText) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoT ? blocoDescumprimentoDetectado(descumprimentoT) : "") + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoCadernoDeTesesTurbo(cabinetTesesText, isTesesEnabled) + blocoBaseConhecimentoTurbo(knowledgePdfs) + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
+                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + blocoFaseDaRequisicao(req, accumulatedText) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, accumulatedText) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoT ? blocoDescumprimentoDetectado(descumprimentoT) : "") + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoCadernoDeTesesTurbo(tesesPorFase(typeof cabinetTesesText === "string" ? cabinetTesesText : "", faseDaRequisicao(req, accumulatedText)).texto, isTesesEnabled) + blocoBaseConhecimentoTurbo(knowledgePdfs) + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
                 temperature: 0.1,
                 maxOutputTokens: 16384,      // era 8192, e parte dele era gasta repetindo o texto inteiro em fullFormattedText
                 responseMimeType: "application/json",
@@ -1668,6 +1669,18 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
             }
         };
 
+        (payload as any).motor = "turbo";      // etiqueta do motor que gerou (Histórico)
+        if (motoresFaseLigado()) {
+            try {
+                const faseT = faseDaRequisicao(req, accumulatedText);
+                const rf = await conferirERefazerPorFase((payload as any).minute, faseT, async (sistema, usuario) => {
+                    const r = await generateWithFallbackAndRetry({ apiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res, contents: [{ role: "user", parts: [{ text: usuario }] }], config: { systemInstruction: sistema, temperature: 0.2, maxOutputTokens: 32000, responseMimeType: "application/json" }, timeoutMs: 240000 } as any);
+                    return r.text || "";
+                }, tesesPorFase(typeof cabinetTesesText === "string" ? cabinetTesesText : "", faseT).omitidas);
+                if (rf.minute !== (payload as any).minute) (payload as any).minute = rf.minute;
+                if (rf.conferencia) (payload as any).conferenciaFase = rf.conferencia;
+            } catch (e) { console.warn("[Turbo] conferência de fase falhou (ignorada):", (e as any)?.message || e); }
+        }
         if (alertaInjecaoT) (payload as any).alertaInjecao = alertaInjecaoT;
         if (descumprimentoT) (payload as any).avisoDescumprimento = { ...descumprimentoT, minutaSentenciou: /SENTEN[ÇC]A/i.test(String((payload as any).minute?.title || "")) };      // mesmo aviso da análise principal
         try {
@@ -5168,7 +5181,10 @@ const registrarGroundingNaSaude = () => {
     if (!isGroundingEnabled || groundingJaRegistrado) return; groundingJaRegistrado = true;
     try { const sUsuario = (req as any).usuarioSessao, st = statusGrounding(); registrarSaude({ tipo: "ia", modulo: "grounding", severidade: st === "ok" ? "info" : "aviso", mensagem: `Pesquisa ao vivo (Grounding): ${st}${st === "ok" ? ` (${liveGroundingSources.length} fonte(s))` : ""}`, detalhe: { status: st, fontes: liveGroundingSources.length, etapa: executionStage === 1 ? 1 : executionStage === 2 ? 2 : "completo", erro: groundingFalha || undefined }, email: sUsuario?.email, tenant: sUsuario?.tenant }); } catch { /* monitor nunca derruba */ }
 };
-const activeTeses = getActiveCabinetTeses(cabinetTesesText, isTesesEnabled, [accumulatedPdfText, safeProcessText, customPromptText, activePromptTitle].filter(Boolean).join(" "));
+const activeTesesBruto = getActiveCabinetTeses(cabinetTesesText, isTesesEnabled, [accumulatedPdfText, safeProcessText, customPromptText, activePromptTitle].filter(Boolean).join(" "));
+const faseDoProcesso = faseDaRequisicao(req, (safeProcessText || "") + "\n" + (accumulatedPdfText || ""));      // fase por código (sem IA): dica ao motor, filtro das teses e conferência da minuta
+const tesesFiltradas = tesesPorFase(typeof activeTesesBruto === "string" ? activeTesesBruto : "", faseDoProcesso);
+const activeTeses = typeof activeTesesBruto === "string" && tesesFiltradas.omitidas ? tesesFiltradas.texto : activeTesesBruto;
 const hasActiveParadigm = (isParadigmEnabled !== false) && Boolean(paradigmModelText && typeof paradigmModelText === "string" && paradigmModelText.trim().length > 0);
 
 // ETAPA 1 - System Instruction do Assessor Fático (Extração e Confronto Probatório Bruto):
@@ -5973,7 +5989,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
         if (legAutos.bloco) { stage1SystemInstruction += legAutos.bloco; console.log(`[Legislação] etapa 1: ${legAutos.consultados} artigo(s) citado(s) nos autos conferido(s) no Planalto.`); }
         try { const la = await pegarLeiAplicavel(legAutos.conferidos); if (la.bloco) stage1SystemInstruction += la.bloco; } catch { /* sem a lei aplicável: segue só com a conferência */ }
     } catch (e) { console.warn("[Legislação] etapa 1 ignorada:", e); }
-    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + blocoFaseDaRequisicao(req, (safeProcessText || "") + "\n" + (accumulatedPdfText || "")) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const stage1StartTimer = Date.now();
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage1ContentsParts, stage1SystemInstruction) / 10000) * 3000);      // maior para autos grandes
     stage1Response = await gerarComAutosGrandes(generateWithFallbackAndRetry, {
@@ -6353,6 +6369,7 @@ if (executionStage === 1) {
     if (fontesParaTela()) parsedStage1.fontesConsultadas = fontesParaTela();
     try { const trocas = corrigirCitacoesDaMinuta(parsedStage1.minute, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")); if (trocas) parsedStage1.citacoesCorrigidas = trocas; } catch { /* a correção nunca derruba a minuta */ }
     if (coberturaLeitura) parsedStage1.coberturaLeitura = coberturaLeitura;
+    parsedStage1.motor = motorDaRequisicao(req, "principal");      // etiqueta do motor que gerou (Histórico)
     if (!res.headersSent) {
         return res.json(parsedStage1);
     } else {
@@ -6614,7 +6631,7 @@ try {
         else if (leg.falhas.length) console.log(`[Legislação] sem acesso ao Planalto para: ${leg.falhas.join("; ")}.`);
         try { const la = await pegarLeiAplicavel(leg.conferidos); if (la.bloco) stage2SystemInstruction += la.bloco; } catch { /* sem a lei aplicável */ }
     } catch (e) { console.warn("[Legislação] consulta ignorada:", e); }
-    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + blocoFaseDaRequisicao(req, (safeProcessText || "") + "\n" + (accumulatedPdfText || "")) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage2Prompt, stage2SystemInstruction) / 10000) * 3000);
     response = await generateWithFallbackAndRetry({
         apiKey: stage2KeyPool[0] || userApiKey,
@@ -7140,6 +7157,17 @@ if (wasRotated && rotatedKey) {
           const trocas = corrigirCitacoesDaMinuta(alvo, autosTxt); if (trocas) parsed.citacoesCorrigidas = trocas;      // página global/arquivo errado -> o que o carimbo prova
           Object.assign(parsed, conferenciasMecanica(alvo, autosTxt)); }
     } catch { /* a conferência nunca derruba a minuta */ }
+    parsed.motor = motorDaRequisicao(req, "principal");      // etiqueta do motor que gerou (Histórico)
+    if (motoresFaseLigado()) {      // conferência por código da minuta com a fase; se invadiu a fase, refaz UMA vez; nunca derruba a minuta
+        try {
+            const rf = await conferirERefazerPorFase(parsed.minute, faseDoProcesso, async (sistema, usuario) => {
+                const r = await generateWithFallbackAndRetry({ apiKey: userApiKey, keyPool: extractApiKeyPool(req), isNativeAllowed: isRequestNativeAllowed(req), res, contents: [{ role: "user", parts: [{ text: usuario }] }], config: { systemInstruction: sistema, temperature: 0.2, maxOutputTokens: 32000, responseMimeType: "application/json" }, timeoutMs: 240000 } as any);
+                return r.text || "";
+            }, tesesFiltradas.omitidas);
+            if (rf.minute !== parsed.minute) parsed.minute = rf.minute;
+            if (rf.conferencia) parsed.conferenciaFase = rf.conferencia;
+        } catch (e) { console.warn("[Motor] conferência de fase falhou (ignorada):", (e as any)?.message || e); }
+    }
     if (keepAliveInterval) {
         clearInterval(keepAliveInterval);
         keepAliveInterval = null;
