@@ -123,6 +123,21 @@ export const contarUsoNoServidor = (ehNativa: (req: any) => boolean): RequestHan
   next();
 };
 
+/** Cópia e exportação da minuta (copiar, DOCX, PDF/impressão): o app avisa pelo navegador; o servidor anota no livro de eventos. O mesmo gesto repetido em 5 s não conta de novo. */
+const ultimasAcoes = new Map<string, number>();
+export const usoAcao = (): RequestHandler => async (req: any, res: any) => {
+  try {
+    const u = req.usuarioSessao; if (!u) return res.status(401).json({ ok: false });
+    const tipo = String(req.body?.acao || ""); if (!["copiar", "docx", "pdf"].includes(tipo)) return res.status(400).json({ ok: false, erro: "ação inválida" });
+    const processo = String(req.body?.processo || "").slice(0, 64), chave = `${u.uid}|${tipo}|${processo}`, agora = Date.now();
+    if (agora - (ultimasAcoes.get(chave) || 0) < 5000) return res.json({ ok: true, repetido: true });
+    ultimasAcoes.set(chave, agora); if (ultimasAcoes.size > 2000) ultimasAcoes.clear();
+    const { anotarEvento } = await import("./historyRoutes");
+    await anotarEvento(u.tenant, tipo as any, { processo, ator: String(u.email || ""), dono: String(u.email || "") });
+    res.json({ ok: true });
+  } catch { res.json({ ok: false }); }
+};
+
 /** Minuta feita FORA da IA do Studio (ChatGPT, Gemini, Claude, IA do Jusbrasil ou Agaia, pela esteira da extensão) e entregue ao Studio: conta como uma execução do módulo "IA externa" (sem tokens: o consumo é da conta da pessoa naquele site). */
 export const ORIGENS_EXTERNAS = /^[\p{L}\p{N} .\-]{2,40}$/u;
 export const usoExterno = (): RequestHandler => async (req: any, res: any) => {

@@ -72,6 +72,11 @@ export function getCleanPartyNames(minute: MinuteData) {
   return { author, defendant };
 }
 
+/** Avisa o servidor (painel Utilização) que a minuta foi copiada/exportada. Nunca atrapalha a ação do usuário. */
+export function avisarUso(acao: "copiar" | "docx" | "pdf", minute?: MinuteData) {
+  try { void fetch("/api/uso-acao", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ acao, processo: minute?.processNumber || "" }) }).catch(() => {}); } catch { /* sem aviso */ }
+}
+
 export async function copyMinuteToClipboard(minute: MinuteData): Promise<boolean> {
   const parties = getCleanPartyNames(minute);
   const plainText = textoSimples(minute.fullFormattedText || "") || `${minute.header}\n\n${minute.title}\n\nProcesso: ${minute.processNumber}\nAutor: ${parties.author}\nRéu: ${parties.defendant}\n\nRELATÓRIO\n${textoSimples(minute.relatorio)}\n\nFUNDAMENTAÇÃO\n${textoSimples(minute.fundamentacao)}\n\nDISPOSITIVO\n${textoSimples(minute.dispositivo)}\n\n${minute.closing || ""}`;
@@ -119,16 +124,16 @@ export async function copyMinuteToClipboard(minute: MinuteData): Promise<boolean
           "text/plain": blobText,
         }),
       ]);
-      return true;
+      avisarUso("copiar", minute); return true;
     } else {
       await navigator.clipboard.writeText(plainText);
-      return true;
+      avisarUso("copiar", minute); return true;
     }
   } catch (err) {
     console.warn("Clipboard API rich copy fallback to standard text copy:", err);
     try {
       await navigator.clipboard.writeText(plainText);
-      return true;
+      avisarUso("copiar", minute); return true;
     } catch {
       return false;
     }
@@ -161,6 +166,7 @@ function paragrafosDocx(texto: string, secao: "relatorio" | "fundamentacao" | "d
 }
 
 export async function exportMinuteToDocx(minute: MinuteData): Promise<void> {
+  avisarUso("docx", minute);
   const parties = getCleanPartyNames(minute);
   const doc = new Document({
     sections: [
@@ -298,6 +304,7 @@ export async function exportMinuteToDocx(minute: MinuteData): Promise<void> {
 }
 
 export function printFormattedMinute(minute: MinuteData): void {
+  avisarUso("pdf", minute);
   const printWindow = window.open("", "_blank");
   if (!printWindow) return;
 

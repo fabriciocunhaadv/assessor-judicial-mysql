@@ -59,7 +59,7 @@ export const garantirEsquema = (): Promise<void> => (esquemaPronto ||= (async ()
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 })().catch((e) => { esquemaPronto = null; throw e; }));
 
-export type TipoEvento = "lancada" | "desmarcada" | "unidade" | "gabinete";
+export type TipoEvento = "lancada" | "desmarcada" | "unidade" | "gabinete" | "copiar" | "docx" | "pdf";
 /** Anota um evento do Histórico (nunca derruba a operação principal). */
 export async function anotarEvento(tenant: string, tipo: TipoEvento, o: { atoId?: string; processo?: string; ator?: string; dono?: string; de?: string; para?: string }) {
   try {

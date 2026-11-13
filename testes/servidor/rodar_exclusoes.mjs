@@ -40,6 +40,16 @@ try {
   const dx = await det("excluidas"), dl = await det("lancada"), du = await det("unidade"), dg = await det("gabinete");
   ok(dx.linhas.length === 2 && dx.linhas.every((x) => x.quemFez === "teste@tjgo.jus.br" && x.dono === "teste@tjgo.jus.br" && x.processo), `lista das excluídas com quem apagou (${dx.linhas.length})`);
   ok(dl.linhas.length >= 1 && du.linhas.length === 1 && du.linhas[0].detalhe.includes("crixas") && dg.linhas.length === 1 && dg.linhas[0].detalhe.includes("gab_b"), "listas de lançadas, mudança de unidade (de → para) e de gabinete");
+  // cópia e exportação
+  const ua = async (acao, processo = "5533538-77.2026.8.09.0166") => (await fetch(B + "/uso-acao", { method: "POST", headers: H, body: JSON.stringify({ acao, processo }) })).json();
+  await ua("copiar"); const rep = await ua("copiar"); await ua("docx"); await ua("pdf"); await ua("pdf", "5000001-00.2026.8.09.0166");
+  ok(rep.repetido === true, "o mesmo gesto repetido em 5 s não conta de novo");
+  const inval = await fetch(B + "/uso-acao", { method: "POST", headers: H, body: JSON.stringify({ acao: "apagar-tudo" }) });
+  ok(inval.status === 400, "ação inválida: recusada");
+  u = await util(); linha = (u.usuarios || []).find((l) => l.email === "teste@tjgo.jus.br");
+  ok(linha.copias === 1 && linha.docx === 1 && linha.pdfs === 2, `cópias=${linha.copias} docx=${linha.docx} pdf=${linha.pdfs} por pessoa`);
+  ok(u.totais.copias === 1 && u.totais.docx === 1 && u.totais.pdfs === 2, "totais de cópias, DOCX e PDF");
+  const dpdf = await det("pdf"); ok(dpdf.linhas.length === 2 && dpdf.linhas[0].quemFez === "teste@tjgo.jus.br", "lista das exportações em PDF com quem fez");
   const ruim = await fetch(B + "/utilizacao/detalhe?tipo=xyz", { headers: H });
   ok(ruim.status === 400, "tipo inválido: erro claro");
   ok(!(u.avisos || []).some((x) => /excluídas/.test(x)), `sem aviso de falha na fonte de exclusões (${JSON.stringify(u.avisos)})`);
