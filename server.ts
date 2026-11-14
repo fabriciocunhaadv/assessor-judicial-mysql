@@ -586,8 +586,8 @@ app.post("/api/uso-acao", usoAcao());      // copiar / DOCX / PDF da minuta (pai
 app.post("/api/uso-externo", usoExterno());
 app.post("/api/uso-extensao", usoExtensao());      // contagem de uso da extensão (por dia e recurso), entregue pelo app      // minuta feita em IA externa (ChatGPT/Gemini/Claude/Agaia) e entregue ao Studio pela esteira: conta no painel Utilização
 // consumo de IA contado aqui no servidor (tokens e execuções de cada pessoa), quando o app avisa pelo cabeçalho X-Uso-No-Servidor
-app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot", "/api/mapa-processo", "/api/mutirao-video"], contarUsoNoServidor((req: any) => isRequestNativeAllowed(req)));
-app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot", "/api/mutirao-video"], (req: any, res: any, next: any) => {
+app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot", "/api/mapa-processo", "/api/mutirao-video", "/api/mutirao-degravar"], contarUsoNoServidor((req: any) => isRequestNativeAllowed(req)));
+app.use(["/api/generate-minute", "/api/generate-minute-turbo", "/api/audit-assessor-draft", "/api/hearing-copilot", "/api/mutirao-video", "/api/mutirao-degravar"], (req: any, res: any, next: any) => {
     const id = String(req.headers["x-progresso-id"] || "").slice(0, 80);
     if (req.method !== "POST" || !id) return next();
     if (!progressos.has(id)) setProg(id, "Em processamento no servidor…", null);      // a página que voltar saberá que a análise existe, mesmo nos módulos que não informam andamento
@@ -2996,6 +2996,29 @@ app.post("/api/mutirao-midia/parte", express.raw({ type: "*/*", limit: "16mb" })
 });
 setInterval(() => { try { varrerMidiasAntigas(); } catch { /* sem pasta */ } }, 30 * 60_000).unref?.();
 
+/** Envia UMA mídia à IA (API de arquivos), espera o Google processá-la e devolve a DEGRAVAÇÃO fiel. Usada pela sentença com vídeo (várias mídias numa chamada) e pela degravação vídeo a vídeo do Mutirão.
+ *  `timeoutMs`/`maxCycles` só são passados pelo caminho vídeo a vídeo (áudio longo passa dos 180 s padrão e recomeçava a degravação do zero em outro modelo). */
+async function degravarMidiaComIA(o: { chave: string; caminho: string; mime: string; nome: string; rotulo: string; processNumber: string; ataText: string; remotos: string[]; andamento: (t: string, pct?: number) => void; prefixo: string; pctEnvio: number; pctOuvindo: number; timeoutMs?: number; maxCycles?: number }): Promise<{ texto: string; resp: any }> {
+    const ai = new GoogleGenAI({ apiKey: o.chave });
+    o.andamento(`${o.prefixo}enviando à IA…`, o.pctEnvio);
+    const arq: any = await ai.files.upload({ file: o.caminho, config: { mimeType: o.mime } }); o.remotos.push(arq.name);
+    let info: any = arq;
+    for (let t = 0; t < 120 && info?.state === "PROCESSING"; t++) { await new Promise((r) => setTimeout(r, 3000)); info = await ai.files.get({ name: arq.name }); }
+    if (info?.state === "PROCESSING") throw new Error(`O Google demorou demais para processar a mídia "${o.nome}". Tente de novo ou envie um arquivo menor.`);
+    if (info?.state === "FAILED") throw new Error(`O Google não conseguiu processar a mídia "${o.nome}" (formato não aceito ou arquivo corrompido). Converta para MP4 ou MP3 e tente de novo.`);
+    o.andamento(`${o.prefixo}a IA está ouvindo e degravando…`, o.pctOuvindo);
+    const { processNumber, rotulo, ataText } = o;
+    const rT: any = await generateWithFallbackAndRetry({
+        apiKey: o.chave, keyPool: [o.chave], customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"],
+        contents: [{ role: "user", parts: [{ text: `Você é um escrevente de audiência. Faça a DEGRAVAÇÃO FIEL do áudio desta audiência${processNumber ? ` (processo ${processNumber})` : ""}${rotulo ? `, parte ${rotulo} (cada vídeo costuma ser o depoimento de uma pessoa: diga quem depõe, pelo que se apresentar ou pelo termo prévio)` : ""}, em português, identificando quem fala quando possível (Juiz, Advogado da parte autora, Advogado da parte ré, Autor, Réu, Testemunha 1, Testemunha 2, Perito, MP…), com marcação de tempo aproximada [mm:ss] a cada troca de assunto. Não resuma, não invente e não complete o que não foi dito: trechos inaudíveis ficam como [inaudível]. Responda só com a degravação.${ataText ? `\n\nTERMO/ATA PRÉVIA (para ajudar a reconhecer os nomes e a ordem das oitivas):\n${String(ataText).slice(0, 20000)}` : ""}` }, { fileData: { fileUri: arq.uri, mimeType: o.mime } }] }],
+        config: { systemInstruction: "Você transcreve audiências judiciais com fidelidade. Nunca invente falas.", mediaResolution: "MEDIA_RESOLUTION_LOW", maxOutputTokens: 60000 },
+        ...(o.timeoutMs ? { timeoutMs: o.timeoutMs } : {}), ...(o.maxCycles ? { maxCycles: o.maxCycles } : {}),
+    });
+    const tx = String(rT.text || "").trim();
+    if (tx.length < 40) throw new Error(`A IA não conseguiu ouvir a mídia "${o.nome}" (áudio ausente ou muito baixo). Confira o arquivo.`);
+    return { texto: tx, resp: rT };
+}
+
 app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req: any, res: any) => {
     // Resposta em fluxo com pulso (como as análises longas): degravar uma audiência demora minutos e proxies cortam conexão parada.
     let pulso: ReturnType<typeof setInterval> | null = null, iniciou = false;
@@ -3040,21 +3063,10 @@ app.post("/api/mutirao-video", (uploadMedia.single('video') as any), async (req:
             const partesDeg: string[] = [];
             for (let k = 0; k < fontes.length; k++) {
                 const f = fontes[k], rotulo = fontes.length > 1 ? `VÍDEO/ÁUDIO ${k + 1} DE ${fontes.length} ("${f.nome}")` : "";
-                andamento(`${fontes.length > 1 ? `Mídia ${k + 1} de ${fontes.length}: ` : ""}enviando à IA…`, 5 + Math.round((k / fontes.length) * 55));
-                const arq: any = await ai.files.upload({ file: f.caminho, config: { mimeType: f.mime } }); remotos.push(arq.name);
-                let info: any = arq;
-                for (let t = 0; t < 120 && info?.state === "PROCESSING"; t++) { await new Promise((r) => setTimeout(r, 3000)); info = await ai.files.get({ name: arq.name }); }
-                if (info?.state === "PROCESSING") throw new Error(`O Google demorou demais para processar a mídia "${f.nome}". Tente de novo ou envie um arquivo menor.`);
-                if (info?.state === "FAILED") throw new Error(`O Google não conseguiu processar a mídia "${f.nome}" (formato não aceito ou arquivo corrompido). Converta para MP4 ou MP3 e tente de novo.`);
-                andamento(`${fontes.length > 1 ? `Mídia ${k + 1} de ${fontes.length}: ` : ""}a IA está ouvindo e degravando…`, 10 + Math.round((k / fontes.length) * 55));
-                const rT = await generateWithFallbackAndRetry({
-                    apiKey: chaveUsada, keyPool: [chaveUsada], customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"],
-                    contents: [{ role: "user", parts: [{ text: `Você é um escrevente de audiência. Faça a DEGRAVAÇÃO FIEL do áudio desta audiência${processNumber ? ` (processo ${processNumber})` : ""}${rotulo ? `, parte ${rotulo} (cada vídeo costuma ser o depoimento de uma pessoa: diga quem depõe, pelo que se apresentar ou pelo termo prévio)` : ""}, em português, identificando quem fala quando possível (Juiz, Advogado da parte autora, Advogado da parte ré, Autor, Réu, Testemunha 1, Testemunha 2, Perito, MP…), com marcação de tempo aproximada [mm:ss] a cada troca de assunto. Não resuma, não invente e não complete o que não foi dito: trechos inaudíveis ficam como [inaudível]. Responda só com a degravação.${ataText ? `\n\nTERMO/ATA PRÉVIA (para ajudar a reconhecer os nomes e a ordem das oitivas):\n${String(ataText).slice(0, 20000)}` : ""}` }, { fileData: { fileUri: arq.uri, mimeType: f.mime } }] }],
-                    config: { systemInstruction: "Você transcreve audiências judiciais com fidelidade. Nunca invente falas.", mediaResolution: "MEDIA_RESOLUTION_LOW", maxOutputTokens: 60000 },
-                });
-                somar(rT); const tx = String(rT.text || "").trim();
-                if (tx.length < 40) throw new Error(`A IA não conseguiu ouvir a mídia "${f.nome}" (áudio ausente ou muito baixo). Confira o arquivo.`);
-                partesDeg.push(rotulo ? `=== ${rotulo} ===\n${tx}` : tx);
+                const pre = fontes.length > 1 ? `Mídia ${k + 1} de ${fontes.length}: ` : "";
+                const dg = await degravarMidiaComIA({ chave: chaveUsada, caminho: f.caminho, mime: f.mime, nome: f.nome, rotulo, processNumber: String(processNumber || ""), ataText: String(ataText || ""), remotos, andamento, prefixo: pre, pctEnvio: 5 + Math.round((k / fontes.length) * 55), pctOuvindo: 10 + Math.round((k / fontes.length) * 55) });
+                somar(dg.resp);
+                partesDeg.push(rotulo ? `=== ${rotulo} ===\n${dg.texto}` : dg.texto);
             }
             transcricao = partesDeg.join("\n\n");
         }
@@ -3141,6 +3153,50 @@ Retorne estritamente em JSON: {"transcription": "resumo organizado dos depoiment
         if (pulso) clearInterval(pulso);
         for (const m of midias) limparMidia(uid, m.midiaId);
         for (const c of temporarios) { try { fs.unlinkSync(c); } catch { /* já apagado */ } }
+        for (const n of remotos) { try { await new GoogleGenAI({ apiKey: chaveUsada }).files.delete({ name: n }); } catch { /* o Google apaga sozinho em 48 h */ } }
+    }
+});
+
+/** Mutirão Expresso, vídeo a vídeo: degrava UMA mídia por chamada (o app guarda cada degravação ao terminar e retoma de onde parou). Resposta em fluxo com pulso, como as demais rotas longas. */
+app.post("/api/mutirao-degravar", async (req: any, res: any) => {
+    let pulso: ReturnType<typeof setInterval> | null = null, iniciou = false;
+    const responder = (status: number, corpo: any) => {
+        if (pulso) { clearInterval(pulso); pulso = null; }
+        if (!iniciou) return res.status(status).json(corpo);
+        try { res.end(JSON.stringify(corpo)); } catch { /* conexão já fechada */ }
+    };
+    const iniciar = () => {
+        if (iniciou) return; iniciou = true;
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Transfer-Encoding": "chunked", "X-Accel-Buffering": "no", "Cache-Control": "no-cache, no-transform" });
+        pulso = setInterval(() => { try { if (!res.writableEnded && !res.destroyed) res.write(" "); } catch { /* fechou */ } }, 3000);
+    };
+    const uid = String(req.usuarioSessao?.uid || "");
+    const progId = String(req.headers["x-progresso-id"] || "").slice(0, 80);
+    const andamento = (t: string, pct?: number) => { if (progId) setProg(progId, t, pct ?? null, 95); };
+    const m = req.body?.midia || {};
+    const midia = { midiaId: String(m.midiaId || "").replace(/[^\w-]/g, ""), partes: Number(m.partes) || 1, tamanho: Number(m.tamanho) || undefined, nomeMidia: String(m.nomeMidia || "").slice(0, 200), mimeMidia: String(m.mimeMidia || "") };
+    const idx = Math.max(0, Number(req.body?.idx) || 0), total = Math.max(1, Number(req.body?.total) || 1);
+    const remotos: string[] = []; let chaveUsada = "";
+    try {
+        if (!midia.midiaId) return responder(400, { success: false, error: "Mídia não informada." });
+        const apiKey = extractApiKey(req) || req.body?.customApiKey;
+        if (!apiKey) return responder(401, { success: false, error: "Chave da API Gemini ausente." });
+        const pool = extractApiKeyPool(req); chaveUsada = String((Array.isArray(pool) && pool[0]) || apiKey);
+        iniciar();
+        const mm = montarArquivo(uid, midia.midiaId, midia.partes, midia.tamanho);
+        const pre = total > 1 ? `Vídeo ${idx + 1} de ${total}: ` : "";
+        const rotulo = total > 1 ? `VÍDEO/ÁUDIO ${idx + 1} DE ${total} ("${midia.nomeMidia || "mídia " + (idx + 1)}")` : "";
+        const t0 = Date.now();
+        const dg = await degravarMidiaComIA({ chave: chaveUsada, caminho: mm.caminho, mime: mimeDaMidia(midia.nomeMidia, midia.mimeMidia), nome: midia.nomeMidia || `mídia ${idx + 1}`, rotulo, processNumber: String(req.body?.processNumber || ""), ataText: String(req.body?.ataText || ""), remotos, andamento, prefixo: pre, pctEnvio: 5, pctOuvindo: 15, timeoutMs: 10 * 60_000, maxCycles: 2 });
+        const u = dg.resp?.usageMetadata || {};
+        console.log(`[mutirao-degravar] ${midia.nomeMidia} (${idx + 1}/${total}) degravado em ${Math.round((Date.now() - t0) / 1000)} s, ${String(dg.resp?.modelVersion || "")}`);
+        responder(200, { success: true, texto: dg.texto, idx, nomeMidia: midia.nomeMidia, tamanho: midia.tamanho || 0, segundos: Math.round((Date.now() - t0) / 1000), usage: { promptTokenCount: Number(u.promptTokenCount) || 0, candidatesTokenCount: Number(u.candidatesTokenCount) || 0, totalTokenCount: Number(u.totalTokenCount) || 0 }, modelUsed: dg.resp?.modelVersion || "" });
+    } catch (err: any) {
+        console.error("Erro no mutirao-degravar:", err);
+        responder(500, { success: false, error: formatGeminiError(err) || String(err?.message || "Falha ao degravar a mídia.") });
+    } finally {
+        if (pulso) clearInterval(pulso);
+        if (midia.midiaId) limparMidia(uid, midia.midiaId);
         for (const n of remotos) { try { await new GoogleGenAI({ apiKey: chaveUsada }).files.delete({ name: n }); } catch { /* o Google apaga sozinho em 48 h */ } }
     }
 });

@@ -43,7 +43,7 @@ export interface ErroMonitorado {
 
 const MODULOS: Record<string, string> = {
   "/api/generate-minute": "analise_normal", "/api/generate-minute-turbo": "turbo", "/api/audit-assessor-draft": "lupa", "/api/hearing-copilot": "mesa_audiencia",
-  "/api/mutirao-extract-ata": "mutirao", "/api/mutirao-video": "mutirao", "/api/chat-agaia": "chat", "/api/lateral-agent-chat": "copiloto",
+  "/api/mutirao-extract-ata": "mutirao", "/api/mutirao-video": "mutirao", "/api/mutirao-degravar": "mutirao", "/api/chat-agaia": "chat", "/api/lateral-agent-chat": "copiloto",
   "/api/advogado-peticao": "peticao_inicial", "/api/gigante-lote": "gigantes", "/api/gigante-fusao": "gigantes", "/api/ocr-paginas": "ocr",
   "/api/extract-pdf-text": "leitura_pdf", "/api/generate-synopsis": "sinopse", "/api/parse-precedents-pdf": "precedentes", "/api/sync-precedents-weekly": "precedentes",
   "/api/scan-cabinet-theses": "teses", "/api/monitor/diagnosticar": "monitor", "/api/mapa-processo": "mapa_processo",

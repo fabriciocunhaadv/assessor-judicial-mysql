@@ -13,6 +13,7 @@ const ROTAS: Record<string, { modulo: Modulo; rotulo: string }> = {
   "/api/audit-assessor-draft": { modulo: "lupa_magistrado", rotulo: "Auditoria: Lupa do Magistrado" },
   "/api/hearing-copilot": { modulo: "audiencia", rotulo: "Mesa de Audiência" },
   "/api/mutirao-video": { modulo: "sentenca_video", rotulo: "Sentença com vídeo da audiência (degravação + motor principal)" },
+  "/api/mutirao-degravar": { modulo: "sentenca_video", rotulo: "Sentença com vídeo: degravação de um vídeo" },
   "/api/mapa-processo": { modulo: "apoio", rotulo: "Mapa do processo (leitura completa dos autos)" },
   "/api/chat-agaia": { modulo: "chat_refino", rotulo: "Chat da minuta (consulta / reescrita)" },
   "/api/lateral-agent-chat": { modulo: "copiloto", rotulo: "Copiloto IA" },

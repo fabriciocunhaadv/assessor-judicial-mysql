@@ -8,19 +8,65 @@ import { getApiHeaders, getCustomApiKey } from "./apiKeyManager";
 import { getKnowledgeDocs } from "./knowledgeDb";
 import { getCabinetTeses } from "./tesesDb";
 import { saveToHistory } from "./historyDb";
+import { chaveDoArquivo, degravacaoDoArquivo, guardarDegravacaoDoArquivo } from "./degravacaoGuardada";
 import type { SavedAnalysis } from "../types";
 import { registrarOperacao } from "./monitorOperacao";
 import { entradasExternas } from "./entradaExterna";
 import { resolverUnidade } from "./minutaExterna";
 import { organizarMinutaExterna } from "./organizarMinutaExterna";
 
-export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; quadro?: string; pdf?: File; videos: File[]; /** a degravação veio COLADA pelo usuário (sem vídeo): a etiqueta do Histórico diz "transcrição" */ origemTexto?: boolean;
+export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; quadro?: string; pdf?: File; videos: File[]; /** a degravação veio COLADA pelo usuário (sem vídeo): a etiqueta do Histórico diz "transcrição" */ origemTexto?: boolean; /** nomes dos vídeos de onde veio a degravação pronta (etiqueta do Histórico) */ nomesOrigem?: string[];
   /** Mutirão Expresso manual: os autos (já com o quadro) e a ata prévia já foram lidos na tela; usa os mesmos, sem ler de novo. */ textoAutos?: string; ataPronta?: { ataText: string; processNumber?: string; author?: string; defendant?: string };
   /** avisa o id da análise guardada no servidor (a tela usa para recuperar o resultado se a página recarregar) */ aoIniciarAnalise?: (progId: string) => void }
 export type ResultadoSentencaVideo = { ok: true; minuta: string; transcricao: string; processo: string; autor: string; reu: string; historicoId: string; fontes?: any; aviso?: string } | { ok: false; erro: string; semRetry?: boolean; transcricao?: string };
 
 const limpar = (t: string) => String(t || "").replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\t/g, "    ").replace(/^"|"$/g, "").trim();
 const novoId = () => globalThis.crypto?.randomUUID?.() || `sv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+/** MUTIRÃO, VÍDEO A VÍDEO: envia e degrava UMA mídia por vez, guardando cada degravação ao terminar. Reaproveita as que já estão prontas (retomada depois de queda, reinício do servidor ou falha de outro vídeo).
+ *  Devolve a degravação completa no formato `=== VÍDEO/ÁUDIO k DE n ("nome") ===`. Uma nova tentativa automática só em falha de conexão/servidor; erro da IA é mostrado com o que já ficou guardado. */
+export async function degravarVideosPorEtapas(a: { videos: File[]; processo: string; ataText: string; andamento: (t: string, pct?: number) => void; cancelado?: () => boolean; aoVideoPronto?: (k: number) => void; aoIniciarAnalise?: (progId: string) => void }): Promise<string> {
+  const n = a.videos.length, partes: string[] = [], chaveApi = getCustomApiKey();
+  const faixa = (k: number, dentro = 0) => 3 + Math.round(((k + dentro) / Math.max(1, n)) * 35);
+  for (let k = 0; k < n; k++) {
+    if (a.cancelado?.()) throw Object.assign(new Error("cancelado"), { cancelado: true });
+    const f = a.videos[k], ck = chaveDoArquivo(f), pre = n > 1 ? `Vídeo ${k + 1} de ${n}: ` : "";
+    let tx = degravacaoDoArquivo(ck);
+    if (tx) { a.andamento(`${pre}já degravado antes (reaproveitado)`, faixa(k, 1)); }
+    else {
+      let ultimo: any = null;
+      for (let tentativa = 1; tentativa <= 2 && !tx; tentativa++) {
+        try {
+          if (tentativa === 2) a.andamento(`${pre}a conexão com o servidor caiu: enviando de novo…`, faixa(k));
+          a.andamento(`${pre}enviando…`, faixa(k));
+          const env = await enviarMidiaEmPartes(f, (fe, t) => a.andamento(`${pre}enviando parte ${fe} de ${t}`, faixa(k, (fe / t) * 0.4)));
+          if (a.cancelado?.()) throw Object.assign(new Error("cancelado"), { cancelado: true });
+          const progId = novoId(); try { a.aoIniciarAnalise?.(progId); } catch { /* aviso da tela nunca atrapalha */ }
+          const vigia = setInterval(async () => { try { const x = await (await fetch(`/api/progresso/${encodeURIComponent(progId)}`, { cache: "no-store" })).json(); if (x?.texto) a.andamento(`${x.texto}${x.decorridoSeg ? ` (${Math.floor(x.decorridoSeg / 60)} min)` : ""}`, faixa(k, 0.5)); } catch { /* sem andamento */ } }, 5000);
+          let resp: Response;
+          try {
+            resp = await fetchRecuperavel("/api/mutirao-degravar", { method: "POST", headers: { "Content-Type": "application/json", "x-progresso-id": progId, ...(chaveApi ? { "x-gemini-api-key": chaveApi } : {}) },
+              body: JSON.stringify({ midia: { ...env, nomeMidia: f.name, mimeMidia: f.type || "" }, idx: k, total: n, processNumber: a.processo, ataText: String(a.ataText || "").slice(0, 20000) }) }, { esperaMaxMs: 20 * 60_000 });
+          } finally { clearInterval(vigia); }
+          const corpo = await resp.text(); let r: any = null;
+          try { r = JSON.parse(corpo); } catch { throw Object.assign(new Error(`O servidor não devolveu a degravação (código ${resp.status}${/<html|<!doctype/i.test(corpo) ? ", página de erro da hospedagem" : ""}). Provável causa: o servidor reiniciou.`), { reenviar: true }); }
+          if (!resp.ok || r.success === false) throw new Error(r.error || `Erro ${resp.status} ao degravar a mídia`);
+          tx = String(r.texto || "").trim();
+          if (tx.length < 40) throw new Error("A IA não devolveu a degravação.");
+        } catch (e: any) { ultimo = e; if (e?.cancelado || !e?.reenviar || tentativa === 2) break; }
+      }
+      if (!tx) {
+        if (ultimo?.cancelado) throw ultimo;
+        const prontos = a.videos.filter((v) => degravacaoDoArquivo(chaveDoArquivo(v))).length;
+        throw new Error(`${pre.trim() ? pre : ""}${String(ultimo?.message || ultimo || "falha ao degravar")}${prontos ? ` As degravações de ${prontos} vídeo(s) ficaram guardadas: ao gerar de novo, só o que falta será refeito.` : ""}`);
+      }
+      guardarDegravacaoDoArquivo(ck, tx);
+    }
+    try { a.aoVideoPronto?.(k); } catch { /* aviso da tela nunca atrapalha */ }
+    partes.push(n > 1 ? `=== VÍDEO/ÁUDIO ${k + 1} DE ${n} ("${f.name}") ===\n${tx}` : tx);
+  }
+  return partes.join("\n\n");
+}
 
 /** O ato do Histórico guarda só o que a pessoa usa: tira do resultado do motor os blocos pesados (texto reduzido dos autos, mapa, pesquisa ao vivo, resumo da 1ª etapa). */
 export function enxugarResultado(r: any): any {
@@ -97,7 +143,7 @@ async function executarSentencaComVideoInterno(p: PedidoSentencaVideo, andamento
     const cnj = (String(processo).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || String(p.processo).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || [processo || "Sem número"])[0];
     let h = 0; for (let i = 0; i < sentenca.length; i++) h = (Math.imul(31, h) + sentenca.charCodeAt(i)) | 0;
     const id = `video-${cnj.replace(/\D/g, "")}-${(h >>> 0).toString(36)}`;      // o mesmo texto do mesmo processo grava no mesmo registro
-    const origemVideo = { videos: p.origemTexto ? ["transcrição colada"] : p.videos.map((v) => v.name), degravacaoChars: degravacao.length, em: Date.now() };
+    const origemVideo = { videos: p.origemTexto ? ["transcrição colada"] : (p.videos.length ? p.videos.map((v) => v.name) : (p.nomesOrigem || [])), degravacaoChars: degravacao.length, em: Date.now() };
     let resultado: any;
     if (r.resultado?.minute) {
       const m = { ...r.resultado.minute }; if (!m.judicialUnit) m.judicialUnit = un.name || p.serventia || "";
@@ -109,7 +155,7 @@ async function executarSentencaComVideoInterno(p: PedidoSentencaVideo, andamento
     const analise: SavedAnalysis = {
       id, unitId: un.id, promptTitle: p.promptTitulo || "Sentença de Instrução e Julgamento", promptCategory: p.promptCategoria || "", promptScope: "judicial", date: Date.now(), processNumber: cnj, result: resultado,
       originalMinute: JSON.parse(JSON.stringify(resultado.minute)),
-      processTextContext: p.origemTexto ? "[Sentença feita com a transcrição da audiência colada pelo usuário; a transcrição foi usada como prova oral e não faz parte da minuta]" : `[Sentença feita com o vídeo da audiência (${p.videos.length} mídia(s)); a degravação foi usada como prova oral e não faz parte da minuta]`,
+      processTextContext: p.origemTexto ? "[Sentença feita com a transcrição da audiência colada pelo usuário; a transcrição foi usada como prova oral e não faz parte da minuta]" : `[Sentença feita com o vídeo da audiência (${p.videos.length || (p.nomesOrigem || []).length} mídia(s)); a degravação foi usada como prova oral e não faz parte da minuta]`,
       createdBy: ctx?.user?.uid || "anonymous", creatorName: ctx?.user?.displayName || ctx?.user?.email?.split("@")[0] || "Assessor", creatorEmail: ctx?.user?.email || "", chatMessages: [],
     } as any;
     const salvo = await saveToHistory(analise).catch((e: any) => ({ ok: false, erro: String(e?.message || e) }));

@@ -34,8 +34,9 @@ import { lerAutosPdf, ExtensaoNecessaria } from '../utils/lerAutosPdf';
 import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { enviarMidiaEmPartes } from '../utils/enviarMidia';
-import { executarSentencaComVideo } from '../utils/sentencaComVideo';
-import { assinaturaDosVideos, degravacaoGuardada, guardarDegravacao } from '../utils/degravacaoGuardada';
+import { executarSentencaComVideo, degravarVideosPorEtapas } from '../utils/sentencaComVideo';
+import { gerenteGigantes, LIMITE_PAGINAS_GIGANTE, type ConfigGigante } from '../utils/gigantes/gerente';
+import { assinaturaDosVideos, degravacaoGuardada, guardarDegravacao, chaveDoArquivo, degravacaoDoArquivo } from '../utils/degravacaoGuardada';
 import { entradasExternas } from '../utils/entradaExterna';
 import { enxugarResultado } from '../utils/sentencaComVideo';
 import { resolverUnidade } from '../utils/minutaExterna';
@@ -564,6 +565,10 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
 
   const MIN_TRANSCRICAO = 200;
   const textoColado = (transcricaoColada || '').trim();
+  const [erroGeracao, setErroGeracao] = useState('');      // o erro fica na tela (o aviso some em segundos)
+  const [, setTickDegr] = useState(0);      // atualiza a marca "✓ degravado" de cada vídeo
+  /** Acima disto o servidor cortaria o meio dos autos: o processo recebe o tratamento de gigante (mapa do processo, autos inteiros, em segundo plano). */
+  const LIMITE_AUTOS_DIRETO = 400_000, LIMITE_AUTOS_LOTES = 1_400_000;
   const handleGenerateSentence = async () => {
     const porTexto = modoMidia === 'texto';
     if (porTexto ? textoColado.length < MIN_TRANSCRICAO : !videoFiles.length) {
@@ -576,27 +581,58 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
       return;
     }
 
-    setIsProcessingVideo(true);
+    setIsProcessingVideo(true); setErroGeracao('');
     try {
-      // MESMO caminho de código da sentença com vídeo pela extensão (executarSentencaComVideo): mesma ata, mesmas teses/base, mesmo motor principal, mesmo Histórico.
-      const assinVideos = porTexto ? '' : assinaturaDosVideos(videoFiles), degrPronta = porTexto ? textoColado : degravacaoGuardada(assinVideos);
-      if (degrPronta && !porTexto) toast('Estes vídeos já foram ouvidos: reaproveitando a degravação (não serão enviados de novo).', { duration: 6000 });
+      const assinVideos = porTexto ? '' : assinaturaDosVideos(videoFiles);
       const ctxE = entradasExternas.contexto(); const un = resolverUnidade('', ctxE?.unidades || [], ctxE?.ativa);
-      setProgressoMidia('Preparando a sentença…');
+      // 1) degravação: texto colado, OU a de todos os vídeos já guardada, OU vídeo a vídeo (cada um é guardado ao terminar; se algo falhar, os prontos não são refeitos)
+      let degr = porTexto ? textoColado : degravacaoGuardada(assinVideos);
+      if (degr && !porTexto) toast('Estes vídeos já foram ouvidos: reaproveitando a degravação (não serão enviados de novo).', { duration: 6000 });
+      if (!degr) {
+        setProgressoMidia('Preparando os vídeos…');
+        degr = await degravarVideosPorEtapas({ videos: videoFiles, processo: processInfo.processNumber || '', ataText, andamento: (t) => setProgressoMidia(t), aoVideoPronto: () => setTickDegr((n) => n + 1) });
+        guardarDegravacao(assinVideos, degr);
+      }
+      const nomes = porTexto ? ['transcrição colada'] : videoFiles.map((f) => f.name);
+
+      // 2) autos grandes demais para passar direto: mesmo tratamento do gigante (em segundo plano; a minuta vai para o Histórico)
+      const autos = pdfFullText || '';
+      if (autos.length > LIMITE_AUTOS_DIRETO) {
+        const lotes = autos.length > LIMITE_AUTOS_LOTES;
+        let paginas = 0; try { for (const m of autos.matchAll(/\[Página (\d+)(?: de \d+)?\]/g)) paginas = Math.max(paginas, Number(m[1])); } catch { /* sem marcadores */ }
+        if (!paginas) paginas = Math.ceil(autos.length / 3500);
+        const instrucao = `SENTENÇA DE MÉRITO APÓS AUDIÊNCIA DE INSTRUÇÃO E JULGAMENTO — minuta COMPLETA, EXTENSA e ANALÍTICA: relatório com todo o andamento (cite Mov. e data), análise de cada prova documental e de cada depoimento (com [mm:ss] quando houver), fundamentação e dispositivo completos. A DEGRAVAÇÃO abaixo é PROVA ORAL da audiência (${porTexto ? 'transcrição fornecida pelo usuário' : 'lida dos vídeos'}); o TERMO é prévio.\n\n[DEGRAVAÇÃO DA AUDIÊNCIA — PROVA ORAL]\n${degr}\n[FIM DA DEGRAVAÇÃO]\n\n[TERMO/ATA PRÉVIA DA AUDIÊNCIA]\n${String(ataText || '').slice(0, 30000)}\n[FIM DO TERMO]`;
+        const cfg: ConfigGigante = {
+          promptText: selectedPrompt?.promptText || '', promptTitle: selectedPrompt?.title || '', promptId: selectedPrompt?.id, promptCategory: (selectedPrompt as any)?.category, promptScope: (selectedPrompt as any)?.scope,
+          actType: 'sentenca', unitId: un.id, unitName: un.name, instrucao, processNumber: processInfo.processNumber || '', origem: 'mutirao', ocr: false,
+          userUid: user?.uid, userName: user?.displayName || user?.email?.split('@')[0] || 'Assessor', userEmail: user?.email || '',
+          ...(lotes ? {} : { direto: true }),
+        };
+        const dados = [{ nome: processInfo.processNumber ? `Autos ${processInfo.processNumber}` : 'Autos (Mutirão)', texto: autos, pageCount: paginas }];
+        if (lotes && paginas > LIMITE_PAGINAS_GIGANTE) await gerenteGigantes.iniciarPartes(dados, { ...cfg, uniaoAutomatica: true });
+        else await gerenteGigantes.iniciarComTextos(dados, cfg);
+        window.dispatchEvent(new CustomEvent('gigantes:abrir'));
+        setTranscription(degr);
+        toast(`Autos muito grandes (${Math.round(autos.length / 1000).toLocaleString('pt-BR')} mil caracteres): a sentença foi enviada ao Gigante e vai para o Histórico quando ficar pronta. A degravação está guardada.`, { duration: 14000, icon: '📚' });
+        return;
+      }
+
+      // 3) caminho normal: MESMO código da sentença com vídeo pela extensão (mesma ata, mesmas teses/base, mesmo motor principal, mesmo Histórico); aqui a degravação já vem pronta
+      setProgressoMidia('Redigindo a sentença…');
       const r = await executarSentencaComVideo({
         reqId: `mutirao-${Date.now()}`, processo: processInfo.processNumber || '', promptTitulo: selectedPrompt?.title || '', promptTexto: selectedPrompt?.promptText || '',
-        promptCategoria: (selectedPrompt as any)?.category || (selectedPrompt as any)?.categoria || '', serventia: un.name || '', degravacaoPronta: degrPronta || undefined,
-        textoAutos: pdfFullText, ataPronta: { ataText, processNumber: processInfo.processNumber, author: processInfo.author, defendant: processInfo.defendant }, videos: porTexto ? [] : videoFiles, origemTexto: porTexto,
-        aoIniciarAnalise: (progId) => sessaoMutirao.definir('progIdSentenca', progId),      // se a página recarregar durante a análise, o resultado guardado no servidor é buscado ao voltar
+        promptCategoria: (selectedPrompt as any)?.category || (selectedPrompt as any)?.categoria || '', serventia: un.name || '', degravacaoPronta: degr,
+        textoAutos: pdfFullText, ataPronta: { ataText, processNumber: processInfo.processNumber, author: processInfo.author, defendant: processInfo.defendant }, videos: [], origemTexto: porTexto, nomesOrigem: nomes,
+        aoIniciarAnalise: (progId) => sessaoMutirao.definir('progIdSentenca', progId),      // se a página recarregar durante a redação, o resultado guardado no servidor é buscado ao voltar
       }, (texto) => setProgressoMidia(texto));
-      if (!porTexto) guardarDegravacao(assinVideos, r.transcricao || '');      // a degravação fica guardada mesmo se a sentença falhar
-      if (!r.ok) throw new Error((r as any).erro || 'Erro ao processar mídia');
-      setTranscription(r.transcricao || 'Sem transcrição disponível.'); setSentenceText(r.minuta);
+      if (!r.ok) throw new Error((r as any).erro || 'Erro ao redigir a sentença');
+      setTranscription(r.transcricao || degr); setSentenceText(r.minuta);
       setStep('sentence'); setSentenceMobileTab('sentence'); setViewMode('formatted');
       setSentencasDaSessao((n) => n + 1);
       if (r.aviso) toast.error(r.aviso, { duration: 12000 }); else toast.success('Sentença de audiência gerada com sucesso!');
     } catch (err: any) {
-      toast.error(err.message || "Falha ao processar vídeo/áudio.");
+      const msg = err?.message || "Falha ao processar vídeo/áudio.";
+      setErroGeracao(msg); toast.error(msg, { duration: 10000 });
     } finally {
       sessaoMutirao.definir('progIdSentenca', '');
       setProgressoMidia('');
@@ -834,6 +870,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
                             <Video className="w-4 h-4 text-indigo-400 shrink-0" />
                             <span className="text-xs text-slate-200 font-medium truncate">{idx + 1}. {vf.name}</span>
                             <span className="text-[10px] text-slate-500 shrink-0">{(vf.size / 1048576).toFixed(0)} MB</span>
+                            {degravacaoDoArquivo(chaveDoArquivo(vf)) && <span className="text-[10px] font-bold text-emerald-400 shrink-0" data-testid="video-degravado" title="A degravação deste vídeo já está guardada: não será refeita">✓ degravado</span>}
                           </div>
                           <button 
                             onClick={() => setVideoFiles((l) => l.filter((_, i) => i !== idx))}
@@ -888,6 +925,11 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
                     </p>
                   </div>
 
+                  {erroGeracao && !isProcessingVideo && (
+                    <div className="w-full bg-red-950/60 border border-red-800 rounded-lg px-3 py-2 text-[11px] text-red-200 leading-snug" data-testid="erro-geracao" role="alert">
+                      <div className="flex items-start justify-between gap-2"><span><strong>Não foi possível gerar a sentença:</strong> {erroGeracao}</span><button type="button" onClick={() => setErroGeracao('')} className="text-red-300 hover:text-white shrink-0 cursor-pointer" aria-label="Fechar o aviso">✕</button></div>
+                    </div>
+                  )}
                   <button 
                     onClick={handleGenerateSentence}
                     disabled={isProcessingVideo || (modoMidia === 'texto' ? textoColado.length < MIN_TRANSCRICAO : videoFiles.length === 0)}
