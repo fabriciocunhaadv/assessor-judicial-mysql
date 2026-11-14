@@ -57,6 +57,8 @@ try:
         jobs = pg.evaluate("window.gerente.lista().map(j => ({ n: j.nome, direto: !!j.config.direto, instr: j.config.instrucao || '', act: j.config.actType, origem: j.config.origem }))")
         ok(len(jobs) >= 1 and jobs[0]["direto"] and jobs[0]["act"] == "sentenca" and jobs[0]["origem"] == "mutirao", f"criou um trabalho gigante (autos inteiros, em segundo plano) {jobs[:1]}")
         ok("PROVA ORAL" in jobs[0]["instr"] and "VÍDEO/ÁUDIO 2 DE 2" in jobs[0]["instr"], "a degravação segue como prova oral dentro do trabalho gigante")
+        ok("REGRAS ADICIONAIS DA SENTENÇA APÓS AUDIÊNCIA" in jobs[0]["instr"] and "PROVA ORAL em profundidade" in jobs[0]["instr"] and "lida do vídeo" in jobs[0]["instr"], "o gigante do Mutirão usa a MESMA instrução detalhada e o mesmo rótulo da rota normal")
+        ok(not any('name="origemDegravacao"' in c for c in st["finais"]), "com vídeos, o servidor não recebe a marca de texto colado")
         ok(not erros, f"sem erros na página {erros}")
         b.close()
 finally:

@@ -35,6 +35,7 @@ import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { enviarMidiaEmPartes } from '../utils/enviarMidia';
 import { executarSentencaComVideo, degravarVideosPorEtapas } from '../utils/sentencaComVideo';
+import { INSTRUCAO_SENTENCA_AUDIENCIA, blocoDegravacao, avaliarTranscricao } from '../utils/instrucaoSentencaAudiencia';
 import { gerenteGigantes, LIMITE_PAGINAS_GIGANTE, type ConfigGigante } from '../utils/gigantes/gerente';
 import { assinaturaDosVideos, degravacaoGuardada, guardarDegravacao, chaveDoArquivo, degravacaoDoArquivo } from '../utils/degravacaoGuardada';
 import { entradasExternas } from '../utils/entradaExterna';
@@ -601,7 +602,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
         const lotes = autos.length > LIMITE_AUTOS_LOTES;
         let paginas = 0; try { for (const m of autos.matchAll(/\[Página (\d+)(?: de \d+)?\]/g)) paginas = Math.max(paginas, Number(m[1])); } catch { /* sem marcadores */ }
         if (!paginas) paginas = Math.ceil(autos.length / 3500);
-        const instrucao = `SENTENÇA DE MÉRITO APÓS AUDIÊNCIA DE INSTRUÇÃO E JULGAMENTO — minuta COMPLETA, EXTENSA e ANALÍTICA: relatório com todo o andamento (cite Mov. e data), análise de cada prova documental e de cada depoimento (com [mm:ss] quando houver), fundamentação e dispositivo completos. A DEGRAVAÇÃO abaixo é PROVA ORAL da audiência (${porTexto ? 'transcrição fornecida pelo usuário' : 'lida dos vídeos'}); o TERMO é prévio.\n\n[DEGRAVAÇÃO DA AUDIÊNCIA — PROVA ORAL]\n${degr}\n[FIM DA DEGRAVAÇÃO]\n\n[TERMO/ATA PRÉVIA DA AUDIÊNCIA]\n${String(ataText || '').slice(0, 30000)}\n[FIM DO TERMO]`;
+        const instrucao = `${INSTRUCAO_SENTENCA_AUDIENCIA}\n\n${blocoDegravacao(degr, porTexto ? 'texto' : 'video')}[TERMO/ATA PRÉVIA DA AUDIÊNCIA]\n${String(ataText || '').slice(0, 30000)}\n[FIM DO TERMO]`;      // MESMA instrução e MESMO rótulo da rota normal do Mutirão
         const cfg: ConfigGigante = {
           promptText: selectedPrompt?.promptText || '', promptTitle: selectedPrompt?.title || '', promptId: selectedPrompt?.id, promptCategory: (selectedPrompt as any)?.category, promptScope: (selectedPrompt as any)?.scope,
           actType: 'sentenca', unitId: un.id, unitName: un.name, instrucao, processNumber: processInfo.processNumber || '', origem: 'mutirao', ocr: false,
@@ -622,7 +623,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
       const r = await executarSentencaComVideo({
         reqId: `mutirao-${Date.now()}`, processo: processInfo.processNumber || '', promptTitulo: selectedPrompt?.title || '', promptTexto: selectedPrompt?.promptText || '',
         promptCategoria: (selectedPrompt as any)?.category || (selectedPrompt as any)?.categoria || '', serventia: un.name || '', degravacaoPronta: degr,
-        textoAutos: pdfFullText, ataPronta: { ataText, processNumber: processInfo.processNumber, author: processInfo.author, defendant: processInfo.defendant }, videos: [], origemTexto: porTexto, nomesOrigem: nomes,
+        textoAutos: pdfFullText, ataPronta: { ataText, processNumber: processInfo.processNumber, author: processInfo.author, defendant: processInfo.defendant }, videos: [], origemTexto: porTexto, nomesOrigem: nomes, calibracaoMutirao: true,
         aoIniciarAnalise: (progId) => sessaoMutirao.definir('progIdSentenca', progId),      // se a página recarregar durante a redação, o resultado guardado no servidor é buscado ao voltar
       }, (texto) => setProgressoMidia(texto));
       if (!r.ok) throw new Error((r as any).erro || 'Erro ao redigir a sentença');
@@ -850,6 +851,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
                         <span data-testid="transcricao-contagem" className={textoColado.length > 0 && textoColado.length < MIN_TRANSCRICAO ? 'text-amber-400' : ''}>{textoColado.length.toLocaleString('pt-BR')} caracteres{textoColado.length > 0 && textoColado.length < MIN_TRANSCRICAO ? ` (mínimo ${MIN_TRANSCRICAO})` : ''}</span>
                         {textoColado.length > 0 && <button type="button" onClick={() => setTranscricaoColada('')} disabled={isProcessingVideo} className="text-red-400 hover:text-red-300 cursor-pointer disabled:opacity-40" data-testid="transcricao-limpar">Limpar</button>}
                       </div>
+                      {textoColado.length >= MIN_TRANSCRICAO && (() => { const av = avaliarTranscricao(textoColado), msgs = [!av.temTempo && 'não há marcação de tempo (a sentença não vai citar minutos)', !av.temFalas && 'não identifiquei quem fala em cada trecho (a sentença identificará o depoente pelo contexto)'].filter(Boolean); return msgs.length ? <p className="text-[10px] text-amber-400 leading-snug" data-testid="transcricao-aviso">Atenção: {msgs.join('; ')}. Para ter minuto e falas, envie os vídeos (o Studio transcreve) ou cole a transcrição com tempo e nome de quem fala.</p> : null; })()}
                     </div>
                   ) : videoFiles.length === 0 ? (
                     <button 

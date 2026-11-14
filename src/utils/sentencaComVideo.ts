@@ -15,7 +15,7 @@ import { entradasExternas } from "./entradaExterna";
 import { resolverUnidade } from "./minutaExterna";
 import { organizarMinutaExterna } from "./organizarMinutaExterna";
 
-export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; quadro?: string; pdf?: File; videos: File[]; /** a degravação veio COLADA pelo usuário (sem vídeo): a etiqueta do Histórico diz "transcrição" */ origemTexto?: boolean; /** nomes dos vídeos de onde veio a degravação pronta (etiqueta do Histórico) */ nomesOrigem?: string[];
+export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; quadro?: string; pdf?: File; videos: File[]; /** a degravação veio COLADA pelo usuário (sem vídeo): a etiqueta do Histórico diz "transcrição" */ origemTexto?: boolean; /** só a TELA do Mutirão Expresso: liga as regras adicionais da sentença após audiência no servidor (a extensão não liga) */ calibracaoMutirao?: boolean; /** nomes dos vídeos de onde veio a degravação pronta (etiqueta do Histórico) */ nomesOrigem?: string[];
   /** Mutirão Expresso manual: os autos (já com o quadro) e a ata prévia já foram lidos na tela; usa os mesmos, sem ler de novo. */ textoAutos?: string; ataPronta?: { ataText: string; processNumber?: string; author?: string; defendant?: string };
   /** avisa o id da análise guardada no servidor (a tela usa para recuperar o resultado se a página recarregar) */ aoIniciarAnalise?: (progId: string) => void }
 export type ResultadoSentencaVideo = { ok: true; minuta: string; transcricao: string; processo: string; autor: string; reu: string; historicoId: string; fontes?: any; aviso?: string } | { ok: false; erro: string; semRetry?: boolean; transcricao?: string };
@@ -118,7 +118,9 @@ async function executarSentencaComVideoInterno(p: PedidoSentencaVideo, andamento
     fd.append("ataText", limpar(ata.ataText || "")); fd.append("pdfText", texto); fd.append("processNumber", processo);
     fd.append("customInstruction", ""); fd.append("customPromptTemplate", p.promptTexto || "");
     fd.append("promptTitle", p.promptTitulo || ""); fd.append("promptCategory", p.promptCategoria || "");
-    if (p.degravacaoPronta) fd.append("degravacaoPronta", p.degravacaoPronta);      // degravação já feita nestes mesmos vídeos: o servidor não recebe nem ouve a mídia de novo
+    if (p.degravacaoPronta) fd.append("degravacaoPronta", p.degravacaoPronta);
+    if (p.origemTexto) fd.append("origemDegravacao", "texto");
+    if (p.calibracaoMutirao) fd.append("calibracaoMutirao", "1");      // o motor sabe que o texto foi colado (pode não ter minutos nem quem fala)      // degravação já feita nestes mesmos vídeos: o servidor não recebe nem ouve a mídia de novo
     fd.append("unidadeNome", p.serventia || ""); fd.append("autor", ata.author || ""); fd.append("reu", ata.defendant || "");
     if (teses.isEnabled) { fd.append("cabinetTesesText", teses.text || ""); fd.append("isTesesEnabled", "true"); } else fd.append("isTesesEnabled", "false");
     if (base.length) fd.append("knowledgePdfs", JSON.stringify(base));
