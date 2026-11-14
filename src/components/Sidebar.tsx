@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   Home, ShieldCheck, UserCheck, Activity, History, Scale,
   Sparkles, BookOpen, ClipboardList, Calendar, Gavel, SlidersHorizontal,
-  ChevronLeft, ChevronRight, Bot, KeyRound, Smartphone, LifeBuoy, Compass
+  ChevronLeft, ChevronRight, Bot, KeyRound, Smartphone, LifeBuoy, Compass, Video
 } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 
@@ -19,6 +19,8 @@ interface SidebarProps {
   onOpenProjudiGuide?: () => void;
   onOpenCalendar?: () => void;
   onOpenHearingWorkbench?: () => void;
+  /** Processo com audiência de instrução (vídeo ou transcrição): abre direto o Mutirão Expresso da Mesa de Audiências. */
+  onOpenSentencaAudiencia?: () => void;
   onOpenPromptManager?: () => void;
   onOpenChangePassword?: () => void;
   tesesCount?: number;
@@ -29,7 +31,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   onGoHome, onOpenMinuteAuditor, onOpenPresentation, onOpenXRay, onOpenHistory,
   onOpenTeses, onOpenBindingPrecedents, onOpenLegislativeLookup, onOpenProjudiGuide,
-  onOpenCalendar, onOpenHearingWorkbench, onOpenPromptManager, onOpenChangePassword,
+  onOpenCalendar, onOpenHearingWorkbench, onOpenSentencaAudiencia, onOpenPromptManager, onOpenChangePassword,
   tesesCount = 0, isJudge, isSuperAdmin
 }) => {
   const { isJudge: authIsJudge, isSuperAdmin: authIsSuperAdmin } = useAuth();
@@ -90,6 +92,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               {!isCollapsed && <span>Auditoria Ouro</span>}
+            </button>
+          )}
+
+          {onOpenSentencaAudiencia && (
+            <button
+              id="btn-sidebar-sentenca-audiencia"
+              data-testid="btn-sentenca-audiencia"
+              onClick={onOpenSentencaAudiencia}
+              className={`flex items-center gap-2.5 px-3 h-10 rounded-xl bg-gradient-to-r from-violet-100 to-violet-50 dark:from-violet-900/40 dark:to-violet-800/20 hover:from-violet-200 hover:to-violet-100 dark:hover:from-violet-900/60 dark:hover:to-violet-800/40 text-violet-900 dark:text-violet-100 font-bold text-xs border border-violet-200 dark:border-violet-800/60 transition cursor-pointer ${isCollapsed ? "justify-center" : ""}`}
+              title="Sentença da audiência: para o processo que tem audiência de instrução. Envie o vídeo ou cole a transcrição e gere a sentença (abre o Mutirão Expresso)."
+            >
+              <Video className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+              {!isCollapsed && <span>Sentença da audiência</span>}
             </button>
           )}
 

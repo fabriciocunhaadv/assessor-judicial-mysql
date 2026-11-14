@@ -103,12 +103,15 @@ interface HearingWorkbenchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenHistory?: () => void;
+  /** muda a cada clique em "Sentença da audiência" (menu lateral): a Mesa abre já no Mutirão Expresso */
+  abrirNoMutirao?: number;
 }
 
 export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
   isOpen,
   onClose,
   onOpenHistory,
+  abrirNoMutirao,
 }) => {
   const { user, userProfile, isSuperAdmin, isJudge, tenantName } = useAuth();
 
@@ -137,6 +140,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
   const [showTermo, setShowTermo] = useState(false);
   const [mobileView, setMobileView] = useState<'list' | 'workbench'>('workbench');
   const [viewMode, setViewMode] = useState<'normal' | 'mutirao'>('normal');
+  useEffect(() => { if (abrirNoMutirao) setViewMode('mutirao'); }, [abrirNoMutirao]);      // botão "Sentença da audiência" do menu lateral
 
   // AI Loading and state
   const [isLoadingAi, setIsLoadingAi] = useState(false);

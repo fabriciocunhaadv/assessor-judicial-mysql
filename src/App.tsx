@@ -349,6 +349,7 @@ export default function App() {
   const pendenteAtualRef = useRef<string | null>(null), conexaoPerdidaRef = useRef(false), recuperandoRef = useRef(false), ocupadoRef = useRef(false);
   const [isTurboModalOpen, setIsTurboModalOpen] = useState<boolean>(false);
   // Lupa, Mesa e Turbo abrem no corpo principal e nunca ao mesmo tempo: abrir um fecha os outros
+  const [mesaMutiraoToken, setMesaMutiraoToken] = useState(0);      // cada clique em "Sentença da audiência" abre a Mesa já no Mutirão Expresso
   const abrirModuloPrincipal = (qual: "lupa" | "mesa" | "turbo") => {
     setIsMinuteAuditorOpen(qual === "lupa"); setIsHearingWorkbenchModalOpen(qual === "mesa"); setIsTurboModalOpen(qual === "turbo");
   };
@@ -2302,6 +2303,7 @@ export default function App() {
         onOpenProjudiGuide={() => setIsProjudiGuideModalOpen(true)}
         onOpenCalendar={() => setIsCalendarModalOpen(true)}
         onOpenHearingWorkbench={() => abrirModuloPrincipal("mesa")}
+        onOpenSentencaAudiencia={() => { setMesaMutiraoToken((n) => n + 1); abrirModuloPrincipal("mesa"); }}
         onOpenPromptManager={() => setIsPromptManagerOpen(true)}
         onOpenChangePassword={() => setTrocarSenhaAberta(true)}
         tesesCount={(tesesData.text.match(/^\s*\d+\.\s+[^\n]+/gm) || []).length}
@@ -2909,6 +2911,7 @@ export default function App() {
         isOpen={isHearingWorkbenchModalOpen}
         onClose={() => setIsHearingWorkbenchModalOpen(false)}
         onOpenHistory={() => setIsHistoryModalOpen(true)}
+        abrirNoMutirao={mesaMutiraoToken}
       />
       <TurboModuleModal
         isOpen={isTurboModalOpen}
