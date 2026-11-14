@@ -7,9 +7,9 @@ type Dados = Record<string, any>;
 const INICIAL: Dados = {
   step: "upload", selectedPromptId: "", ataMobileTab: "media", sentenceMobileTab: "sentence",
   isProcessingPdf: false, isProcessingVideo: false, progressoPdf: "", progressoMidia: "", processInfo: { processNumber: "", author: "", defendant: "" },
-  ataText: "", sentenceText: "", transcription: "", videoFiles: [], pdfFullText: "", sentencasDaSessao: 0, bloqueioExt: null, pdfNome: "", progIdSentenca: "",
+  ataText: "", sentenceText: "", transcription: "", videoFiles: [], pdfFullText: "", sentencasDaSessao: 0, bloqueioExt: null, pdfNome: "", progIdSentenca: "", modoMidia: "video", transcricaoColada: "",
 };
-const PERSISTIR = ["step", "selectedPromptId", "processInfo", "ataText", "sentenceText", "transcription", "videoFiles", "pdfFullText", "sentencasDaSessao", "pdfNome", "progIdSentenca"];
+const PERSISTIR = ["step", "selectedPromptId", "processInfo", "ataText", "sentenceText", "transcription", "videoFiles", "pdfFullText", "sentencasDaSessao", "pdfNome", "progIdSentenca", "modoMidia", "transcricaoColada"];
 let dados: Dados = { ...INICIAL };
 const ouvintes = new Set<() => void>();
 let chaveUsuario = "", carregadoPara = "", recuperou: string | null = null, tempo: ReturnType<typeof setTimeout> | null = null;
@@ -22,7 +22,7 @@ const gravarAgora = async () => {
   const db = await abrir(); if (!db) return;
   try {
     const copia: Dados = {}; for (const k of PERSISTIR) copia[k] = dados[k];
-    const vazio = !copia.pdfFullText && !copia.ataText && !copia.sentenceText && !(copia.videoFiles || []).length;
+    const vazio = !copia.pdfFullText && !copia.ataText && !copia.sentenceText && !(copia.videoFiles || []).length && !String(copia.transcricaoColada || "").trim();
     await new Promise<void>((ok) => { const t = db.transaction("s", "readwrite"); if (vazio) t.objectStore("s").delete(chaveUsuario); else t.objectStore("s").put({ ...copia, salvoEm: Date.now() }, chaveUsuario); t.oncomplete = () => ok(); t.onerror = () => ok(); t.onabort = () => ok(); });
   } catch { /* sem espaço ou navegador privado: segue sem salvar */ } finally { db.close(); }
 };

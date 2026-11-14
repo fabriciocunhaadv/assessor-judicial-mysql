@@ -11,6 +11,7 @@ export const origemExterna = (a: any): { rotulo: string; dica: string } | null =
 export const origemVideo = (a: any): { rotulo: string; dica: string } | null => {
   const o = a?.result?.origemVideo; if (!o) return null;
   const n = Array.isArray(o.videos) ? o.videos.length : 0;
+  if (Array.isArray(o.videos) && o.videos.includes("transcrição colada")) return { rotulo: "🎙 Sentença c/ transcrição", dica: "Sentença feita com a transcrição da audiência colada pelo usuário (sem ouvir o vídeo). A transcrição foi usada como prova oral e não está na minuta." };
   return { rotulo: "🎙 Sentença c/ vídeo", dica: `Sentença feita com o vídeo da audiência (${n} mídia(s): ${(o.videos || []).join(", ").slice(0, 160)}). A degravação foi usada como prova oral e não está na minuta.` };
 };
 

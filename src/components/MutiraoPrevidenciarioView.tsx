@@ -210,6 +210,8 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
   const [sentenceText, setSentenceText] = useSessao<string>('sentenceText');
   const [transcription, setTranscription] = useSessao<string>('transcription');
   const [videoFiles, setVideoFiles] = useSessao<File[]>('videoFiles');      // às vezes há um vídeo por testemunha: aceita vários
+  const [modoMidia, setModoMidia] = useSessao<'video' | 'texto'>('modoMidia');      // enviar o vídeo/áudio OU colar a transcrição da audiência já pronta
+  const [transcricaoColada, setTranscricaoColada] = useSessao<string>('transcricaoColada');
   const [pdfFullText, setPdfFullText] = useSessao<string>('pdfFullText');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -353,7 +355,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
   const [sentencasDaSessao, setSentencasDaSessao] = useSessao<number>('sentencasDaSessao');
   /** Pauta com várias audiências: guarda a que acabou (já foi salva no Histórico) e volta ao começo, mantendo o prompt escolhido */
   const proximoProcesso = () => {
-    setProcessInfo({ processNumber: '', author: '', defendant: '' }); setAtaText(''); setSentenceText(''); setTranscription(''); setVideoFiles([]); setPdfFullText('');
+    setProcessInfo({ processNumber: '', author: '', defendant: '' }); setAtaText(''); setSentenceText(''); setTranscription(''); setVideoFiles([]); setTranscricaoColada(''); setPdfFullText('');
     setStep('upload'); setSentenceMobileTab('sentence');
   };
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -534,7 +536,7 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
 
       // Auto-salvamento no histórico: a minuta é SÓ a sentença (a degravação é prova e não entra na minuta); vem do motor principal quando disponível
       const ctxE = entradasExternas.contexto(); const un = resolverUnidade('', ctxE?.unidades || [], ctxE?.ativa);
-      const origemVideo = { videos: videoFiles.map((f) => f.name), degravacaoChars: genTranscription.length, em: Date.now() };
+      const origemVideo = { videos: modoMidia === 'texto' ? ['transcrição colada'] : videoFiles.map((f) => f.name), degravacaoChars: genTranscription.length, em: Date.now() };
       let resultado: any;
       if (result.resultado?.minute) resultado = { ...enxugarResultado(result.resultado), minute: { ...result.resultado.minute, judicialUnit: result.resultado.minute.judicialUnit || un.name }, origemVideo };
       else {
@@ -560,9 +562,12 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
   };
   const aplicarRef = useRef(aplicarResultadoSentenca); aplicarRef.current = aplicarResultadoSentenca;
 
+  const MIN_TRANSCRICAO = 200;
+  const textoColado = (transcricaoColada || '').trim();
   const handleGenerateSentence = async () => {
-    if (!videoFiles.length) {
-      toast.error("Selecione um arquivo de vídeo ou áudio da audiência.");
+    const porTexto = modoMidia === 'texto';
+    if (porTexto ? textoColado.length < MIN_TRANSCRICAO : !videoFiles.length) {
+      toast.error(porTexto ? `Cole a transcrição da audiência (pelo menos ${MIN_TRANSCRICAO} caracteres).` : "Selecione um arquivo de vídeo ou áudio da audiência.");
       return;
     }
 
@@ -574,17 +579,17 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
     setIsProcessingVideo(true);
     try {
       // MESMO caminho de código da sentença com vídeo pela extensão (executarSentencaComVideo): mesma ata, mesmas teses/base, mesmo motor principal, mesmo Histórico.
-      const assinVideos = assinaturaDosVideos(videoFiles), degrPronta = degravacaoGuardada(assinVideos);
-      if (degrPronta) toast('Estes vídeos já foram ouvidos: reaproveitando a degravação (não serão enviados de novo).', { duration: 6000 });
+      const assinVideos = porTexto ? '' : assinaturaDosVideos(videoFiles), degrPronta = porTexto ? textoColado : degravacaoGuardada(assinVideos);
+      if (degrPronta && !porTexto) toast('Estes vídeos já foram ouvidos: reaproveitando a degravação (não serão enviados de novo).', { duration: 6000 });
       const ctxE = entradasExternas.contexto(); const un = resolverUnidade('', ctxE?.unidades || [], ctxE?.ativa);
       setProgressoMidia('Preparando a sentença…');
       const r = await executarSentencaComVideo({
         reqId: `mutirao-${Date.now()}`, processo: processInfo.processNumber || '', promptTitulo: selectedPrompt?.title || '', promptTexto: selectedPrompt?.promptText || '',
         promptCategoria: (selectedPrompt as any)?.category || (selectedPrompt as any)?.categoria || '', serventia: un.name || '', degravacaoPronta: degrPronta || undefined,
-        textoAutos: pdfFullText, ataPronta: { ataText, processNumber: processInfo.processNumber, author: processInfo.author, defendant: processInfo.defendant }, videos: videoFiles,
+        textoAutos: pdfFullText, ataPronta: { ataText, processNumber: processInfo.processNumber, author: processInfo.author, defendant: processInfo.defendant }, videos: porTexto ? [] : videoFiles, origemTexto: porTexto,
         aoIniciarAnalise: (progId) => sessaoMutirao.definir('progIdSentenca', progId),      // se a página recarregar durante a análise, o resultado guardado no servidor é buscado ao voltar
       }, (texto) => setProgressoMidia(texto));
-      guardarDegravacao(assinVideos, r.transcricao || '');      // a degravação fica guardada mesmo se a sentença falhar
+      if (!porTexto) guardarDegravacao(assinVideos, r.transcricao || '');      // a degravação fica guardada mesmo se a sentença falhar
       if (!r.ok) throw new Error((r as any).erro || 'Erro ao processar mídia');
       setTranscription(r.transcricao || 'Sem transcrição disponível.'); setSentenceText(r.minuta);
       setStep('sentence'); setSentenceMobileTab('sentence'); setViewMode('formatted');
@@ -787,12 +792,30 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
                 <h4 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
                   <Video className="w-4 h-4 text-indigo-400" /> Mídia da Audiência de Instrução
                 </h4>
-                <p className="text-xs text-slate-400 mb-4">
-                  Envie o arquivo MP4, WebM ou MP3 gravado na audiência. A IA degravará os pontos controvertidos e redigirá a sentença completa.
+                <p className="text-xs text-slate-400 mb-3">
+                  {modoMidia === 'texto'
+                    ? 'Cole a transcrição da audiência já pronta. A IA a usa como prova oral (sem ouvir o vídeo) e redige a sentença completa.'
+                    : 'Envie o arquivo MP4, WebM ou MP3 gravado na audiência. A IA degravará os pontos controvertidos e redigirá a sentença completa.'}
                 </p>
+                <div className="grid grid-cols-2 gap-1 p-1 mb-3 rounded-lg bg-slate-950 border border-slate-800" role="tablist" data-testid="modo-midia">
+                  <button type="button" role="tab" aria-selected={modoMidia !== 'texto'} disabled={isProcessingVideo} onClick={() => setModoMidia('video')} data-testid="modo-midia-video"
+                    className={`text-xs font-bold py-1.5 rounded-md cursor-pointer transition disabled:opacity-40 ${modoMidia !== 'texto' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>🎞 Enviar vídeo/áudio</button>
+                  <button type="button" role="tab" aria-selected={modoMidia === 'texto'} disabled={isProcessingVideo} onClick={() => setModoMidia('texto')} data-testid="modo-midia-texto"
+                    className={`text-xs font-bold py-1.5 rounded-md cursor-pointer transition disabled:opacity-40 ${modoMidia === 'texto' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>📝 Colar a transcrição</button>
+                </div>
 
                 <div className="flex-1 flex flex-col justify-center items-center gap-4">
-                  {videoFiles.length === 0 ? (
+                  {modoMidia === 'texto' ? (
+                    <div className="w-full flex flex-col gap-1.5" data-testid="area-transcricao">
+                      <textarea value={transcricaoColada || ''} onChange={(e) => setTranscricaoColada(e.target.value)} disabled={isProcessingVideo} data-testid="transcricao-colada"
+                        placeholder={'Cole aqui a transcrição da audiência.\nQuanto mais fiel, melhor: quem fala (juiz, autor, réu, cada testemunha) e, se tiver, o tempo [mm:ss] de cada trecho.'}
+                        className="w-full h-48 bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-slate-200 leading-relaxed resize-y focus:outline-none" />
+                      <div className="flex items-center justify-between text-[10px] text-slate-500">
+                        <span data-testid="transcricao-contagem" className={textoColado.length > 0 && textoColado.length < MIN_TRANSCRICAO ? 'text-amber-400' : ''}>{textoColado.length.toLocaleString('pt-BR')} caracteres{textoColado.length > 0 && textoColado.length < MIN_TRANSCRICAO ? ` (mínimo ${MIN_TRANSCRICAO})` : ''}</span>
+                        {textoColado.length > 0 && <button type="button" onClick={() => setTranscricaoColada('')} disabled={isProcessingVideo} className="text-red-400 hover:text-red-300 cursor-pointer disabled:opacity-40" data-testid="transcricao-limpar">Limpar</button>}
+                      </div>
+                    </div>
+                  ) : videoFiles.length === 0 ? (
                     <button 
                       onClick={() => videoInputRef.current?.click()}
                       className="w-full h-36 border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl bg-slate-950/50 hover:bg-slate-950 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group"
@@ -867,13 +890,14 @@ export const MutiraoPrevidenciarioView: React.FC<MutiraoPrevidenciarioViewProps>
 
                   <button 
                     onClick={handleGenerateSentence}
-                    disabled={isProcessingVideo || videoFiles.length === 0}
+                    disabled={isProcessingVideo || (modoMidia === 'texto' ? textoColado.length < MIN_TRANSCRICAO : videoFiles.length === 0)}
+                    data-testid="gerar-sentenca-midia"
                     className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 active:scale-[0.99] text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 min-h-[44px]"
                   >
                     {isProcessingVideo ? (
                       <><Zap className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse text-amber-300" /> {progressoMidia || 'Analisando Mídia e Redigindo Sentença...'}</>
                     ) : (
-                      <><Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> Analisar Mídia e Gerar Sentença</>
+                      <><Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> {modoMidia === 'texto' ? 'Gerar Sentença com a Transcrição' : 'Analisar Mídia e Gerar Sentença'}</>
                     )}
                   </button>
                 </div>

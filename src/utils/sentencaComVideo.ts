@@ -14,7 +14,7 @@ import { entradasExternas } from "./entradaExterna";
 import { resolverUnidade } from "./minutaExterna";
 import { organizarMinutaExterna } from "./organizarMinutaExterna";
 
-export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; quadro?: string; pdf?: File; videos: File[];
+export interface PedidoSentencaVideo { reqId: string; processo: string; promptTitulo: string; promptTexto: string; promptCategoria?: string; serventia?: string; degravacaoPronta?: string; quadro?: string; pdf?: File; videos: File[]; /** a degravação veio COLADA pelo usuário (sem vídeo): a etiqueta do Histórico diz "transcrição" */ origemTexto?: boolean;
   /** Mutirão Expresso manual: os autos (já com o quadro) e a ata prévia já foram lidos na tela; usa os mesmos, sem ler de novo. */ textoAutos?: string; ataPronta?: { ataText: string; processNumber?: string; author?: string; defendant?: string };
   /** avisa o id da análise guardada no servidor (a tela usa para recuperar o resultado se a página recarregar) */ aoIniciarAnalise?: (progId: string) => void }
 export type ResultadoSentencaVideo = { ok: true; minuta: string; transcricao: string; processo: string; autor: string; reu: string; historicoId: string; fontes?: any; aviso?: string } | { ok: false; erro: string; semRetry?: boolean; transcricao?: string };
@@ -97,7 +97,7 @@ async function executarSentencaComVideoInterno(p: PedidoSentencaVideo, andamento
     const cnj = (String(processo).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || String(p.processo).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || [processo || "Sem número"])[0];
     let h = 0; for (let i = 0; i < sentenca.length; i++) h = (Math.imul(31, h) + sentenca.charCodeAt(i)) | 0;
     const id = `video-${cnj.replace(/\D/g, "")}-${(h >>> 0).toString(36)}`;      // o mesmo texto do mesmo processo grava no mesmo registro
-    const origemVideo = { videos: p.videos.map((v) => v.name), degravacaoChars: degravacao.length, em: Date.now() };
+    const origemVideo = { videos: p.origemTexto ? ["transcrição colada"] : p.videos.map((v) => v.name), degravacaoChars: degravacao.length, em: Date.now() };
     let resultado: any;
     if (r.resultado?.minute) {
       const m = { ...r.resultado.minute }; if (!m.judicialUnit) m.judicialUnit = un.name || p.serventia || "";
@@ -109,7 +109,7 @@ async function executarSentencaComVideoInterno(p: PedidoSentencaVideo, andamento
     const analise: SavedAnalysis = {
       id, unitId: un.id, promptTitle: p.promptTitulo || "Sentença de Instrução e Julgamento", promptCategory: p.promptCategoria || "", promptScope: "judicial", date: Date.now(), processNumber: cnj, result: resultado,
       originalMinute: JSON.parse(JSON.stringify(resultado.minute)),
-      processTextContext: `[Sentença feita com o vídeo da audiência (${p.videos.length} mídia(s)); a degravação foi usada como prova oral e não faz parte da minuta]`,
+      processTextContext: p.origemTexto ? "[Sentença feita com a transcrição da audiência colada pelo usuário; a transcrição foi usada como prova oral e não faz parte da minuta]" : `[Sentença feita com o vídeo da audiência (${p.videos.length} mídia(s)); a degravação foi usada como prova oral e não faz parte da minuta]`,
       createdBy: ctx?.user?.uid || "anonymous", creatorName: ctx?.user?.displayName || ctx?.user?.email?.split("@")[0] || "Assessor", creatorEmail: ctx?.user?.email || "", chatMessages: [],
     } as any;
     const salvo = await saveToHistory(analise).catch((e: any) => ({ ok: false, erro: String(e?.message || e) }));
