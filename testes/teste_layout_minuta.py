@@ -23,7 +23,7 @@ try:
             ok(grupos == ["Ato", "Modelos", "Exportar", "Tela"], f"{nome}: botões em quatro grupos {grupos}")
             caixas = pg.eval_on_selector_all("[data-testid=barra-acoes-minuta] button", "els => els.map(e => { const r = e.getBoundingClientRect(); return { t: e.innerText.trim(), x: r.x, y: r.y, width: r.width, height: r.height }; })")
             textos = [c["t"] for c in caixas]
-            for esperado in ["Marcar lançado", "Editar", "Aplicar modelo / paradigma", "Conferir modelos do Projudi", "Salvar Tese", "Copiar", "Gerar PDF", "DOCX", "Raio-X", "Expandir Minuta", "Excluir"]:
+            for esperado in ["Marcar lançado", "Editar", "Aplicar modelo", "Conferir modelos", "Salvar Tese", "Copiar", "Gerar PDF", "DOCX", "Raio-X", "Expandir", "Excluir"]:
                 ok(any(esperado in t for t in textos), f"{nome}: botão '{esperado}' continua na barra")
             sobre = [(a["t"], c["t"]) for i, a in enumerate(caixas) for c in caixas[i + 1:] if sobrepoe(a, c)]
             ok(not sobre, f"{nome}: nenhum botão por cima de outro {sobre[:2]}")
@@ -33,9 +33,12 @@ try:
             # ---- dock dos avisos
             dock = pg.locator("[data-testid=avisos-da-minuta]"); dock.wait_for()
             bx = dock.bounding_box()
-            if nome == "desktop": ok(bx["x"] + bx["width"] > w - 80 and bx["x"] > w * 0.6, f"{nome}: o dock de avisos fica na lateral DIREITA {bx}")
-            else: ok(bx["y"] > h * 0.6 and bx["x"] >= 0 and bx["x"] + bx["width"] <= w + 1, f"{nome}: no celular o dock vira uma faixa embaixo, dentro da tela {bx}")
-            ok(pg.evaluate("getComputedStyle(document.querySelector('[data-testid=avisos-da-minuta]')).position") == "fixed", f"{nome}: o dock flutua (posição fixa)")
+            if nome == "desktop":
+                cx = pg.locator("[data-testid=coluna-avisos]").bounding_box(); tr = pg.locator("[data-testid=trilho-abas]").bounding_box(); card = pg.locator("#tour-result-actions").bounding_box()
+                ok(bx["x"] > w * 0.6 and bx["x"] >= cx["x"] and bx["x"] + bx["width"] <= cx["x"] + cx["width"] + 1, f"{nome}: o dock fica na lateral DIREITA, DENTRO do quadro {bx} {cx}")
+                ok(abs(bx["width"] - tr["width"]) <= 2, f"{nome}: mesma largura do trilho da esquerda {bx['width']} x {tr['width']}")
+                ok(abs(bx["y"] - tr["y"]) <= 2, f"{nome}: mesma altura de início do trilho da esquerda {bx['y']} x {tr['y']}")
+            else: ok(bx["x"] >= 0 and bx["x"] + bx["width"] <= w + 1, f"{nome}: no celular o dock vira uma faixa, dentro da tela {bx}")
             ids = pg.eval_on_selector_all("[data-testid^=chip-]", "els => els.map(e => e.getAttribute('data-testid'))")
             for esperado in ["chip-injecao", "chip-fontes", "chip-argumentos", "chip-fase"]: ok(esperado in ids, f"{nome}: botão {esperado} no dock")
             ok(pg.locator("[data-testid=avisos-painel-flutuante]").is_hidden(), f"{nome}: nenhum painel aberto no início")
@@ -44,6 +47,7 @@ try:
             pb = pg.locator("[data-testid=avisos-painel-flutuante]").bounding_box()
             if nome == "desktop": ok(pb["x"] + pb["width"] <= bx["x"] + 2 and pb["x"] >= 0, f"{nome}: o painel abre ao lado do dock, dentro da tela {pb}")
             else: ok(pb["y"] + pb["height"] <= bx["y"] + 2 and pb["x"] >= 0 and pb["x"] + pb["width"] <= w + 1, f"{nome}: o painel abre acima da faixa, dentro da tela {pb}")
+            if nome == "desktop": ok(bx["y"] >= 0 and bx["y"] + bx["height"] <= h, f"{nome}: o dock cabe na altura da tela")
             pg.click("[data-testid=chip-fase]")
             ok(pg.locator("[data-testid=aviso-fase]").is_visible() and not pg.locator("[data-testid=aviso-argumentos]").is_visible(), f"{nome}: abre um aviso por vez")
             pg.keyboard.press("Escape")

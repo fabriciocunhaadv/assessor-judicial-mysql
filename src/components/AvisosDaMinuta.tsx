@@ -137,17 +137,17 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
   const contagem = (nome: string) => { const m = nome.match(/\((\d+)/); return m ? m[1] : ""; };
   const nAtencao = itens.filter((x) => x.tom === "perigo" || x.tom === "atencao").length;
   return (
-    <>
-      <nav data-testid="avisos-da-minuta" aria-label="Avisos da minuta" className={`print:hidden fixed z-40 left-2 right-2 bottom-[4.75rem] flex flex-row items-center gap-1.5 overflow-x-auto p-1.5 rounded-2xl bg-white/95 backdrop-blur border border-slate-200 shadow-lg sm:left-auto sm:right-3 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 sm:flex-col sm:items-stretch sm:overflow-x-hidden sm:overflow-y-auto sm:max-h-[72vh] ${rotulos ? "" : "sm:w-14"}`}>
+    <div className="print:hidden relative md:sticky md:top-52 md:mr-1.5 md:z-30">
+      <nav data-testid="avisos-da-minuta" aria-label="Avisos da minuta" className={`flex flex-row items-center gap-1.5 overflow-x-auto p-1 rounded-2xl bg-white/95 backdrop-blur border border-slate-300 shadow-xl md:flex-col md:items-stretch md:overflow-x-hidden md:overflow-y-auto md:max-h-[calc(100vh-14rem)] ${rotulos ? "" : "md:w-11"}`}>
         <button type="button" onClick={alternarRotulos} data-testid="avisos-alternar-nomes" title={rotulos ? "Mostrar só os ícones" : "Mostrar os nomes dos avisos"}
-          className="shrink-0 flex flex-row sm:flex-col items-center justify-center gap-1 sm:gap-0.5 text-[9px] font-extrabold uppercase tracking-wide text-slate-500 hover:text-slate-900 cursor-pointer px-1 pb-0.5 leading-none">
+          className="shrink-0 flex flex-row sm:flex-col items-center justify-center gap-1 sm:gap-0.5 text-[8px] font-extrabold uppercase tracking-normal text-slate-500 hover:text-slate-900 cursor-pointer px-1 pb-0.5 leading-none">
           <span>Avisos</span><span className={`rounded-full px-1.5 py-0.5 text-[10px] ${nAtencao ? "bg-amber-500 text-white" : "bg-slate-200 text-slate-700"}`}>{nAtencao || itens.length}</span>
         </button>
         {itens.map((it) => {
           const { icone, nome } = partir(it.rotulo), n = contagem(nome), ativo = abertos.has(it.id);
           return (
             <button key={it.id} type="button" data-testid={`chip-${it.id}`} aria-expanded={ativo} aria-label={it.rotulo} title={it.rotulo} onClick={() => abrirUm(it.id)}
-              className={`relative shrink-0 flex items-center gap-2 rounded-xl border cursor-pointer transition ${COR[it.tom]} ${rotulos ? "px-2.5 py-1.5 min-h-9 text-left" : "w-10 h-10 justify-center"} ${ativo ? "ring-2 ring-offset-1 ring-indigo-400" : ""}`}>
+              className={`relative shrink-0 flex items-center gap-2 rounded-xl border cursor-pointer transition ${COR[it.tom]} ${rotulos ? "px-2.5 py-1.5 min-h-9 text-left" : "w-9 h-9 justify-center"} ${ativo ? "ring-2 ring-offset-1 ring-indigo-400" : ""}`}>
               <span className="text-base leading-none shrink-0">{icone}</span>
               {rotulos && <span className="text-[11px] font-bold leading-tight max-w-[200px]">{nome}</span>}
               {!rotulos && n ? <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-slate-800 text-white text-[9px] font-extrabold flex items-center justify-center">{n}</span> : null}
@@ -157,8 +157,7 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
         })}
       </nav>
       <div hidden={!aberto} data-testid="avisos-painel-flutuante" role="dialog" aria-label={aberto ? aberto.rotulo : "Aviso"}
-        style={{ ["--avd" as any]: `${rotulos ? 17.5 : 4.9}rem` }}
-        className="print:hidden fixed z-40 left-2 right-2 bottom-[8.25rem] max-h-[60vh] overflow-y-auto rounded-xl bg-white border border-slate-300 shadow-2xl sm:left-auto sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 sm:max-h-[78vh] sm:right-[var(--avd)] sm:w-[min(480px,calc(100vw-var(--avd)-0.75rem))]">
+        className="absolute z-40 right-0 bottom-full mb-2 w-[min(94vw,480px)] max-h-[60vh] overflow-y-auto rounded-xl bg-white border border-slate-300 shadow-2xl md:bottom-auto md:top-0 md:mb-0 md:right-full md:mr-2 md:max-h-[calc(100vh-14rem)]">
         {aberto && (
           <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
             <span className="text-xs font-extrabold text-slate-800">{aberto.rotulo}</span>
@@ -167,6 +166,6 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
         )}
         {itens.map((it) => <div key={it.id} hidden={!abertos.has(it.id)} data-testid={`painel-${it.id}`} className="p-2">{it.conteudo}</div>)}
       </div>
-    </>
+    </div>
   );
 }

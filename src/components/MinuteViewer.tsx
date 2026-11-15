@@ -1268,15 +1268,14 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
         </div>
 
         {/* Barra de ações em GRUPOS (Ato · Modelos · Exportar · Tela), com altura e espaçamento iguais; Excluir fica isolado à direita */}
-        <div id="tour-result-actions" data-testid="barra-acoes-minuta" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-          <div role="group" aria-label="Ato" className="flex flex-wrap items-center gap-1.5">
-            <span className="hidden sm:inline text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mr-0.5">Ato</span>
+        <div id="tour-result-actions" data-testid="barra-acoes-minuta" className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
+          <div role="group" aria-label="Ato" className="flex flex-wrap items-center gap-1">
             {currentAnalysisId && (
               <button
                 type="button"
                 onClick={alternarLancadoDaMinuta}
                 data-testid="btn-lancado-minuta"
-                className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs ${lancado ? "bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700" : "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900"}`}
+                className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs ${lancado ? "bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700" : "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900"}`}
                 title={lancado ? "Marcada como lançada no Projudi. Clique para desfazer." : "Marcar este processo como já lançado no Projudi (vale para todas as minutas dele)"}
               >
                 <CheckCircle2 className={`w-3.5 h-3.5 ${lancado ? "text-white" : "text-emerald-600"}`} />
@@ -1285,7 +1284,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             )}
             <button
               onClick={() => setActiveTab("editor")}
-              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs ${activeTab === "editor" ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+              className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs ${activeTab === "editor" ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
               title="Editar manualmente o texto e salvar diretamente"
             >
               <Edit3 className="w-3.5 h-3.5" />
@@ -1293,25 +1292,24 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             </button>
           </div>
 
-          <div role="group" aria-label="Modelos" className="flex flex-wrap items-center gap-1.5 sm:pl-4 sm:border-l border-slate-200">
-            <span className="hidden sm:inline text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mr-0.5">Modelos</span>
+          <div role="group" aria-label="Modelos" className="flex flex-wrap items-center gap-1 sm:pl-2 sm:border-l border-slate-200">
             <button
               onClick={() => { setAdaptarModelo(undefined); setAdaptarAberto(true); }}
-              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-amber-300 bg-white hover:bg-amber-50 text-amber-900`}
+              className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-amber-300 bg-white hover:bg-amber-50 text-amber-900`}
               title="Reorganizar esta minuta conforme um modelo (paradigma) do juiz, sem reler os autos"
               data-testid="btn-adaptar-paradigma"
             >
               <LayoutTemplate className="w-3.5 h-3.5 text-amber-600" />
-              <span>Aplicar modelo / paradigma</span>
+              <span>Aplicar modelo</span>
             </button>
             <button
               onClick={() => setConferirAberto(true)}
-              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-900`}
+              className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-900`}
               title="Comparar esta minuta com os modelos cadastrados no Projudi (citação, cumprimento, comandos à escrivania…)"
               data-testid="btn-conferir-modelos"
             >
               <ClipboardCheck className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Conferir modelos do Projudi</span>
+              <span>Conferir modelos</span>
             </button>
             {onInjectTextAsParadigm && !hasLinkedParadigm && (
               <button
@@ -1333,7 +1331,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                     ].filter(Boolean).join('\n\n');
                 onInjectTextAsParadigm(fullText, procNum, "Direito do Consumidor");
               }}
-                className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900`}
+                className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900`}
                 title="Salvar esta minuta integral no Caderno de Teses e Modelos do Gabinete"
               >
                 <FileCheck2 className="w-3.5 h-3.5 text-amber-600" />
@@ -1342,11 +1340,10 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             )}
           </div>
 
-          <div role="group" aria-label="Exportar" className="flex flex-wrap items-center gap-1.5 sm:pl-4 sm:border-l border-slate-200">
-            <span className="hidden sm:inline text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mr-0.5">Exportar</span>
+          <div role="group" aria-label="Exportar" className="flex flex-wrap items-center gap-1 sm:pl-2 sm:border-l border-slate-200">
             <button
               onClick={handleCopy}
-              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-slate-300 bg-white hover:bg-slate-50 text-slate-800`}
+              className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-slate-300 bg-white hover:bg-slate-50 text-slate-800`}
               title="Copiar texto formatado para Projudi ou Word"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-600" />}
@@ -1354,7 +1351,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             </button>
             <button
               onClick={handlePrint}
-              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs bg-red-600 hover:bg-red-500 border-red-600 text-white`}
+              className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs bg-red-600 hover:bg-red-500 border-red-600 text-white`}
               title="Gerar PDF / Imprimir"
             >
               <Printer className="w-3.5 h-3.5" />
@@ -1363,7 +1360,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             <button
               onClick={handleExportDocx}
               disabled={isExportingDocx}
-              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs bg-blue-700 hover:bg-blue-600 border-blue-700 text-white disabled:opacity-60`}
+              className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs bg-blue-700 hover:bg-blue-600 border-blue-700 text-white disabled:opacity-60`}
               title="Baixar em formato Word (.docx)"
             >
               <Download className="w-3.5 h-3.5" />
@@ -1371,12 +1368,11 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             </button>
           </div>
 
-          <div role="group" aria-label="Tela" className="flex flex-wrap items-center gap-1.5 sm:pl-4 sm:border-l border-slate-200">
-            <span className="hidden sm:inline text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mr-0.5">Tela</span>
+          <div role="group" aria-label="Tela" className="flex flex-wrap items-center gap-1 sm:pl-2 sm:border-l border-slate-200">
             {onOpenXRay && (
               <button
                 onClick={onOpenXRay}
-                className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700`}
+                className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700`}
                 title="Verificar Parâmetros da Análise (Raio-X)"
               >
                 <BrainCircuit className="w-3.5 h-3.5 text-indigo-600" />
@@ -1385,15 +1381,15 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             )}
             <button
               onClick={onToggleCollapseForm}
-              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-slate-300 bg-white hover:bg-slate-50 text-slate-800`}
+              className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-slate-300 bg-white hover:bg-slate-50 text-slate-800`}
               title={isFormCollapsed ? "Mostrar formulário e dividir tela" : "Expandir minuta em tela cheia (ocultar formulário)"}
             >
-              {isFormCollapsed ? (<><Minimize2 className="w-3.5 h-3.5 shrink-0" /><span>Dividir Tela</span></>) : (<><Maximize2 className="w-3.5 h-3.5 shrink-0" /><span>Expandir Minuta</span></>)}
+              {isFormCollapsed ? (<><Minimize2 className="w-3.5 h-3.5 shrink-0" /><span>Dividir Tela</span></>) : (<><Maximize2 className="w-3.5 h-3.5 shrink-0" /><span>Expandir</span></>)}
             </button>
             {onGoHome && (
               <button
                 onClick={onGoHome}
-                className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-slate-800`}
+                className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-slate-800`}
                 title="Voltar para a Página Inicial do Assessor Fabrício"
               >
                 <Home className="w-3.5 h-3.5 text-emerald-600" />
@@ -1405,7 +1401,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
           {onDeleteMinute && (
             <button
               onClick={() => setIsConfirmingDelete(true)}
-              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs ml-auto bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-700`}
+              className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs sm:ml-2 bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-700`}
               title="Excluir esta minuta / ato do processo"
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-600" />
@@ -1736,7 +1732,6 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
         {/* Tab 1: Formatted Document View */}
         {activeTab === "formatted" && (
           <div className="space-y-4">
-            {result && <AvisosDaMinuta result={result as any} />}
 
             {/* Automatic Pre-Audit Security Seal & Certificate */}
             {result?.auditAnalysis && (
@@ -2669,6 +2664,11 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
         )}
       </div>
       </div>
+      {activeTab === "formatted" && result && (
+        <div data-testid="coluna-avisos" className="md:w-14 md:shrink-0 md:self-stretch px-2 pb-2 md:p-0">
+          <AvisosDaMinuta result={result as any} />
+        </div>
+      )}
       </div>
 
       {/* Enhanced Chat Panel for Assessor Fabrício */}

@@ -115,6 +115,14 @@ class Gerente {
 
   private async criar(fontes: Fonte[], config: ConfigGigante, antecessorId?: string, rotulo?: string, criadoEm?: number): Promise<string> {
     await this.carregar();
+    // MESMO pedido repetido (mesmo arquivo, mesmo prompt e mesmo ato) enquanto o anterior ainda está em andamento: devolve o que já existe em vez de criar um segundo trabalho igual
+    // (a extensão pode reenviar o processo se perder a conexão com a aba do Studio; o resultado seria duas minutas iguais e o dobro de IA).
+    if (!antecessorId && !rotulo) {
+      const nomeNovo = fontes.map((f) => f.nome).join(" + ").slice(0, 160), agora = Date.now();
+      const igual = this.lista().find((j) => !j.antecessorId && j.nome === nomeNovo && !["concluido", "erro", "cancelado"].includes(j.status) && agora - j.criadoEm < 30 * 60000
+        && (j.config.promptTitle || "") === (config.promptTitle || "") && (j.config.actType || "") === (config.actType || "") && (j.config.finalidade || "minuta") === (config.finalidade || "minuta") && !j.config.parte);
+      if (igual) { reportarSaude({ tipo: "cliente", modulo: "gigante", severidade: "info", mensagem: `Pedido repetido ignorado: "${nomeNovo}" já está em andamento no Studio (mesmo prompt e ato)` }, true); return igual.id; }
+    }
     const id = `gig-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const job: JobGig = {
       id, nome: rotulo || fontes.map((f) => f.nome).join(" + ").slice(0, 160), antecessorId, numeroProcesso: config.processNumber && !/extrair/i.test(config.processNumber) ? config.processNumber : undefined, criadoEm: criadoEm ?? Date.now(), atualizadoEm: Date.now(),
