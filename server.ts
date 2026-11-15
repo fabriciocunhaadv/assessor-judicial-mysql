@@ -51,6 +51,7 @@ import { extrairEnunciadosFonaje } from './src/utils/enunciadosFonaje';
 import { REGRAS_MECANICA_JUDICIAL, REGRAS_FIDELIDADE_AUTOS, conferenciasMecanica } from './src/utils/mecanicaJudicial';
 import { corrigirCitacoesDaMinuta, citacoesInexistentes, blocoIndiceArquivos } from './src/utils/localizacaoAutos';
 import { INSTRUCAO_SENTENCA_AUDIENCIA, INSTRUCAO_SENTENCA_AUDIENCIA_ANTIGA, blocoDegravacao } from './src/utils/instrucaoSentencaAudiencia';
+import { blocoArgumentos, instrucaoMatrizArgumentos, regraLupaArgumentos, conferirArgumentos } from './server/argumentosNoMotor';
 import { faseDaRequisicao, blocoFaseDaRequisicao, tesesPorFase, motorDaRequisicao, conferirERefazerPorFase, motoresFaseLigado } from './server/faseNoMotor';
 // Abertura padrão do relatório de TODA minuta (pedido do magistrado). Vale para qualquer área e ato; entra nas etapas 1 e 2 e no Turbo.
 const REGRA_ABERTURA_RELATORIO = `
@@ -1465,7 +1466,7 @@ ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não p
                 { role: "user", parts: [{ text: userPrompt }, ...cobT.partes] }
             ],
             config: {
-                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + blocoFaseDaRequisicao(req, accumulatedText) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, accumulatedText) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoT ? blocoDescumprimentoDetectado(descumprimentoT) : "") + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoCadernoDeTesesTurbo(tesesPorFase(typeof cabinetTesesText === "string" ? cabinetTesesText : "", faseDaRequisicao(req, accumulatedText)).texto, isTesesEnabled) + blocoBaseConhecimentoTurbo(knowledgePdfs) + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
+                systemInstruction: systemPrompt + REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + blocoFaseDaRequisicao(req, accumulatedText) + blocoArgumentos(String(actType || "") + " " + String(promptTitle || "")) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, accumulatedText) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoT ? blocoDescumprimentoDetectado(descumprimentoT) : "") + blocoPerfilMateria({ titulo: promptTitle, categoria: promptCategory, unidade: comarcaVara }) + cobT.regra + defesaInjecaoT + blocoCadernoDeTesesTurbo(tesesPorFase(typeof cabinetTesesText === "string" ? cabinetTesesText : "", faseDaRequisicao(req, accumulatedText)).texto, isTesesEnabled) + blocoBaseConhecimentoTurbo(knowledgePdfs) + blocoPrecedentesTurbo + blocoLegislacaoTurbo,
                 temperature: 0.1,
                 maxOutputTokens: 16384,      // era 8192, e parte dele era gasta repetindo o texto inteiro em fullFormattedText
                 responseMimeType: "application/json",
@@ -2080,7 +2081,7 @@ CALIBRAGEM DO AUDITOR (VALE PARA QUALQUER PROCESSO E QUALQUER ÁREA):
 10. PROVA LITERAL (REGRA DO SISTEMA): todo apontamento em "criticalAlerts" exige trechos LITERAIS copiados do texto: "minutaTrecho" (da minuta) e/ou "autosTrecho" (dos autos), conforme o "tipoProva": contradicao = a minuta diz uma coisa e os autos outra (os dois trechos); omissao = os autos têm algo que a minuta deveria tratar e não trata (trecho dos autos); sem_lastro = a minuta afirma algo que os autos não mostram (trecho da minuta); forma = defeito de redação ou estrutura (trecho da minuta). O servidor CONFERE se os trechos existem e DESCARTA o apontamento que não tiver prova. Não parafraseie dentro dos trechos.
 11. FICHA DOS AUTOS: a ficha da etapa 1 é só um mapa. Confirme nos autos antes de apontar; se a ficha e os autos divergirem, vale o texto dos autos. Use a ficha para não deixar passar solicitação sem resposta, ordem condicional cuja condição ocorreu e pendência formal (procuração, citação, prazo, cumprimento).
 12. NADA SOLTO: toda observação para o juiz deve ser um apontamento em "criticalAlerts" que diga com clareza (a) o que observar, (b) ONDE: na minuta (trecho literal) e nos autos (Mov./Arq./Pág.), e (c) o que o juiz deve conferir ou decidir. Não deixe observação genérica ou solta no summary sem apontamento correspondente. Preencha os campos de resumo só com o que você de fato conferiu; se não conferiu algo, deixe o campo vazio em vez de afirmar regularidade.
-13. TPU (CNJ): os códigos e descrições de movimentação das Tabelas Processuais Unificadas servem só para o assessor/juiz lançar o ato no Projudi. NÃO use TPU para avaliar a minuta e NÃO aponte ausência, excesso, erro ou incoerência de TPU/"CNJ:código" (ex.: linha "TPU a ser cadastrada"). Ignore essas linhas na conferência.
+13. TPU (CNJ): os códigos e descrições de movimentação das Tabelas Processuais Unificadas servem só para o assessor/juiz lançar o ato no Projudi. NÃO use TPU para avaliar a minuta e NÃO aponte ausência, excesso, erro ou incoerência de TPU/"CNJ:código" (ex.: linha "TPU a ser cadastrada"). Ignore essas linhas na conferência.${regraLupaArgumentos()}
 
 Você deve responder ESTRITAMENTE em formato JSON com o seguinte schema obrigatório:
 {
@@ -6046,7 +6047,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
         if (legAutos.bloco) { stage1SystemInstruction += legAutos.bloco; console.log(`[Legislação] etapa 1: ${legAutos.consultados} artigo(s) citado(s) nos autos conferido(s) no Planalto.`); }
         try { const la = await pegarLeiAplicavel(legAutos.conferidos); if (la.bloco) stage1SystemInstruction += la.bloco; } catch { /* sem a lei aplicável: segue só com a conferência */ }
     } catch (e) { console.warn("[Legislação] etapa 1 ignorada:", e); }
-    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + blocoFaseDaRequisicao(req, (safeProcessText || "") + "\n" + (accumulatedPdfText || "")) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage1SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + blocoFaseDaRequisicao(req, (safeProcessText || "") + "\n" + (accumulatedPdfText || "")) + blocoArgumentos(String(actType || "")) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const stage1StartTimer = Date.now();
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage1ContentsParts, stage1SystemInstruction) / 10000) * 3000);      // maior para autos grandes
     stage1Response = await gerarComAutosGrandes(generateWithFallbackAndRetry, {
@@ -6500,7 +6501,7 @@ COMANDOS PARA O JUIZ REVISOR (ETAPA 2):
    - 'legislacaoMapeada': Detalhamento de artigos-chave e regime de correção;
    - 'consectariosDetalhados': Juros, correção monetária, Lei 14.905/2024 e termos iniciais;
    - 'alertasProcessuais': Avisos de cautela processual;
-   - 'preAudit': Pontuação (0-100), veredito, selo de segurança e síntese técnica da auditoria.
+   - 'preAudit': Pontuação (0-100), veredito, selo de segurança e síntese técnica da auditoria.${instrucaoMatrizArgumentos()}
 
 Retorne EXCLUSIVAMENTE o objeto JSON final conforme o responseSchema.
 `;
@@ -6556,6 +6557,20 @@ const stage2ResponseSchema = {
                             valoracaoJuridica: { type: Type.STRING }
                         },
                         required: ["fatoAlegado", "eventoId", "provaApresentada", "status", "analiseCritica"]
+                    }
+                },
+                argumentoVsResposta: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            parte: { type: Type.STRING },
+                            argumento: { type: Type.STRING },
+                            localizacao: { type: Type.STRING },
+                            resultado: { type: Type.STRING },
+                            trechoNaMinuta: { type: Type.STRING }
+                        },
+                        required: ["parte", "argumento", "resultado"]
                     }
                 },
                 competenciaCheck: {
@@ -6688,7 +6703,7 @@ try {
         else if (leg.falhas.length) console.log(`[Legislação] sem acesso ao Planalto para: ${leg.falhas.join("; ")}.`);
         try { const la = await pegarLeiAplicavel(leg.conferidos); if (la.bloco) stage2SystemInstruction += la.bloco; } catch { /* sem a lei aplicável */ }
     } catch (e) { console.warn("[Legislação] consulta ignorada:", e); }
-    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + blocoFaseDaRequisicao(req, (safeProcessText || "") + "\n" + (accumulatedPdfText || "")) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
+    stage2SystemInstruction += REGRA_DISPOSITIVO_CARTORIO + REGRA_ABERTURA_RELATORIO + REGRAS_MECANICA_JUDICIAL + REGRA_COBERTURA_DOS_AUTOS + blocoMapaDaRequisicao(req) + blocoFaseDaRequisicao(req, (safeProcessText || "") + "\n" + (accumulatedPdfText || "")) + blocoArgumentos(String(resolvedActType || "")) + REGRA_ESTRUTURA_POR_ATO + indiceDoPedido(req, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")) + REGRA_DESCUMPRIMENTO_DETERMINACAO + (descumprimentoAutos ? blocoDescumprimentoDetectado(descumprimentoAutos) : "") + blocoPerfilMateria({ titulo: activePromptTitle, categoria: req.body.promptCategory || '', unidade: processInfo?.comarca || '' }) + regraCobertura;
     const TIMEOUT_ETAPA = Math.min(300000, 100000 + Math.ceil(estimarTokens(stage2Prompt, stage2SystemInstruction) / 10000) * 3000);
     response = await generateWithFallbackAndRetry({
         apiKey: stage2KeyPool[0] || userApiKey,
@@ -6965,6 +6980,7 @@ if (!parsed.auditAnalysis.preAudit) {
     };
 }
 
+try { const ca = conferirArgumentos(parsed.auditAnalysis?.argumentoVsResposta, parsed.minute); if (ca) parsed.conferenciaArgumentos = ca; } catch { /* a conferência nunca derruba a minuta */ }
 if (!Array.isArray(parsed.auditAnalysis.fatoVsProva) || parsed.auditAnalysis.fatoVsProva.length === 0) {
     parsed.auditAnalysis.fatoVsProva = [
         {

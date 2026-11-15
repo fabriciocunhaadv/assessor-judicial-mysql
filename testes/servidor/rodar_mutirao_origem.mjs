@@ -22,6 +22,7 @@ try {
   r = await chamar({ calibracaoMutirao: "1" });
   ok(r.j.success && r.m.video === true && r.m.usuario === false, "vídeos lidos pelo Studio: continua o rótulo de degravação 'lida do vídeo'");
   ok(r.m.regras === true, "vídeos (tela do Mutirão): as regras adicionais também chegam ao motor");
+  { const l = ((await (await fetch("http://127.0.0.1:8989/__arg")).json()).lista || []); ok(l.some((x) => x.tipo === "principal" && x.regra && x.sentenca) && l.some((x) => x.matriz), "o Mutirão passa pelo motor principal e recebe também a regra Argumento × Resposta (etapa 1 e matriz da etapa 2)"); }
   r = await chamar({});
   ok(r.j.success && r.m.n >= 1 && r.m.regras === false && r.m.video === true, "pedido SEM a marca da tela do Mutirão (como a extensão): a instrução antiga, sem as regras novas");
 } finally { for (const p of filhos) { try { process.kill(-p.pid, 9); } catch {} } }

@@ -92,8 +92,13 @@ export interface ConsectariosDetalhados {
   observacoes?: string;
 }
 
+/** Matriz Argumento × Resposta da etapa 2: cada argumento relevante das partes e como a minuta respondeu. */
+export interface ArgumentoRespostaItem { parte?: string; argumento?: string; localizacao?: string; resultado?: string; trechoNaMinuta?: string }
+export interface ConferenciaArgumentosResultado { total: number; respondidos: number; semResposta: ArgumentoRespostaItem[]; naoLocalizados: ArgumentoRespostaItem[] }
+
 export interface AuditAnalysis {
   fatoVsProva: FatoVsProvaItem[];
+  argumentoVsResposta?: ArgumentoRespostaItem[];
   competenciaCheck: CompetenciaCheck;
   regularidadeDocumental: RegularidadeDocumental;
   normasAplicadas: string[];
@@ -220,6 +225,8 @@ export interface GenerationResult {
   avisoFundamentoLegal?: string[];
   avisoDescumprimento?: { tipo: string; movDeterminacao?: number; movDecurso?: number; parcial: boolean; possivelCumprimento: boolean; decide: boolean; atoSugerido: string; motivo: string; minutaSentenciou?: boolean };
   espolioQualificado?: string[];
+  /** Conferência por código da matriz Argumento × Resposta (argumentos sem resposta ou com resposta que não está na minuta). */
+  conferenciaArgumentos?: ConferenciaArgumentosResultado;
   /** Motor que gerou a minuta (etiqueta do Histórico). */
   motor?: "principal" | "turbo" | "gigante";
   /** Conferência por código da minuta com a fase do processo (cumprimento, execução, embargos, pós-sentença). */

@@ -102,6 +102,15 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
 
   const dd = result?.avisoDescumprimento;
   if (dd) itens.push({ id: "descumprimento", tom: dd.decide && dd.minutaSentenciou === false ? "perigo" : "atencao", rotulo: dd.decide ? "⏱️ Parte não cumpriu determinação" : "⏱️ Conferir cumprimento da determinação", conteudo: caixa(dd.decide && dd.minutaSentenciou === false ? "border-red-400 bg-red-50 text-red-900" : "border-amber-300 bg-amber-50 text-amber-900", "aviso-descumprimento", <><strong>{dd.decide ? "Descumprimento de determinação detectado nos autos:" : "Possível cumprimento — confira:"}</strong> {dd.motivo}{dd.decide && <> Ato sugerido: <strong>{dd.atoSugerido}</strong>.{dd.minutaSentenciou === false ? " ATENÇÃO: a minuta gerada não indeferiu a inicial nem extinguiu o processo; confira se o ato certo foi minutado." : ""}</>}</>) });
+  const ca = result?.conferenciaArgumentos, matrizArg: any[] = Array.isArray(result?.auditAnalysis?.argumentoVsResposta) ? result.auditAnalysis.argumentoVsResposta : [];
+  if (ca && ca.total > 0) {
+    const faltam = (ca.semResposta?.length || 0) + (ca.naoLocalizados?.length || 0), marcado = new Set([...(ca.semResposta || []), ...(ca.naoLocalizados || [])].map((x: any) => x.argumento));
+    const rotuloRes = (r: string) => ({ acolhido: "acolhido", rejeitado: "rejeitado", prejudicado: "prejudicado", nao_enfrentado: "SEM RESPOSTA" } as any)[r] || r || "—";
+    itens.push({ id: "argumentos", tom: faltam ? "atencao" : "info", rotulo: faltam ? `🧩 Argumentos sem resposta (${faltam} de ${ca.total})` : `🧩 Argumentos × Resposta (${ca.total})`, conteudo: caixa(faltam ? "border-amber-300 bg-amber-50 text-amber-900" : "border-sky-300 bg-sky-50 text-sky-900", "aviso-argumentos",
+      <><strong>Argumento × Resposta:</strong> {ca.respondidos} de {ca.total} argumento(s) relevante(s) das partes têm resposta na minuta{faltam ? <>; <strong>{faltam} precisa(m) de conferência</strong> (sem resposta, ou a resposta indicada não foi localizada no texto)</> : ""}.
+        <ul className="list-disc pl-5 mt-1">{matrizArg.slice(0, 40).map((x: any, i: number) => <li key={i} className={marcado.has(x.argumento) ? "font-bold text-red-800" : ""}>[{String(x.parte || "").toLowerCase() === "reu" ? "réu" : x.parte || "parte"}] {x.argumento} — <em>{rotuloRes(String(x.resultado || ""))}</em>{x.localizacao ? <span className="opacity-70"> ({x.localizacao})</span> : null}{marcado.has(x.argumento) && x.resultado !== "nao_enfrentado" ? <span className="text-red-700"> — resposta indicada não localizada na minuta</span> : null}</li>)}</ul>
+        <div className="mt-1 opacity-70">Conferência automática: pode errar. Confira a minuta antes de assinar.</div></>) });
+  }
   const cf = result?.conferenciaFase;
   if (cf && (cf.avisos?.length || cf.tesesOmitidas)) {
     const pendente = !!cf.avisos?.length && !cf.resolvido;
