@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { GenerationResult } from "../types";
 import { AvisoAutosReduzidos } from "./AvisoAutosReduzidos";
 import { AvisoCoberturaLeitura } from "./AvisoCoberturaLeitura";
@@ -20,8 +20,11 @@ interface Item { id: string; rotulo: string; tom: Tom; conteudo: React.ReactNode
 /** Avisos do começo da minuta (alerta de prompt injection, fontes consultadas, leitura dos autos...): ficam RECOLHIDOS em botões; o usuário abre só o que quiser ver. */
 export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> & Record<string, any> }) {
   const [abertos, setAbertos] = useState<Set<string>>(new Set());
+  const [rotulos, setRotulos] = useState<boolean>(() => { try { return localStorage.getItem("avisos_dock_nomes") === "1"; } catch { return false; } });
+  const alternarRotulos = () => setRotulos((v) => { const n = !v; try { localStorage.setItem("avisos_dock_nomes", n ? "1" : "0"); } catch { /* sem armazenamento */ } return n; });
   const alternar = (id: string) => setAbertos((a) => { const n = new Set(a); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const itens: Item[] = [];
+  useEffect(() => { const f = (e: KeyboardEvent) => { if (e.key === "Escape") setAbertos(new Set()); }; window.addEventListener("keydown", f); return () => window.removeEventListener("keydown", f); }, []);
 
   const inj = result?.alertaInjecao;
   if (inj && inj.verificado !== false) itens.push({ id: "injecao", tom: inj.total ? "perigo" : "ok", rotulo: inj.total ? `🚨 Alerta de prompt injection (${inj.total})` : "✅ Prompt injection: nada encontrado", conteudo: <AvisoPromptInjection info={inj} /> });
@@ -127,17 +130,43 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
   if (esp?.length) itens.push({ id: "espolio", tom: "info", rotulo: "🪦 Parte falecida: Espólio", conteudo: caixa("border-sky-300 bg-sky-50 text-sky-900", "aviso-espolio", <><strong>Parte falecida:</strong> no cabeçalho, {esp.join("; ")} passou a constar como “Espólio de …”, porque os autos tratam o nome como espólio. Confira a qualificação.</>) });
 
   if (itens.length === 0) return null;
+  // DOCK FLUTUANTE NA LATERAL DIREITA (a esquerda já tem outros botões): um botão por aviso (ícone + cor do estado + número), o painel abre ao lado e mostra um por vez.
+  const aberto = itens.find((x) => abertos.has(x.id));
+  const abrirUm = (id: string) => setAbertos((a) => (a.has(id) ? new Set() : new Set([id])));
+  const partir = (rotulo: string) => { const m = String(rotulo).match(/^(\S+)\s+(.*)$/); return { icone: m ? m[1] : "•", nome: m ? m[2] : String(rotulo) }; };
+  const contagem = (nome: string) => { const m = nome.match(/\((\d+)/); return m ? m[1] : ""; };
+  const nAtencao = itens.filter((x) => x.tom === "perigo" || x.tom === "atencao").length;
   return (
-    <div className="max-w-4xl mx-auto space-y-2" data-testid="avisos-da-minuta">
-      <div className="flex flex-wrap gap-1.5">
-        {itens.map((it) => (
-          <button key={it.id} type="button" data-testid={`chip-${it.id}`} aria-expanded={abertos.has(it.id)} onClick={() => alternar(it.id)}
-            className={`px-2.5 py-1 rounded-full border text-[11px] font-bold cursor-pointer transition flex items-center gap-1 ${COR[it.tom]} ${abertos.has(it.id) ? "ring-2 ring-offset-1 ring-slate-300" : ""}`}>
-            <span>{it.rotulo}</span><span className="opacity-60">{abertos.has(it.id) ? "▲" : "▼"}</span>
-          </button>
-        ))}
+    <>
+      <nav data-testid="avisos-da-minuta" aria-label="Avisos da minuta" className={`print:hidden fixed z-40 left-2 right-2 bottom-[4.75rem] flex flex-row items-center gap-1.5 overflow-x-auto p-1.5 rounded-2xl bg-white/95 backdrop-blur border border-slate-200 shadow-lg sm:left-auto sm:right-3 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 sm:flex-col sm:items-stretch sm:overflow-x-hidden sm:overflow-y-auto sm:max-h-[72vh] ${rotulos ? "" : "sm:w-14"}`}>
+        <button type="button" onClick={alternarRotulos} data-testid="avisos-alternar-nomes" title={rotulos ? "Mostrar só os ícones" : "Mostrar os nomes dos avisos"}
+          className="shrink-0 flex flex-row sm:flex-col items-center justify-center gap-1 sm:gap-0.5 text-[9px] font-extrabold uppercase tracking-wide text-slate-500 hover:text-slate-900 cursor-pointer px-1 pb-0.5 leading-none">
+          <span>Avisos</span><span className={`rounded-full px-1.5 py-0.5 text-[10px] ${nAtencao ? "bg-amber-500 text-white" : "bg-slate-200 text-slate-700"}`}>{nAtencao || itens.length}</span>
+        </button>
+        {itens.map((it) => {
+          const { icone, nome } = partir(it.rotulo), n = contagem(nome), ativo = abertos.has(it.id);
+          return (
+            <button key={it.id} type="button" data-testid={`chip-${it.id}`} aria-expanded={ativo} aria-label={it.rotulo} title={it.rotulo} onClick={() => abrirUm(it.id)}
+              className={`relative shrink-0 flex items-center gap-2 rounded-xl border cursor-pointer transition ${COR[it.tom]} ${rotulos ? "px-2.5 py-1.5 min-h-9 text-left" : "w-10 h-10 justify-center"} ${ativo ? "ring-2 ring-offset-1 ring-indigo-400" : ""}`}>
+              <span className="text-base leading-none shrink-0">{icone}</span>
+              {rotulos && <span className="text-[11px] font-bold leading-tight max-w-[200px]">{nome}</span>}
+              {!rotulos && n ? <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-slate-800 text-white text-[9px] font-extrabold flex items-center justify-center">{n}</span> : null}
+              {!rotulos && (it.tom === "perigo" || it.tom === "atencao") && !n ? <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ${it.tom === "perigo" ? "bg-red-500" : "bg-amber-500"}`} /> : null}
+            </button>
+          );
+        })}
+      </nav>
+      <div hidden={!aberto} data-testid="avisos-painel-flutuante" role="dialog" aria-label={aberto ? aberto.rotulo : "Aviso"}
+        style={{ ["--avd" as any]: `${rotulos ? 17.5 : 4.9}rem` }}
+        className="print:hidden fixed z-40 left-2 right-2 bottom-[8.25rem] max-h-[60vh] overflow-y-auto rounded-xl bg-white border border-slate-300 shadow-2xl sm:left-auto sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 sm:max-h-[78vh] sm:right-[var(--avd)] sm:w-[min(480px,calc(100vw-var(--avd)-0.75rem))]">
+        {aberto && (
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
+            <span className="text-xs font-extrabold text-slate-800">{aberto.rotulo}</span>
+            <button type="button" onClick={() => setAbertos(new Set())} aria-label="Fechar o aviso" data-testid="avisos-fechar" className="text-slate-500 hover:text-slate-900 cursor-pointer text-sm font-bold px-1">✕</button>
+          </div>
+        )}
+        {itens.map((it) => <div key={it.id} hidden={!abertos.has(it.id)} data-testid={`painel-${it.id}`} className="p-2">{it.conteudo}</div>)}
       </div>
-      {itens.map((it) => <div key={it.id} hidden={!abertos.has(it.id)} data-testid={`painel-${it.id}`}>{it.conteudo}</div>)}
-    </div>
+    </>
   );
 }

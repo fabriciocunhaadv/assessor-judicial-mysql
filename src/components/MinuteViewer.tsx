@@ -53,6 +53,8 @@ import {
   ClipboardList,
   Clock,
   UserCheck,
+  LayoutTemplate,
+  ClipboardCheck,
 } from "lucide-react";
 import { GenerationResult, MinuteData, ApiUsageMetadata, ChatMessage, MinuteVersion } from "../types";
 import { copyMinuteToClipboard, exportMinuteToDocx, printFormattedMinute } from "../utils/documentExport";
@@ -1249,7 +1251,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
       )}
 
       {/* Header with quick actions */}
-      <div className="p-3.5 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+      <div className="p-3.5 bg-white border-b border-slate-200 flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <FileText className="w-4 h-4 text-emerald-600" />
           <h3 className="font-bold text-sm text-slate-800">Resultado & Análise</h3>
@@ -1265,24 +1267,56 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
           )}
         </div>
 
-        {/* Action buttons */}
-        <div id="tour-result-actions" className="flex items-center flex-wrap gap-1.5 text-xs">
-          {currentAnalysisId && (
+        {/* Barra de ações em GRUPOS (Ato · Modelos · Exportar · Tela), com altura e espaçamento iguais; Excluir fica isolado à direita */}
+        <div id="tour-result-actions" data-testid="barra-acoes-minuta" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <div role="group" aria-label="Ato" className="flex flex-wrap items-center gap-1.5">
+            <span className="hidden sm:inline text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mr-0.5">Ato</span>
+            {currentAnalysisId && (
+              <button
+                type="button"
+                onClick={alternarLancadoDaMinuta}
+                data-testid="btn-lancado-minuta"
+                className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs ${lancado ? "bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700" : "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900"}`}
+                title={lancado ? "Marcada como lançada no Projudi. Clique para desfazer." : "Marcar este processo como já lançado no Projudi (vale para todas as minutas dele)"}
+              >
+                <CheckCircle2 className={`w-3.5 h-3.5 ${lancado ? "text-white" : "text-emerald-600"}`} />
+                <span>{lancado ? "Lançado" : "Marcar lançado"}</span>
+              </button>
+            )}
             <button
-              type="button"
-              onClick={alternarLancadoDaMinuta}
-              data-testid="btn-lancado-minuta"
-              className={`px-2.5 py-1 border font-bold rounded flex items-center gap-1.5 transition cursor-pointer shadow-2xs ${lancado ? "bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700" : "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900"}`}
-              title={lancado ? "Marcada como lançada no Projudi. Clique para desfazer." : "Marcar este processo como já lançado no Projudi (vale para todas as minutas dele)"}
+              onClick={() => setActiveTab("editor")}
+              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs ${activeTab === "editor" ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+              title="Editar manualmente o texto e salvar diretamente"
             >
-              <CheckCircle2 className={`w-3.5 h-3.5 ${lancado ? "text-white" : "text-emerald-600"}`} />
-              <span>{lancado ? "Lançado" : "Marcar lançado"}</span>
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Editar</span>
             </button>
-          )}
-          {onInjectTextAsParadigm && !hasLinkedParadigm && (
+          </div>
+
+          <div role="group" aria-label="Modelos" className="flex flex-wrap items-center gap-1.5 sm:pl-4 sm:border-l border-slate-200">
+            <span className="hidden sm:inline text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mr-0.5">Modelos</span>
             <button
-              id="tour-save-tese"
-              onClick={() => {
+              onClick={() => { setAdaptarModelo(undefined); setAdaptarAberto(true); }}
+              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-amber-300 bg-white hover:bg-amber-50 text-amber-900`}
+              title="Reorganizar esta minuta conforme um modelo (paradigma) do juiz, sem reler os autos"
+              data-testid="btn-adaptar-paradigma"
+            >
+              <LayoutTemplate className="w-3.5 h-3.5 text-amber-600" />
+              <span>Aplicar modelo / paradigma</span>
+            </button>
+            <button
+              onClick={() => setConferirAberto(true)}
+              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-900`}
+              title="Comparar esta minuta com os modelos cadastrados no Projudi (citação, cumprimento, comandos à escrivania…)"
+              data-testid="btn-conferir-modelos"
+            >
+              <ClipboardCheck className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Conferir modelos do Projudi</span>
+            </button>
+            {onInjectTextAsParadigm && !hasLinkedParadigm && (
+              <button
+                id="tour-save-tese"
+                onClick={() => {
                 const procNum = minute.processNumber || result?.minute?.processNumber || "";
                 const fullText = (minute.fullFormattedText && minute.fullFormattedText.trim().length > 0)
                   ? minute.fullFormattedText
@@ -1299,122 +1333,82 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                     ].filter(Boolean).join('\n\n');
                 onInjectTextAsParadigm(fullText, procNum, "Direito do Consumidor");
               }}
-              className="px-2.5 py-1 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold rounded flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-              title="Salvar esta minuta integral no Caderno de Teses e Modelos do Gabinete"
-            >
-              <FileCheck2 className="w-3.5 h-3.5 text-amber-600" />
-              <span>Salvar Tese</span>
-            </button>
-          )}
-          <button
-            onClick={() => { setAdaptarModelo(undefined); setAdaptarAberto(true); }}
-            className="px-2.5 py-1 border border-amber-300 bg-white hover:bg-amber-50 text-amber-900 font-bold rounded flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-            title="Reorganizar esta minuta conforme um modelo (paradigma) do juiz, sem reler os autos"
-            data-testid="btn-adaptar-paradigma"
-          >
-            <span>Aplicar modelo / paradigma</span>
-          </button>
-          <button
-            onClick={() => setConferirAberto(true)}
-            className="px-2.5 py-1 border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-900 font-bold rounded flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-            title="Comparar esta minuta com os modelos cadastrados no Projudi (citação, cumprimento, comandos à escrivania…)"
-            data-testid="btn-conferir-modelos"
-          >
-            <span>Conferir modelos do Projudi</span>
-          </button>
-          {/* Raio-X da Minuta */}
-          {onOpenXRay && (
-            <button
-              onClick={onOpenXRay}
-              className="px-2.5 py-1 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-              title="Verificar Parâmetros da Análise (Raio-X)"
-            >
-              <BrainCircuit className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Raio-X</span>
-            </button>
-          )}
-
-          {onGoHome && (
-            <button
-              onClick={onGoHome}
-              className="px-2.5 py-1 border border-emerald-200 bg-emerald-50 hover:bg-slate-200 text-slate-800 font-bold rounded flex items-center gap-1 transition cursor-pointer shadow-2xs"
-              title="Voltar para a Página Inicial do Assessor Fabrício"
-            >
-              <Home className="w-3 h-3 text-emerald-600" />
-              <span className="hidden sm:inline">Início</span>
-            </button>
-          )}
-
-          <button
-            onClick={onToggleCollapseForm}
-            className={`px-2.5 py-1 border rounded font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs ${
-              isFormCollapsed
-                ? "bg-emerald-50 border-emerald-200 text-slate-800 hover:bg-emerald-100"
-                : "bg-emerald-50 border-emerald-200 text-slate-700 hover:bg-slate-200"
-            }`}
-            title={isFormCollapsed ? "Mostrar formulário e dividir tela" : "Expandir minuta em tela cheia (ocultar formulário)"}
-          >
-            {isFormCollapsed ? (
-              <>
-                <Minimize2 className="w-3.5 h-3.5 text-slate-900 shrink-0" />
-                <span className="text-xs font-bold">Dividir Tela</span>
-              </>
-            ) : (
-              <>
-                <Maximize2 className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                <span className="text-xs font-bold">Expandir Minuta</span>
-              </>
+                className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900`}
+                title="Salvar esta minuta integral no Caderno de Teses e Modelos do Gabinete"
+              >
+                <FileCheck2 className="w-3.5 h-3.5 text-amber-600" />
+                <span>Salvar Tese</span>
+              </button>
             )}
-          </button>
+          </div>
 
-          <button
-            onClick={() => setActiveTab("editor")}
-            className={`px-2.5 py-1 border rounded font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs ${
-              activeTab === "editor"
-                ? "bg-emerald-600 text-white border-emerald-600"
-                : "border-emerald-200 bg-white text-slate-700 hover:bg-emerald-50"
-            }`}
-            title="Editar manualmente o texto e salvar diretamente"
-          >
-            <Edit3 className="w-3 h-3 text-slate-800" />
-            <span>Editar</span>
-          </button>
+          <div role="group" aria-label="Exportar" className="flex flex-wrap items-center gap-1.5 sm:pl-4 sm:border-l border-slate-200">
+            <span className="hidden sm:inline text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mr-0.5">Exportar</span>
+            <button
+              onClick={handleCopy}
+              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-slate-300 bg-white hover:bg-slate-50 text-slate-800`}
+              title="Copiar texto formatado para Projudi ou Word"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-600" />}
+              <span>{copied ? "Copiado!" : "Copiar"}</span>
+            </button>
+            <button
+              onClick={handlePrint}
+              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs bg-red-600 hover:bg-red-500 border-red-600 text-white`}
+              title="Gerar PDF / Imprimir"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Gerar PDF</span>
+            </button>
+            <button
+              onClick={handleExportDocx}
+              disabled={isExportingDocx}
+              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs bg-blue-700 hover:bg-blue-600 border-blue-700 text-white disabled:opacity-60`}
+              title="Baixar em formato Word (.docx)"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{isExportingDocx ? "..." : "DOCX"}</span>
+            </button>
+          </div>
 
-          <button
-            onClick={handleCopy}
-            className="px-2.5 py-1 border border-emerald-200 bg-white hover:bg-emerald-50 hover:border-slate-400 text-slate-800 font-semibold rounded flex items-center gap-1 transition cursor-pointer shadow-2xs"
-            title="Copiar texto formatado para Projudi ou Word"
-          >
-            {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-600" />}
-            <span>{copied ? "Copiado!" : "Copiar"}</span>
-          </button>
-
-          <button
-            onClick={handlePrint}
-            className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded flex items-center gap-1 transition cursor-pointer shadow-2xs"
-            title="Gerar PDF / Imprimir"
-          >
-            <Printer className="w-3 h-3" />
-            <span>Gerar PDF</span>
-          </button>
-
-          <button
-            onClick={handleExportDocx}
-            disabled={isExportingDocx}
-            className="px-2.5 py-1 bg-blue-700 hover:bg-emerald-600 text-white font-semibold rounded flex items-center gap-1 transition cursor-pointer shadow-2xs"
-            title="Baixar em formato Word (.docx)"
-          >
-            <Download className="w-3 h-3" />
-            <span>{isExportingDocx ? "..." : "DOCX"}</span>
-          </button>
+          <div role="group" aria-label="Tela" className="flex flex-wrap items-center gap-1.5 sm:pl-4 sm:border-l border-slate-200">
+            <span className="hidden sm:inline text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mr-0.5">Tela</span>
+            {onOpenXRay && (
+              <button
+                onClick={onOpenXRay}
+                className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700`}
+                title="Verificar Parâmetros da Análise (Raio-X)"
+              >
+                <BrainCircuit className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Raio-X</span>
+              </button>
+            )}
+            <button
+              onClick={onToggleCollapseForm}
+              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-slate-300 bg-white hover:bg-slate-50 text-slate-800`}
+              title={isFormCollapsed ? "Mostrar formulário e dividir tela" : "Expandir minuta em tela cheia (ocultar formulário)"}
+            >
+              {isFormCollapsed ? (<><Minimize2 className="w-3.5 h-3.5 shrink-0" /><span>Dividir Tela</span></>) : (<><Maximize2 className="w-3.5 h-3.5 shrink-0" /><span>Expandir Minuta</span></>)}
+            </button>
+            {onGoHome && (
+              <button
+                onClick={onGoHome}
+                className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-slate-800`}
+                title="Voltar para a Página Inicial do Assessor Fabrício"
+              >
+                <Home className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="hidden sm:inline">Início</span>
+              </button>
+            )}
+          </div>
 
           {onDeleteMinute && (
             <button
               onClick={() => setIsConfirmingDelete(true)}
-              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-700 font-semibold rounded flex items-center gap-1 transition cursor-pointer shadow-2xs"
+              className={`h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs ml-auto bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-700`}
               title="Excluir esta minuta / ato do processo"
             >
-              <Trash2 className="w-3 h-3 text-rose-600" />
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
               <span>Excluir</span>
             </button>
           )}

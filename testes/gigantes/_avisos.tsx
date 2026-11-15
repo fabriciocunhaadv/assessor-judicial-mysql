@@ -9,9 +9,11 @@ const matriz = [
 ];
 const comFalha: any = { auditAnalysis: { argumentoVsResposta: matriz }, conferenciaArgumentos: { total: 3, respondidos: 1, semResposta: [matriz[1]], naoLocalizados: [matriz[2]] } };
 const completo: any = { auditAnalysis: { argumentoVsResposta: [matriz[0]] }, conferenciaArgumentos: { total: 1, respondidos: 1, semResposta: [], naoLocalizados: [] } };
+const caso = new URLSearchParams(location.search).get("caso") || "falha";
 createRoot(document.getElementById("root")!).render(<div style={{ padding: 16 }}>
-  <div id="com-falha"><AvisosDaMinuta result={comFalha} /></div>
-  <hr /><div id="completo"><AvisosDaMinuta result={completo} /></div>
-  <hr /><div id="sem-matriz"><AvisosDaMinuta result={{ conferenciaFase: undefined } as any} /></div>
+  {caso === "falha" && <AvisosDaMinuta result={comFalha} />}
+  {caso === "completo" && <AvisosDaMinuta result={completo} />}
+  {caso === "vazio" && <AvisosDaMinuta result={{ conferenciaFase: undefined } as any} />}
+  <p id="marcador">caso {caso}</p>
 </div>);
 (window as any).pronto = true;
