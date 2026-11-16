@@ -21,7 +21,7 @@ try:
             # ---- barra de ações
             grupos = pg.eval_on_selector_all("[data-testid=barra-acoes-minuta] [role=group]", "els => els.map(e => e.getAttribute('aria-label'))")
             ok(grupos == ["Ato", "Modelos", "Exportar", "Tela"], f"{nome}: botões em quatro grupos {grupos}")
-            caixas = pg.eval_on_selector_all("[data-testid=barra-acoes-minuta] button", "els => els.map(e => { const r = e.getBoundingClientRect(); return { t: e.innerText.trim(), x: r.x, y: r.y, width: r.width, height: r.height }; })")
+            caixas = pg.eval_on_selector_all("[data-testid=barra-acoes-minuta] button", "els => els.map(e => { const r = e.getBoundingClientRect(); return { t: e.textContent.trim(), x: r.x, y: r.y, width: r.width, height: r.height }; })")
             textos = [c["t"] for c in caixas]
             for esperado in ["Marcar lançado", "Editar", "Aplicar modelo", "Conferir modelos", "Salvar Tese", "Copiar", "Gerar PDF", "DOCX", "Raio-X", "Expandir", "Excluir"]:
                 ok(any(esperado in t for t in textos), f"{nome}: botão '{esperado}' continua na barra")

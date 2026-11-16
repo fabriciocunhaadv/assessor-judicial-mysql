@@ -1268,8 +1268,8 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
         </div>
 
         {/* Barra de ações em GRUPOS (Ato · Modelos · Exportar · Tela), com altura e espaçamento iguais; Excluir fica isolado à direita */}
-        <div id="tour-result-actions" data-testid="barra-acoes-minuta" className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
-          <div role="group" aria-label="Ato" className="flex flex-wrap items-center gap-1">
+        <div id="tour-result-actions" data-testid="barra-acoes-minuta" className="flex flex-nowrap sm:flex-wrap items-center gap-x-2 gap-y-1.5 text-xs max-sm:overflow-x-auto max-sm:pb-1 max-sm:[scrollbar-width:none] max-sm:[&_button_span]:hidden max-sm:[&_button]:w-9 max-sm:[&_button]:px-0 max-sm:[&_button]:justify-center max-sm:[&_button]:shrink-0">
+          <div role="group" aria-label="Ato" className="flex flex-nowrap sm:flex-wrap items-center gap-1 shrink-0">
             {currentAnalysisId && (
               <button
                 type="button"
@@ -1292,7 +1292,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             </button>
           </div>
 
-          <div role="group" aria-label="Modelos" className="flex flex-wrap items-center gap-1 sm:pl-2 sm:border-l border-slate-200">
+          <div role="group" aria-label="Modelos" className="flex flex-nowrap sm:flex-wrap items-center gap-1 shrink-0 max-sm:pl-1.5 max-sm:border-l sm:pl-2 sm:border-l border-slate-200">
             <button
               onClick={() => { setAdaptarModelo(undefined); setAdaptarAberto(true); }}
               className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-amber-300 bg-white hover:bg-amber-50 text-amber-900`}
@@ -1340,7 +1340,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             )}
           </div>
 
-          <div role="group" aria-label="Exportar" className="flex flex-wrap items-center gap-1 sm:pl-2 sm:border-l border-slate-200">
+          <div role="group" aria-label="Exportar" className="flex flex-nowrap sm:flex-wrap items-center gap-1 shrink-0 max-sm:pl-1.5 max-sm:border-l sm:pl-2 sm:border-l border-slate-200">
             <button
               onClick={handleCopy}
               className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-slate-300 bg-white hover:bg-slate-50 text-slate-800`}
@@ -1368,7 +1368,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             </button>
           </div>
 
-          <div role="group" aria-label="Tela" className="flex flex-wrap items-center gap-1 sm:pl-2 sm:border-l border-slate-200">
+          <div role="group" aria-label="Tela" className="flex flex-nowrap sm:flex-wrap items-center gap-1 shrink-0 max-sm:pl-1.5 max-sm:border-l sm:pl-2 sm:border-l border-slate-200">
             {onOpenXRay && (
               <button
                 onClick={onOpenXRay}
@@ -1540,7 +1540,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
       {/* Abas: no computador viram um trilho suspenso na lateral esquerda (só ícones; abre com o mouse); no celular continuam na horizontal */}
       <div className="md:flex md:items-start">
       <div className="md:w-14 md:shrink-0 md:relative md:self-stretch">
-      <div id="tour-result-tabs" data-testid="trilho-abas" className="group/trilho flex items-center border-b border-slate-200 bg-slate-50 px-3 overflow-x-auto md:sticky md:top-52 md:ml-1.5 md:z-30 md:flex-col md:items-stretch md:gap-0.5 md:w-11 md:hover:w-60 md:focus-within:w-60 md:border md:border-slate-300 md:rounded-2xl md:shadow-xl md:bg-white/95 md:backdrop-blur md:p-1 md:overflow-hidden md:transition-[width] md:duration-200">
+      <div id="tour-result-tabs" data-testid="trilho-abas" className="max-md:[scrollbar-width:none] max-md:[&_span]:hidden max-md:[&>button]:px-3 max-md:[&>button]:shrink-0 group/trilho flex items-center border-b border-slate-200 bg-slate-50 px-3 overflow-x-auto md:sticky md:top-52 md:ml-1.5 md:z-30 md:flex-col md:items-stretch md:gap-0.5 md:w-11 md:hover:w-60 md:focus-within:w-60 md:border md:border-slate-300 md:rounded-2xl md:shadow-xl md:bg-white/95 md:backdrop-blur md:p-1 md:overflow-hidden md:transition-[width] md:duration-200">
         <button
           onClick={() => setActiveTab("formatted")}
           className={`${activeTab === "formatted" ? "md:bg-emerald-100 md:ring-1 md:ring-emerald-500" : "md:hover:bg-slate-100"} py-2.5 px-3 text-xs font-bold border-b-2 whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 md:border-b-0 md:rounded-xl md:py-2 md:px-2.5 md:w-full md:justify-start md:shrink-0 ${
