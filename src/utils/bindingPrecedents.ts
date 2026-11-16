@@ -1,7 +1,7 @@
 export interface BindingPrecedent {
   id: string;
   tribunal: "STF" | "STJ" | "TNU" | "TJGO" | "FONAJE";
-  type: "sumula" | "sumula_vinculante" | "tese_repetitivo" | "tese_repercussao_geral" | "tese_tnu" | "informativo_tjgo" | "sumula_tjgo" | "enunciado_turma_recursal_go" | "enunciado_fonaje";
+  type: "sumula" | "sumula_vinculante" | "tese_repetitivo" | "tese_repercussao_geral" | "tese_tnu" | "informativo_tjgo" | "sumula_tjgo" | "enunciado_turma_recursal_go" | "enunciado_fonaje" | "jurisprudencia_em_teses";
   number: string;
   title: string;
   statement: string;
@@ -9,7 +9,7 @@ export interface BindingPrecedent {
   tags: string[];
   area: "Direito Administrativo / Servidor" | "Direito do Consumidor" | "Direito Bancário" | "Processo Civil / Execução" | "Fazenda Pública" | "Geral";
   /** De onde veio o item: base interna do sistema ou documento anexado por usuário (texto extraído por IA). Sem esse campo = base interna. */
-  origem?: "curadoria_interna" | "anexo_pdf" | "coletor_site_apoio";
+  origem?: "curadoria_interna" | "anexo_pdf" | "coletor_site_apoio" | "coletor_site_oficial" | "coletor_informativo_ia";
   /** Texto de aviso do item coletado automaticamente (ex.: coletado do site de apoio, confira no tribunal). */
   avisoOrigem?: string;
   anoRef?: number;

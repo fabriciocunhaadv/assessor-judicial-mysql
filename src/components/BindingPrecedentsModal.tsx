@@ -419,7 +419,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
           ) : (
             paginatedPrecedents.map((item) => {
               const aberto = expandidos.has(item.id), longo = item.statement.length > 280, c = conferencias[item.id];
-              const extra = (item as any).origem === "anexo_pdf" || (item as any).origem === "coletor_site_apoio" || String(item.id).startsWith("custom-");
+              const extra = (item as any).origem === "anexo_pdf" || String((item as any).origem || "").startsWith("coletor_") || String(item.id).startsWith("custom-");
               return (
                 <article key={item.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 hover:border-emerald-500/50 transition shadow-2xs">
                   <div className="flex items-start gap-3 p-3 sm:p-4 pb-2">
@@ -430,7 +430,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
                         {c ? (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1" title={`Conferido na fonte oficial por ${c.por}${c.nota ? ` — ${c.nota}` : ""}`}><Check className="w-3 h-3" /> Conferido em {new Date(c.em).toLocaleDateString("pt-BR")}</span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300" title="Ainda não conferido na fonte oficial: confira o enunciado antes de citar">{(item as any).origem === "anexo_pdf" ? "Anexo • extraído por IA • conferir" : (item as any).origem === "coletor_site_apoio" ? "Coletado do site de apoio • confira no tribunal" : "Base interna • conferir na fonte"}</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300" title="Ainda não conferido na fonte oficial: confira o enunciado antes de citar">{(item as any).origem === "anexo_pdf" ? "Anexo • extraído por IA • conferir" : String((item as any).origem || "").startsWith("coletor_") ? ((item as any).avisoOrigem ? String((item as any).avisoOrigem).charAt(0).toUpperCase() + String((item as any).avisoOrigem).slice(1) : "Coletado automaticamente • confira no tribunal") : "Base interna • conferir na fonte"}</span>
                         )}
                         {(item as any).sourceFile && (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700 flex items-center gap-1 min-w-0"><FileUp className="w-3 h-3 shrink-0" /><span className="truncate max-w-[160px] sm:max-w-xs" title={`Importado do arquivo: ${(item as any).sourceFile}`}>PDF: {(item as any).sourceFile}</span></span>

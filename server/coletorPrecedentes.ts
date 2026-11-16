@@ -2,6 +2,7 @@
 // Lê as páginas por REGRA (sem IA: não inventa número nem texto), escolhe o que entra e só cadastra o que ainda não está no banco.
 // Janela: ano atual e os 2 anteriores, pelo ano que a própria página marca ("Aprovada em", "Publicada em", "julgado em"). Itens sem data legível: só os 150 de maior número da fonte.
 import { getAllBindingPrecedents } from "../src/utils/bindingPrecedents";
+import { coletarJT, coletarInformativosTjgo, type ItemInformativoIA } from "./coletorInformativos";
 
 export const AVISO_ORIGEM_COLETA = "coletado do site de apoio, confira no tribunal";
 export const LIMITE_SEM_DATA = 150;
@@ -132,9 +133,10 @@ export function chaveDoPrecedente(p: { tribunal?: string; type?: string; number?
 export interface ResumoFonte { id: string; rotulo: string; ok: boolean; erro?: string; lidos: number; naoFirmes: number; foraJanela: number; candidatos: number; novos: number; jaExistiam: number }
 export interface ResultadoColeta { anos: number[]; fontes: ResumoFonte[]; novos: any[]; totalNovos: number; totalJaExistiam: number; simulado: boolean }
 
+/** Só para teste: com COLETOR_SITE_BASE definida, troca o endereço dos sites por um servidor local. */
+export const trocarBase = (url: string): string => { const b = process.env.COLETOR_SITE_BASE; return b ? url.replace(/^https:\/\/(tesesesumulas\.com\.br|scon\.stj\.jus\.br|transparencia\.tjgo\.jus\.br|dg-transparencia-admin-prd\.s3\.tjgo\.jus\.br)/, b) : url; };
 export async function baixarPagina(url: string): Promise<string> {
-  const base = process.env.COLETOR_SITE_BASE;      // só para teste: troca o endereço do site por um servidor local
-  if (base) url = url.replace("https://tesesesumulas.com.br", base);
+  url = trocarBase(url);
   const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; AssessorJudicial-Coletor)", "Accept": "text/html" }, signal: AbortSignal.timeout(120_000) });
   if (!r.ok) throw new Error(`o site respondeu ${r.status}`);
   return await r.text();
@@ -143,6 +145,9 @@ export async function baixarPagina(url: string): Promise<string> {
 export async function coletarPrecedentes(opts: {
   existentes: any[]; anoAtual?: number; simular?: boolean; baixar?: (url: string) => Promise<string>; fontes?: FonteColeta[]; htmlPorFonte?: Record<string, string>;
   andamento?: (msg: string, feitas: number, total: number) => void; gravar?: (itens: any[]) => Promise<void>; agora?: Date;
+  /** Parte 2 (Jurisprudência em Teses e informativos do TJGO). Em teste, as páginas vêm prontas. */
+  parte2?: boolean; lerPdf?: (url: string) => Promise<string>; extrairComIA?: (texto: string, ctx: { ano: number; mes: number }) => Promise<ItemInformativoIA[]>;
+  htmlJT?: { lista?: string; edicoes?: Record<number, string> }; htmlTjgo?: string;
 }): Promise<ResultadoColeta> {
   const agoraD = opts.agora || new Date(), anoAtual = opts.anoAtual || agoraD.getFullYear();
   const fontes = opts.fontes || FONTES_COLETA, baixar = opts.baixar || baixarPagina, agora = agoraD.toISOString();
@@ -170,6 +175,15 @@ export async function coletarPrecedentes(opts: {
     } catch (e: any) { r.erro = String(e?.message || e).slice(0, 240); }
     resumo.push(r); feitas++;
   }
-  opts.andamento?.("Concluído", fontes.length, fontes.length);
+  if (opts.parte2 !== false && !opts.fontes) {
+    const comuns = { baixar, existentes: opts.existentes, anoAtual, agora, simular: opts.simular, gravar: opts.gravar };
+    opts.andamento?.("Lendo STJ · Jurisprudência em Teses…", feitas, fontes.length + 2);
+    const jt = await coletarJT({ ...comuns, htmlLista: opts.htmlJT?.lista, htmlEdicao: opts.htmlJT?.edicoes });
+    resumo.push(jt.resumo); novos.push(...jt.novos); feitas++;
+    opts.andamento?.("Lendo TJGO · Informativos…", feitas, fontes.length + 2);
+    const tj = await coletarInformativosTjgo({ ...comuns, lerPdf: opts.lerPdf || (async () => { throw new Error("leitor de PDF não configurado"); }), extrairComIA: opts.extrairComIA, htmlPagina: opts.htmlTjgo });
+    resumo.push(tj.resumo); novos.push(...tj.novos); feitas++;
+  }
+  opts.andamento?.("Concluído", feitas, feitas);
   return { anos: [anoAtual - 2, anoAtual - 1, anoAtual], fontes: resumo, novos, totalNovos: novos.length, totalJaExistiam: resumo.reduce((a, x) => a + x.jaExistiam, 0), simulado: !!opts.simular };
 }

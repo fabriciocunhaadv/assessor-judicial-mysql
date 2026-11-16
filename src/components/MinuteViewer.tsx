@@ -1128,6 +1128,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
         throw new Error("A conexão com o Assessor Judicial foi interrompida momentaneamente pela rede. Por favor, tente novamente.");
       }
 
+      if (data && data.error && !data.reply) throw new Error(String(data.error));      // o servidor mantém a conexão aberta e entrega o erro no corpo
       checkResponseForRotatedKey(data);
       checkResponseForRotatedKey(response);
 

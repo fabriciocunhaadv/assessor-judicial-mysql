@@ -26,7 +26,8 @@ import { legislacaoAplicavelAoCaso, consultarLegislacao, diagnosticoLegislacao, 
 import { outrasLeisRouter, consultarOutrasLeis } from './server/outrasLeis';
 import { listarRegimes, gravarRegime, apagarRegime, sanearRegime } from './server/taxonomiaDb';
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
-import { coletarPrecedentes, FONTES_COLETA, type ResultadoColeta } from './server/coletorPrecedentes';
+import { iniciarPulsoJson } from './server/pulsoJson';
+import { coletarPrecedentes, FONTES_COLETA, trocarBase, type ResultadoColeta } from './server/coletorPrecedentes';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
 import { getApplicableTaxonomySummary } from './src/data/legalTaxonomy';
@@ -740,7 +741,35 @@ app.post("/api/coletar-precedentes", async (req: any, res) => {
     res.json({ success: true, jobId: job.id });
     (async () => {
         const existentes = await loadServerCustomPrecedents();
-        const r = await coletarPrecedentes({ existentes, simular, andamento: (m, f, t) => { job.mensagem = m; job.feitas = f; job.total = t; },
+        // Leitor de PDF (informativos do TJGO) e extração por IA: usam a chave do Super Admin que clicou
+        const apiKey = (req.headers['x-use-native-key'] === 'true' || req.headers['x-use-native-key'] === '1') && process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : (extractApiKey(req) || "");
+        const keyPool = extractApiKeyPool(req); const nativo = req.headers['x-use-native-key'] === 'true' || req.headers['x-use-native-key'] === '1';
+        const lerPdf = async (url: string): Promise<string> => {
+            const resp = await fetch(trocarBase(url), { signal: AbortSignal.timeout(120_000) }); if (!resp.ok) throw new Error(`o site respondeu ${resp.status}`);
+            const data = new Uint8Array(await resp.arrayBuffer());
+            const pdf = await pdfjsLib.getDocument({ data, standardFontDataUrl: 'node_modules/pdfjs-dist/standard_fonts/', disableFontFace: true }).promise;
+            let t = ""; for (let i = 1; i <= pdf.numPages; i++) { const pg = await pdf.getPage(i); const c = await pg.getTextContent(); t += (c.items as any[]).map((x) => x.str).join(" ") + "\n\n"; }
+            return t;
+        };
+        const extrairComIA = apiKey ? async (texto: string, ctx: { ano: number; mes: number }) => {
+            const itens: any[] = []; const TAM = 100_000;
+            for (let ini = 0, k = 1; ini < texto.length; ini += TAM - 2000, k++) {
+                const trecho = texto.slice(ini, ini + TAM);
+                const prompt = `Você lê o Informativo de Jurisprudência do TJGO (${String(ctx.mes).padStart(2, "0")}/${ctx.ano}), lote ${k}. Cada item do informativo traz um tema/assunto, o órgão julgador, o processo e o entendimento (ementa ou resumo).
+"""
+${trecho}
+"""
+Extraia TODOS os itens de jurisprudência deste trecho, com fidelidade. NÃO invente nada: "enunciado" deve ser o entendimento firmado COMO CONSTA no texto (pode resumir só o que for acessório). Ignore capa, sumário, apresentação e rodapés.
+Responda SOMENTE um array JSON (sem markdown); se não houver itens, []. Cada item: {"titulo":"assunto em poucas palavras","enunciado":"entendimento firmado","area":"ramo do direito","processo":"classe e número, órgão julgador e data, se constarem"}`;
+                try {
+                    const resp = await generateWithFallbackAndRetry({ apiKey, keyPool, isNativeAllowed: nativo, primaryModel: "gemini-3.1-flash-lite", fallbackModel: "gemini-flash-latest", contents: [{ role: "user", parts: [{ text: prompt }] }], config: { temperature: 0.1, maxOutputTokens: 8192 } });
+                    const arr = JSON.parse((resp.text || "[]").replace(/```json/g, "").replace(/```/g, "").trim()); if (Array.isArray(arr)) itens.push(...arr);
+                } catch { /* lote sem resposta válida: o mês fica sem esse trecho e será tentado de novo se vier vazio */ }
+                if (ini + TAM >= texto.length) break;
+            }
+            return itens;
+        } : undefined;
+        const r = await coletarPrecedentes({ existentes, simular, lerPdf, extrairComIA, andamento: (m, f, t) => { job.mensagem = m; job.feitas = f; job.total = t; },
             gravar: async (itens) => { await gravarPrecedentes(itens.map((i) => ({ ...i, anexadoPor }))); } });
         job.resultado = { ...r, novos: r.novos.slice(0, 0) };      // o navegador não precisa da lista inteira; relê pela lista do banco
         job.status = "concluido"; job.feitas = job.total;
@@ -995,6 +1024,7 @@ app.post("/api/chat-agaia", async (req, res) => {
         const claude = pedidoClaude(req);      // IA escolhida pelo usuário: Claude (chave dele) ou Gemini
         const apiKey = extractApiKey(req);
         if (!apiKey && !claude) return res.status(401).json({ error: "Chave da API Gemini ausente." });
+        iniciarPulsoJson(res);      // a reescrita pode passar de 60 s: sem isso a hospedagem devolvia 504 e o assessor perdia o pedido
         
         const { message, conversationHistory, currentMinute, auditAnalysis, originalProcessText, executiveSummary, customPromptText, cabinetTesesText, isTesesEnabled, paradigmModelText, paradigmModelTitle, isParadigmEnabled } = req.body;
         

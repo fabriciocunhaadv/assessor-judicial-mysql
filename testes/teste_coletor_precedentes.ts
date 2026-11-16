@@ -26,21 +26,21 @@ const muitos = Array.from({ length: 400 }, (_, i) => ({ numero: i + 1, tipo: "te
 const e = escolherItens(muitos, 2026); ok(e.escolhidos.length === 150 && Math.min(...e.escolhidos.map((x) => x.numero)) === 251, "sem data: só os 150 de maior número");
 // ---- coleta, duplicidade
 const gravados: any[] = [];
-const r1 = await coletarPrecedentes({ existentes: [], htmlPorFonte: html, anoAtual: 2026, gravar: async (l) => { gravados.push(...l); } });
+const r1 = await coletarPrecedentes({ existentes: [], htmlPorFonte: html, parte2: false, anoAtual: 2026, gravar: async (l) => { gravados.push(...l); } });
 ok(r1.totalNovos > 20 && gravados.length === r1.totalNovos, `1ª coleta cadastrou ${r1.totalNovos}`);
 ok(gravados.every((p) => p.origem === "coletor_site_apoio" && p.avisoOrigem === AVISO_ORIGEM_COLETA && p.statement.length > 10 && p.sourceUrl.startsWith("https://")), "todo item vem marcado como coletado do site de apoio, com link");
 ok(new Set(gravados.map((p) => p.id)).size === gravados.length, "ids sem repetição");
-const r2 = await coletarPrecedentes({ existentes: gravados, htmlPorFonte: html, anoAtual: 2026, gravar: async () => { ok(false, "2ª coleta não deveria gravar nada"); } });
+const r2 = await coletarPrecedentes({ existentes: gravados, htmlPorFonte: html, parte2: false, anoAtual: 2026, gravar: async () => { ok(false, "2ª coleta não deveria gravar nada"); } });
 ok(r2.totalNovos === 0 && r2.totalJaExistiam === r1.totalNovos + r1.totalJaExistiam, `2ª coleta: 0 novos e ${r2.totalJaExistiam} já existiam`);
 // parte já existe vinda de PDF/base interna com outro id: não duplica
 const um = gravados[0], k = chaveDoPrecedente(um);
-const r3 = await coletarPrecedentes({ existentes: [{ id: "custom-123", tribunal: um.tribunal, type: um.type, number: um.number }], htmlPorFonte: html, anoAtual: 2026 });
+const r3 = await coletarPrecedentes({ existentes: [{ id: "custom-123", tribunal: um.tribunal, type: um.type, number: um.number }], htmlPorFonte: html, parte2: false, anoAtual: 2026 });
 ok(r3.totalNovos === r1.totalNovos - 1, "item que já existe por outro caminho (PDF) não é cadastrado de novo");
 ok(chaveDoPrecedente({ tribunal: "STF", number: "Súmula Vinculante 4" }) !== chaveDoPrecedente({ tribunal: "STF", number: "Súmula 4" }), "SV 4 ≠ Súmula 4");
 // simulação não grava
-let gravou = false; const r4 = await coletarPrecedentes({ existentes: [], htmlPorFonte: html, anoAtual: 2026, simular: true, gravar: async () => { gravou = true; } });
+let gravou = false; const r4 = await coletarPrecedentes({ existentes: [], htmlPorFonte: html, parte2: false, anoAtual: 2026, simular: true, gravar: async () => { gravou = true; } });
 ok(!gravou && r4.simulado && r4.totalNovos === r1.totalNovos, "simulação mostra o que entraria e não grava");
 // falha de uma fonte não derruba as outras
-const r5 = await coletarPrecedentes({ existentes: [], htmlPorFonte: { ...html, "stf-teses": "<html>bloqueado</html>" }, anoAtual: 2026, simular: true });
+const r5 = await coletarPrecedentes({ existentes: [], htmlPorFonte: { ...html, "stf-teses": "<html>bloqueado</html>" }, parte2: false, anoAtual: 2026, simular: true });
 ok(r5.fontes.find((f) => f.id === "stf-teses")?.ok === false && r5.fontes.filter((f) => f.ok).length === 5, "uma fonte com erro não derruba as outras");
 console.log(falhas ? `\n${falhas} FALHA(S)` : "\nTUDO OK"); process.exit(falhas ? 1 : 0);
