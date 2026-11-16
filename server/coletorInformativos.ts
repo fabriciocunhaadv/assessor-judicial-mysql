@@ -7,6 +7,8 @@ export const AVISO_TJGO = "Informativo do TJGO (PDF oficial) lido por IA; confir
 export const URL_JT_LISTA = "https://scon.stj.jus.br/SCON/jt/jt.jsp";
 export const urlEdicaoJT = (n: number) => `https://scon.stj.jus.br/SCON/jt/doc.jsp?livre=${encodeURIComponent(`'${n}' INPATH(TIT)`).replace(/%28/g, "(").replace(/%29/g, ")")}`;
 export const URL_TJGO = "https://transparencia.tjgo.jus.br/jurisprudencia/informativo-jurisprudencia";
+/** A página carrega a lista por esta API pública (JSON): { data: [{ ano, mes, arquivoPdfUrl }], meta: { totalPages } }. */
+export const urlApiTjgo = (pagina: number, porPagina = 50) => `https://transparencia-api.tjgo.jus.br/api/v1/jurisprudencia/informativos_jurisprudencia?page=${pagina}&perPage=${porPagina}`;
 
 const MESES = ["janeiro", "fevereiro", "marco", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const NOME_MES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -107,18 +109,38 @@ export function listarPdfsTjgo(html: string): PdfInformativo[] {
   }
   return [...out.values()].sort((a, b) => b.ano - a.ano || b.mes - a.mes);
 }
+/** Lê uma página da API de informativos do TJGO. */
+export function pdfsDaApiTjgo(json: string): { pdfs: PdfInformativo[]; totalPaginas: number } {
+  const j = JSON.parse(json); const pdfs: PdfInformativo[] = [];
+  for (const d of Array.isArray(j?.data) ? j.data : []) {
+    const ano = +d?.ano, mes = +d?.mes, url = String(d?.arquivoPdfUrl || "");
+    if (ano >= 2000 && mes >= 1 && mes <= 12 && /^https:\/\/.+\.pdf$/i.test(url)) pdfs.push({ url, ano, mes, nome: decodeURIComponent(url.split("/").pop() || "") });
+  }
+  return { pdfs, totalPaginas: Math.max(1, +j?.meta?.totalPages || 1) };
+}
+
 export interface ItemInformativoIA { titulo: string; enunciado: string; area?: string; processo?: string }
 
 export async function coletarInformativosTjgo(o: {
   baixar: (u: string) => Promise<string>; lerPdf: (url: string) => Promise<string>; extrairComIA?: (texto: string, ctx: { ano: number; mes: number }) => Promise<ItemInformativoIA[]>;
-  existentes: any[]; anoAtual: number; agora: string; htmlPagina?: string; simular?: boolean; gravar?: (l: any[]) => Promise<void>; maxMeses?: number;
+  existentes: any[]; anoAtual: number; agora: string; htmlPagina?: string; jsonPaginas?: string[]; simular?: boolean; gravar?: (l: any[]) => Promise<void>; maxMeses?: number;
 }) {
   const r: ResumoFonte = { id: "tjgo-informativos", rotulo: "TJGO · Informativos de Jurisprudência", ok: false, lidos: 0, naoFirmes: 0, foraJanela: 0, candidatos: 0, novos: 0, jaExistiam: 0 };
   const novos: any[] = [];
   try {
-    const html = o.htmlPagina ?? await o.baixar(URL_TJGO);
-    const pdfs = listarPdfsTjgo(html);
-    if (!pdfs.length) throw new Error("não achei os PDFs dos informativos na página (ela pode carregar a lista por script; nesse caso a coleta precisa ser feita pela extensão)");
+    let pdfs: PdfInformativo[] = [];
+    if (o.htmlPagina != null) pdfs = listarPdfsTjgo(o.htmlPagina);      // só em teste: página já salva
+    else {
+      const minAnoLista = o.anoAtual - 2; const vistos = new Set<string>();
+      for (let pg = 1, total = 1; pg <= total && pg <= 20; pg++) {
+        const txt = o.jsonPaginas?.[pg - 1] ?? await o.baixar(urlApiTjgo(pg));
+        const lido = pdfsDaApiTjgo(txt); total = lido.totalPaginas;
+        for (const p of lido.pdfs) { const k = `${p.ano}-${p.mes}`; if (!vistos.has(k)) { vistos.add(k); pdfs.push(p); } }
+        if (lido.pdfs.length && lido.pdfs.every((p) => p.ano < minAnoLista)) break;      // já passou da janela
+      }
+      pdfs.sort((a, b) => b.ano - a.ano || b.mes - a.mes);
+    }
+    if (!pdfs.length) throw new Error("a lista de informativos do TJGO veio vazia (a API do site pode ter mudado)");
     r.lidos = pdfs.length;
     const minAno = o.anoAtual - 2;
     const dentro = pdfs.filter((p) => p.ano >= minAno && p.ano <= o.anoAtual); r.foraJanela = pdfs.length - dentro.length; r.candidatos = dentro.length;
@@ -145,6 +167,8 @@ export async function coletarInformativosTjgo(o: {
         novos.push(...lote); feitos++;
       } catch (e: any) { falhasMes.push(`${NOME_MES[p.mes - 1]}/${p.ano}: ${String(e?.message || e).slice(0, 80)}`); }
     }
+    const restam = Math.max(0, pendentes.length - (o.maxMeses ?? 12));
+    if (restam) r.rotulo = `${r.rotulo} (restam ${restam} mês(es); clique de novo para continuar)`;
     r.novos = o.simular ? pendentes.slice(0, o.maxMeses ?? 12).length : novos.length; r.ok = true;
     if (falhasMes.length) { r.naoFirmes = falhasMes.length; r.erro = `meses com problema: ${falhasMes.slice(0, 3).join("; ")}`; }
     if (o.simular) return { resumo: { ...r, novos: pendentes.length, rotulo: `TJGO · Informativos (${pendentes.length} mês(es) a ler; os itens só aparecem depois da leitura)` }, novos: [] };

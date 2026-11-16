@@ -134,7 +134,7 @@ export interface ResumoFonte { id: string; rotulo: string; ok: boolean; erro?: s
 export interface ResultadoColeta { anos: number[]; fontes: ResumoFonte[]; novos: any[]; totalNovos: number; totalJaExistiam: number; simulado: boolean }
 
 /** Só para teste: com COLETOR_SITE_BASE definida, troca o endereço dos sites por um servidor local. */
-export const trocarBase = (url: string): string => { const b = process.env.COLETOR_SITE_BASE; return b ? url.replace(/^https:\/\/(tesesesumulas\.com\.br|scon\.stj\.jus\.br|transparencia\.tjgo\.jus\.br|dg-transparencia-admin-prd\.s3\.tjgo\.jus\.br)/, b) : url; };
+export const trocarBase = (url: string): string => { const b = process.env.COLETOR_SITE_BASE; return b ? url.replace(/^https:\/\/(tesesesumulas\.com\.br|scon\.stj\.jus\.br|transparencia\.tjgo\.jus\.br|transparencia-api\.tjgo\.jus\.br|dg-transparencia-admin-prd\.s3\.tjgo\.jus\.br)/, b) : url; };
 export async function baixarPagina(url: string): Promise<string> {
   url = trocarBase(url);
   const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; AssessorJudicial-Coletor)", "Accept": "text/html" }, signal: AbortSignal.timeout(120_000) });
@@ -147,7 +147,7 @@ export async function coletarPrecedentes(opts: {
   andamento?: (msg: string, feitas: number, total: number) => void; gravar?: (itens: any[]) => Promise<void>; agora?: Date;
   /** Parte 2 (Jurisprudência em Teses e informativos do TJGO). Em teste, as páginas vêm prontas. */
   parte2?: boolean; lerPdf?: (url: string) => Promise<string>; extrairComIA?: (texto: string, ctx: { ano: number; mes: number }) => Promise<ItemInformativoIA[]>;
-  htmlJT?: { lista?: string; edicoes?: Record<number, string> }; htmlTjgo?: string;
+  htmlJT?: { lista?: string; edicoes?: Record<number, string> }; jsonTjgo?: string[];
 }): Promise<ResultadoColeta> {
   const agoraD = opts.agora || new Date(), anoAtual = opts.anoAtual || agoraD.getFullYear();
   const fontes = opts.fontes || FONTES_COLETA, baixar = opts.baixar || baixarPagina, agora = agoraD.toISOString();
@@ -181,7 +181,7 @@ export async function coletarPrecedentes(opts: {
     const jt = await coletarJT({ ...comuns, htmlLista: opts.htmlJT?.lista, htmlEdicao: opts.htmlJT?.edicoes });
     resumo.push(jt.resumo); novos.push(...jt.novos); feitas++;
     opts.andamento?.("Lendo TJGO · Informativos…", feitas, fontes.length + 2);
-    const tj = await coletarInformativosTjgo({ ...comuns, lerPdf: opts.lerPdf || (async () => { throw new Error("leitor de PDF não configurado"); }), extrairComIA: opts.extrairComIA, htmlPagina: opts.htmlTjgo });
+    const tj = await coletarInformativosTjgo({ ...comuns, lerPdf: opts.lerPdf || (async () => { throw new Error("leitor de PDF não configurado"); }), extrairComIA: opts.extrairComIA, jsonPaginas: opts.jsonTjgo });
     resumo.push(tj.resumo); novos.push(...tj.novos); feitas++;
   }
   opts.andamento?.("Concluído", feitas, feitas);

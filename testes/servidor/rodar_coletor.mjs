@@ -13,7 +13,7 @@ const site = http.createServer((req, res) => {
   const dec = decodeURIComponent(req.url);
   if (req.url.startsWith("/SCON/jt/jt.jsp")) id = "stj-jt-lista";
   const ed = dec.match(/livre='(\d+)' INPATH/); if (ed) id = `stj-jt-${ed[1]}`;
-  if (req.url.startsWith("/jurisprudencia/informativo-jurisprudencia")) id = "tjgo-informativos";
+  const pg = req.url.match(/informativos_jurisprudencia\?page=(\d+)/); if (pg) { const j = path.join(raiz, `testes/fixtures/coletor/tjgo-api-${pg[1]}.json`); try { const b = readFileSync(j); acessos++; res.writeHead(200, { "Content-Type": "application/json" }); return res.end(b); } catch { res.writeHead(404); return res.end(); } }
   let arq; try { arq = id && readFileSync(path.join(raiz, `testes/fixtures/coletor/${id}.html`)); } catch {}
   if (!arq) { res.writeHead(404); return res.end(); } acessos++; res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); res.end(arq);
 }).listen(8977);
@@ -35,7 +35,7 @@ try {
   ok(sim.resultado.fontes.length === 8 && sim.resultado.fontes.every((f) => f.ok), `simulação: 8 fontes, todas ok (${sim.resultado.fontes.filter((f) => f.ok).length})`);
   const jt = sim.resultado.fontes.find((f) => f.id === "stj-jt"), tj = sim.resultado.fontes.find((f) => f.id === "tjgo-informativos");
   ok(jt && jt.novos === 4, `Jurisprudência em Teses: ${jt?.novos} teses (edições 283 a 285)`);
-  ok(tj && tj.novos === 5, `TJGO: ${tj?.novos} meses de PDF a ler`);
+  ok(tj && tj.novos === 13, `TJGO: ${tj?.novos} meses de PDF a ler (lista vinda da API do site)`);
   ok((await lista()).length === antes, "simulação não gravou nada");
   const r1 = await chamar({});
   ok(r1.status === "concluido" && r1.resultado.totalNovos > 20 && r1.resultado.fontes.length === 8, `coleta: ${r1.mensagem}`);
