@@ -108,3 +108,10 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 - **Ainda faltam:** informativos do STJ (falta HTML de uma edição aberta; o que veio era o índice) e do STF (a lista vem de uma chamada interna do site; falta a URL dela).
 - **Chat da minuta, 504:** `/api/chat-agaia` demorava mais de 60 s sem mandar nada e a hospedagem devolvia 504. Agora `server/pulsoJson.ts` manda um espaço a cada 4 s e entrega o JSON no fim (erro vai em `{ error }`; o `MinuteViewer` olha esse campo). Teste: `testes/teste_pulso_json.ts`.
 - **Testes novos:** `testes/teste_coletor_parte2.ts`, fixtures em `testes/fixtures/coletor/`, `rodar_coletor.mjs` (agora 8 fontes).
+
+### Mesa de Audiência (Pauta Normal) com PDF grande — fim do travamento
+- **Problema (juiz Gabriel):** PDF de 600–1.000 páginas na Pauta Normal: a Mesa lia TODAS as páginas na própria tela (`lerAutosPdf` dentro do clique) e só depois oferecia o dossiê em segundo plano; o navegador travava ("Página sem resposta", "Lendo o PDF 561/675").
+- **Agora:** `contarPaginasDoPdf` (`src/utils/pdfExtractor.ts`) conta as páginas sem ler o texto. Com ≥ `LIMITE_PAGINAS_MESA_FOREGROUND` (350) a Mesa abre ANTES o `ProcessoGrandeDialog` (preparar dossiê / continuar mesmo assim / cancelar). "Preparar" entrega os PDFs a `gerenteGigantes.iniciar` (leitura sequencial em lotes, em segundo plano, sobrevive a recarregar a página) e o briefing roda sozinho quando o dossiê fica pronto (`PainelDossie` → `aplicarDossie`, que já existia). Reaproveita dossiê pronto do mesmo número. "Continuar mesmo assim" mantém o caminho antigo (lê na tela; pode cortar). Arquivos .txt junto com PDF grande não entram no dossiê (aviso na tela).
+- Também: o `<input type=file>` da Mesa agora limpa o valor após escolher, para poder escolher o mesmo arquivo de novo (ex.: depois de cancelar).
+- **Não reproduzido com PDF real de 600+ páginas** (teste com PDF de 400 páginas em branco). Limite do dossiê continua 3.000 páginas por vez.
+- Teste: `testes/teste_mesa_pdf_grande.py`.

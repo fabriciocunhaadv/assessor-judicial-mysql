@@ -115,6 +115,23 @@ const cederAoNavegador = (): Promise<void> => new Promise((ok) => {
 /** Acima disto o PDF não é carregado inteiro na memória: o leitor busca só os trechos de que precisa (arquivos de centenas de MB derrubavam a aba). */
 export const limiteMemoriaPdf = (): number => (Number((globalThis as any).__PDF_LIMITE_MB) || 64) * 1024 * 1024;
 
+/** Conta as páginas de um PDF SEM ler o texto (rápido; arquivo grande é aberto por partes, sem encher a memória). Devolve 0 se não conseguir. */
+export async function contarPaginasDoPdf(file: File, prazoMs = 25000): Promise<number> {
+  let url: string | null = null, tarefa: any = null;
+  try {
+    const leve = file.size > limiteMemoriaPdf();
+    if (leve) url = URL.createObjectURL(file);
+    const fonte: any = leve ? { url, disableAutoFetch: true, rangeChunkSize: 1 << 20, useSystemFonts: true, disableFontFace: true, stopAtErrors: false }
+      : { data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true, disableFontFace: true, stopAtErrors: false };
+    tarefa = pdfjsLib.getDocument(fonte);
+    const pdf: any = await Promise.race([tarefa.promise, new Promise((_, rej) => setTimeout(() => rej(new Error("prazo")), prazoMs))]);
+    const n = Number(pdf?.numPages) || 0;
+    try { await pdf.destroy(); } catch { /* já liberado */ }
+    return n;
+  } catch { try { await tarefa?.destroy?.(); } catch { /* ignora */ } return 0; }
+  finally { if (url) URL.revokeObjectURL(url); }
+}
+
 export async function extractTextFromPdf(
   file: File,
   onProgress?: (current: number, total: number) => void,

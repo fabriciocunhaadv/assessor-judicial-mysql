@@ -74,6 +74,7 @@ import {
 } from '../utils/hearingsDb';
 import toast from 'react-hot-toast';
 import { lerAutosPdf, ExtensaoNecessaria } from '../utils/lerAutosPdf';
+import { contarPaginasDoPdf } from '../utils/pdfExtractor';
 import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { guardarUploadPendente, apagarUploadPendente, lerUploadPendente } from '../utils/uploadsPendentes';
@@ -84,6 +85,8 @@ import { PainelDossie } from './PainelDossie';
 
 // acima disso a Mesa não lê os autos de uma vez com segurança: usa o dossiê preparado em lotes
 const LIMITE_CHARS_MESA = 1_000_000;
+/** A partir deste número de páginas a Mesa NÃO lê tudo na tela (travava o navegador): oferece o dossiê em segundo plano, lido em lotes pelo gerente de Gigantes. */
+const LIMITE_PAGINAS_MESA_FOREGROUND = 350;
 // Texto bruto guardado na audiência (Firestore): no máximo 300 mil caracteres, mas guardando o INÍCIO e o FIM dos autos (as movimentações recentes ficam no fim)
 const limitarTextoBruto = (t: string, max = 300000): string => {
   const x = String(t || '');
@@ -671,6 +674,33 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
     const extraidos: { nome: string; texto: string; pageCount: number; semTexto?: number[]; naoLidas?: number[]; arquivo?: () => Promise<File | null> }[] = [];
 
     try {
+      // PROCESSO GRANDE (centenas de páginas): ler tudo aqui, na tela, travava o navegador ("página sem resposta").
+      // Conta as páginas SEM ler o texto e, se for grande, oferece o mesmo dossiê em lotes e em segundo plano dos Gigantes (a leitura roda no gerente e sobrevive a recarregar a página).
+      const pdfsDaVez = fileArray.filter((f) => !f.name.toLowerCase().endsWith('.txt'));
+      if (pdfsDaVez.length && document.documentElement.dataset.assessorAuto !== '1') {
+        setExtractionProgressText('Conferindo o tamanho dos autos...');
+        let paginasTotais = 0;
+        for (const f of pdfsDaVez) paginasTotais += await contarPaginasDoPdf(f);
+        if (paginasTotais >= LIMITE_PAGINAS_MESA_FOREGROUND) {
+          const escolhaG = await new Promise<EscolhaDossie>((resolver) => setDlgDossie({ paginas: paginasTotais, tokens: Math.round(paginasTotais * 950), corte: null, resolver }));
+          setDlgDossie(null);
+          if (escolhaG === 'cancelar') return;
+          if (escolhaG === 'preparar') {
+            await gerenteGigantes.carregar();
+            const numeroAtual = alvoForcado?.processNumber || activeHearing?.processNumber || '';
+            const existenteG = numeroAtual ? gerenteGigantes.dossieDoProcesso(numeroAtual) : null;
+            const idJob = existenteG || await gerenteGigantes.iniciar(pdfsDaVez, { promptText: '', promptTitle: 'Mesa de Audiência', actType: 'audiencia', processNumber: numeroAtual, finalidade: 'dossie', origem: 'mesa', userUid: (user as any)?.uid, userEmail: user?.email || '' });
+            let alvoG = alvoForcado || activeHearing;
+            if (!alvoG) { alvoG = createEmptyHearing(user?.email || '', userProfile?.name || ''); setActiveHearing(alvoG); }
+            const preparadoG: HearingRecord = { ...alvoG, uploadedPdfNames: Array.from(new Set([...(alvoG.uploadedPdfNames || []), ...pdfsDaVez.map((f) => f.name)])), dossieJobId: idJob, dossieAplicado: false };
+            setActiveHearing(preparadoG);
+            await handleSaveActiveHearing(preparadoG);
+            if (fileArray.length > pdfsDaVez.length) setAiError('Os arquivos .txt desta vez não entraram no dossiê (ele lê só os PDFs). Anexe-os de novo depois que o dossiê ficar pronto.');
+            return;      // o briefing roda sozinho quando o dossiê ficar pronto (PainelDossie → aplicarDossie)
+          }
+          // 'normal': segue como antes (lê aqui; parte dos autos pode ser cortada)
+        }
+      }
       for (let i = 0; i < fileArray.length; i++) {
         const file = fileArray[i];
         fileNames.push(file.name);
@@ -1353,7 +1383,9 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
                               className="hidden"
                               onChange={(e) => {
                                 if (e.target.files && e.target.files.length > 0) {
-                                  handlePdfFilesUpload(e.target.files);
+                                  const escolhidos = Array.from(e.target.files);
+                                  e.target.value = '';      // permite escolher o MESMO arquivo de novo (ex.: depois de cancelar o aviso de processo grande)
+                                  handlePdfFilesUpload(escolhidos);
                                 }
                               }}
                             />
