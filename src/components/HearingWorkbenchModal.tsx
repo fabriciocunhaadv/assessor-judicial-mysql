@@ -669,6 +669,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
     setIsExtractingPdf(true);
     setAiError(null);
     void guardarUploadPendente('mesa', uidMesa, fileArray, { hearingId: (alvoForcado || activeHearing)?.id || null });      // se a página recarregar no meio (atualização de versão), a leitura é retomada sozinha
+    let manterUpload = false;      // dossiê em segundo plano: os arquivos guardados só saem quando a leitura acabar (se a página cair no meio, volta e tenta de novo, no máximo 2 vezes)
     let combinedText = '';
     const fileNames: string[] = [];
     const extraidos: { nome: string; texto: string; pageCount: number; semTexto?: number[]; naoLidas?: number[]; arquivo?: () => Promise<File | null> }[] = [];
@@ -701,6 +702,12 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
             setActiveHearing(preparadoG);
             await handleSaveActiveHearing(preparadoG);
             if (fileArray.length > pdfsDaVez.length) setAiError('Os arquivos .txt desta vez não entraram no dossiê (ele lê só os PDFs). Anexe-os de novo depois que o dossiê ficar pronto.');
+            manterUpload = true;
+            let encerrado = false, cancelar: (() => void) | undefined;
+            cancelar = gerenteGigantes.inscrever((lista: any[]) => {
+              const j = (lista || []).find((x: any) => x.id === idJob);
+              if (!encerrado && j && j.status !== 'preparando') { encerrado = true; void apagarUploadPendente('mesa', uidMesa); setTimeout(() => cancelar?.(), 0); }
+            });
             return;      // o briefing roda sozinho quando o dossiê ficar pronto (PainelDossie → aplicarDossie)
           }
           // 'normal': segue como antes (lê aqui; parte dos autos pode ser cortada)
@@ -780,7 +787,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
     } finally {
       setIsExtractingPdf(false);
       setExtractionProgressText('');
-      void apagarUploadPendente('mesa', uidMesa);
+      if (!manterUpload) void apagarUploadPendente('mesa', uidMesa);
     }
   };
 
