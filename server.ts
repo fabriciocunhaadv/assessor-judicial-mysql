@@ -26,6 +26,7 @@ import { legislacaoAplicavelAoCaso, consultarLegislacao, diagnosticoLegislacao, 
 import { outrasLeisRouter, consultarOutrasLeis } from './server/outrasLeis';
 import { listarRegimes, gravarRegime, apagarRegime, sanearRegime } from './server/taxonomiaDb';
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
+import { coletarPrecedentes, FONTES_COLETA, type ResultadoColeta } from './server/coletorPrecedentes';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
 import { getApplicableTaxonomySummary } from './src/data/legalTaxonomy';
@@ -722,6 +723,36 @@ app.get("/api/custom-precedents", async (_req, res) => {
         const [list, conferencias] = await Promise.all([listarPrecedentes(), listarConferencias()]);
         res.json({ success: true, count: list.length, precedents: list, conferencias });
     } catch (e: any) { res.status(500).json({ success: false, error: "Não consegui ler os precedentes do banco." }); }
+});
+
+// Coletor automático de súmulas e teses (sites de apoio). SÓ o Super Admin aciona; os itens aparecem para todos os gabinetes. Roda em segundo plano e só cadastra o que ainda não existe.
+interface JobColeta { id: string; status: "rodando" | "concluido" | "erro"; mensagem: string; feitas: number; total: number; simulado: boolean; resultado?: ResultadoColeta; criadoEm: number }
+const jobsColeta = new Map<string, JobColeta>();
+app.post("/api/coletar-precedentes", async (req: any, res) => {
+    if (!req.usuarioSessao?.superAdmin) return res.status(403).json({ success: false, error: "Somente o Super Administrador alimenta a base de súmulas e teses (ela é compartilhada por todos os gabinetes)." });
+    for (const [k, v] of jobsColeta) if (Date.now() - v.criadoEm > 3 * 3600_000) jobsColeta.delete(k);
+    const emAndamento = [...jobsColeta.values()].find((j) => j.status === "rodando");
+    if (emAndamento) return res.json({ success: true, jobId: emAndamento.id, jaRodando: true });
+    const simular = req.body?.simular === true;
+    const job: JobColeta = { id: `col_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, status: "rodando", mensagem: "Começando…", feitas: 0, total: FONTES_COLETA.length, simulado: simular, criadoEm: Date.now() };
+    jobsColeta.set(job.id, job);
+    const anexadoPor = req.usuarioSessao?.email || "";
+    res.json({ success: true, jobId: job.id });
+    (async () => {
+        const existentes = await loadServerCustomPrecedents();
+        const r = await coletarPrecedentes({ existentes, simular, andamento: (m, f, t) => { job.mensagem = m; job.feitas = f; job.total = t; },
+            gravar: async (itens) => { await gravarPrecedentes(itens.map((i) => ({ ...i, anexadoPor }))); } });
+        job.resultado = { ...r, novos: r.novos.slice(0, 0) };      // o navegador não precisa da lista inteira; relê pela lista do banco
+        job.status = "concluido"; job.feitas = job.total;
+        const falhas = r.fontes.filter((f) => !f.ok).length;
+        job.mensagem = `${simular ? "Simulação: entrariam" : "Cadastrados"} ${r.totalNovos} item(ns) novo(s); ${r.totalJaExistiam} já existiam${falhas ? `; ${falhas} fonte(s) com falha` : ""}.`;
+    })().catch((e) => { job.status = "erro"; job.mensagem = String(e?.message || e).slice(0, 300); });
+});
+app.get("/api/coletar-precedentes/:id", (req: any, res) => {
+    if (!req.usuarioSessao?.superAdmin) return res.status(403).json({ success: false, error: "Somente o Super Administrador." });
+    const j = jobsColeta.get(String(req.params.id));
+    if (!j) return res.status(404).json({ success: false, error: "Coleta não encontrada (o servidor pode ter reiniciado). Clique em coletar de novo: o que já foi cadastrado não se repete." });
+    res.json({ success: true, ...j });
 });
 
 // Só o Super Admin confere itens na fonte oficial e exclui anexos.

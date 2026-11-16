@@ -19,7 +19,8 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  FileText
+  FileText,
+  DownloadCloud,
 } from "lucide-react";
 import {
   BINDING_SOURCES,
@@ -58,6 +59,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
   const [precedentsVersion, setPrecedentsVersion] = useState<number>(0);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [coleta, setColeta] = useState<{ rodando: boolean; mensagem: string; resultado?: any; erro?: string; simulado?: boolean } | null>(null);
   const [lastSyncDate, setLastSyncDate] = useState<number>(() => getLastPrecedentsSync());
   const [isUploadingPdf, setIsUploadingPdf] = useState<boolean>(false);
   const [pdfUploadStatus, setPdfUploadStatus] = useState<string | null>(null);
@@ -102,6 +104,26 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
     } catch (err: any) {
       if (avisar) { setSyncMessage(`❌ Não consegui atualizar: ${err?.message || "Falha de rede"}`); setTimeout(() => setSyncMessage(null), 5000); }
     } finally { setIsSyncing(false); }
+  };
+  // Coletor automático (só Super Admin): lê os sites de apoio, ano atual e 2 anteriores, e cadastra só o que ainda não existe.
+  const coletarDosSites = async (simular: boolean) => {
+    if (!isSuperAdmin || coleta?.rodando) return;
+    setColeta({ rodando: true, mensagem: "Começando…", simulado: simular });
+    try {
+      const r = await fetch("/api/coletar-precedentes", { method: "POST", headers: { ...getApiHeaders(), "Content-Type": "application/json" }, body: JSON.stringify({ simular }) });
+      const d = await r.json(); if (!d.success) throw new Error(d.error || "Não consegui iniciar a coleta");
+      for (let i = 0; i < 600; i++) {
+        await new Promise((ok) => setTimeout(ok, 2000));
+        const st = await (await fetch(`/api/coletar-precedentes/${d.jobId}`, { headers: getApiHeaders() })).json();
+        if (!st.success) throw new Error(st.error || "Perdi o andamento da coleta");
+        if (st.status === "rodando") { setColeta({ rodando: true, mensagem: `${st.mensagem} (${st.feitas}/${st.total})`, simulado: simular }); continue; }
+        if (st.status === "erro") throw new Error(st.mensagem);
+        setColeta({ rodando: false, mensagem: st.mensagem, resultado: st.resultado, simulado: simular });
+        if (!simular) await recarregarLista();
+        return;
+      }
+      throw new Error("A coleta demorou demais. Clique de novo: o que já foi cadastrado não se repete.");
+    } catch (e: any) { setColeta({ rodando: false, mensagem: "", erro: e?.message || "Falha na coleta", simulado: simular }); }
   };
   const alternarConferencia = async (item: BindingPrecedent) => {
     const conferir = !conferencias[item.id];
@@ -330,6 +352,12 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
                   className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${isSyncing ? "bg-indigo-50 text-indigo-400 border-indigo-200 cursor-not-allowed" : "bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-700"}`}>
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} /><span>{isSyncing ? "Atualizando..." : "Atualizar lista"}</span>
                 </button>
+                <button onClick={() => coletarDosSites(false)} disabled={!!coleta?.rodando} data-testid="btn-coletar-sites" title="Lê os sites de apoio (Teses & Súmulas): ano atual e 2 anteriores. Só cadastra o que ainda não existe. Itens vêm marcados como 'coletado do site de apoio, confira no tribunal'."
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${coleta?.rodando ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed" : "bg-white dark:bg-slate-800 text-emerald-700 border-emerald-300 hover:bg-emerald-50"}`}>
+                  <DownloadCloud className={`w-3.5 h-3.5 ${coleta?.rodando ? "animate-pulse" : ""}`} /><span>{coleta?.rodando && !coleta.simulado ? "Coletando..." : "Coletar dos sites"}</span>
+                </button>
+                <button onClick={() => coletarDosSites(true)} disabled={!!coleta?.rodando} data-testid="btn-simular-coleta" title="Mostra o que entraria, sem cadastrar nada"
+                  className="px-2 py-1.5 rounded-xl border border-slate-200 text-[11px] font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer disabled:cursor-not-allowed">Só simular</button>
               </>
             ) : <span className="hidden md:block px-2 text-[11px] text-slate-500">Base mantida pelo Super Administrador.</span>}
             <div className="shrink-0 md:mt-1"><button disabled={!isSuperAdmin} onClick={toggleGrounding} role="switch" aria-checked={isGroundingActive}
@@ -350,6 +378,19 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
                 className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400" />
             </div>
               {isSuperAdmin && <FontesOficiaisPanel />}
+              {isSuperAdmin && coleta && (
+                <div data-testid="coleta-resumo" className={`px-3 py-2 rounded-lg border text-xs space-y-1 ${coleta.erro ? "bg-red-50 border-red-200 text-red-800" : "bg-emerald-50 border-emerald-200 text-emerald-900"}`}>
+                  <div className="font-bold">{coleta.erro ? `❌ ${coleta.erro}` : coleta.rodando ? `⏳ ${coleta.mensagem}` : `✅ ${coleta.mensagem}`}</div>
+                  {coleta.resultado?.fontes && (
+                    <ul className="space-y-0.5">
+                      {coleta.resultado.fontes.map((f: any) => (
+                        <li key={f.id}>{f.ok ? "•" : "⚠️"} <strong>{f.rotulo}</strong>: {f.ok ? `${f.novos} novo(s), ${f.jaExistiam} já existiam (lidos ${f.lidos}; fora do período ${f.foraJanela}; sem tese firmada ${f.naoFirmes})` : `falhou: ${f.erro}`}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {!coleta.rodando && <button onClick={() => setColeta(null)} className="text-[11px] underline cursor-pointer">fechar</button>}
+                </div>
+              )}
               {(pdfUploadStatus || syncMessage) && (
             <div className="px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /><span>{pdfUploadStatus || syncMessage}</span></div>
           )}
@@ -378,7 +419,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
           ) : (
             paginatedPrecedents.map((item) => {
               const aberto = expandidos.has(item.id), longo = item.statement.length > 280, c = conferencias[item.id];
-              const extra = (item as any).origem === "anexo_pdf" || String(item.id).startsWith("custom-");
+              const extra = (item as any).origem === "anexo_pdf" || (item as any).origem === "coletor_site_apoio" || String(item.id).startsWith("custom-");
               return (
                 <article key={item.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 hover:border-emerald-500/50 transition shadow-2xs">
                   <div className="flex items-start gap-3 p-3 sm:p-4 pb-2">
@@ -389,7 +430,7 @@ export const BindingPrecedentsModal: React.FC<BindingPrecedentsModalProps> = ({
                         {c ? (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1" title={`Conferido na fonte oficial por ${c.por}${c.nota ? ` — ${c.nota}` : ""}`}><Check className="w-3 h-3" /> Conferido em {new Date(c.em).toLocaleDateString("pt-BR")}</span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300" title="Ainda não conferido na fonte oficial: confira o enunciado antes de citar">{(item as any).origem === "anexo_pdf" ? "Anexo • extraído por IA • conferir" : "Base interna • conferir na fonte"}</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300" title="Ainda não conferido na fonte oficial: confira o enunciado antes de citar">{(item as any).origem === "anexo_pdf" ? "Anexo • extraído por IA • conferir" : (item as any).origem === "coletor_site_apoio" ? "Coletado do site de apoio • confira no tribunal" : "Base interna • conferir na fonte"}</span>
                         )}
                         {(item as any).sourceFile && (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700 flex items-center gap-1 min-w-0"><FileUp className="w-3 h-3 shrink-0" /><span className="truncate max-w-[160px] sm:max-w-xs" title={`Importado do arquivo: ${(item as any).sourceFile}`}>PDF: {(item as any).sourceFile}</span></span>

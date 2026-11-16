@@ -14,6 +14,8 @@ const f = window.fetch.bind(window);
 window.fetch = (async (i: any, o?: any) => {
   const u = String(i), j = (x: any) => new Response(JSON.stringify(x), { status: 200, headers: { "Content-Type": "application/json" } });
   if (u.includes("/api/custom-precedents")) return j({ success: true, count: 40, precedents: Array.from({ length: 40 }, (_, k) => mk(k + 1)), conferencias: { "custom-2": { por: "admin", em: Date.now(), nota: "" } } });
+  if (u.includes("/api/coletar-precedentes/")) return j({ success: true, status: "concluido", mensagem: "Cadastrados 12 item(ns) novo(s); 40 já existiam; 1 fonte(s) com falha.", feitas: 6, total: 6, resultado: { fontes: [{ id: "stj-sumulas", rotulo: "STJ · Súmulas", ok: true, novos: 3, jaExistiam: 11, lidos: 676, foraJanela: 640, naoFirmes: 0 }, { id: "stf-teses", rotulo: "STF · Teses de Repercussão Geral", ok: false, erro: "o site respondeu 403" }] } });
+  if (u.includes("/api/coletar-precedentes")) { (window as any).__coleta = o && o.body; return j({ success: true, jobId: "col_x" }); }
   if (u.includes("/api/fontes/leis") && (!o || !o.method || o.method === "GET")) return j({ leis: LEIS });
   if (u.includes("/api/fontes/pendentes")) return j({ itens: PEND, fontesBusca: [], hostsPermitidos: [] });
   return f(i, o);

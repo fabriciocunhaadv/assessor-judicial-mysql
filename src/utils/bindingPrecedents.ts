@@ -9,7 +9,10 @@ export interface BindingPrecedent {
   tags: string[];
   area: "Direito Administrativo / Servidor" | "Direito do Consumidor" | "Direito Bancário" | "Processo Civil / Execução" | "Fazenda Pública" | "Geral";
   /** De onde veio o item: base interna do sistema ou documento anexado por usuário (texto extraído por IA). Sem esse campo = base interna. */
-  origem?: "curadoria_interna" | "anexo_pdf";
+  origem?: "curadoria_interna" | "anexo_pdf" | "coletor_site_apoio";
+  /** Texto de aviso do item coletado automaticamente (ex.: coletado do site de apoio, confira no tribunal). */
+  avisoOrigem?: string;
+  anoRef?: number;
   sourceFile?: string;
   importedAt?: string;
   anexadoPor?: string;
