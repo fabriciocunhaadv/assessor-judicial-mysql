@@ -115,3 +115,5 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 - Também: o `<input type=file>` da Mesa agora limpa o valor após escolher, para poder escolher o mesmo arquivo de novo (ex.: depois de cancelar).
 - **Não reproduzido com PDF real de 600+ páginas** (teste com PDF de 400 páginas em branco). Limite do dossiê continua 3.000 páginas por vez.
 - Teste: `testes/teste_mesa_pdf_grande.py`.
+
+- **Mesa, ajuste (16/11):** o juiz manda a maioria dos processos para a Mesa pela extensão, então o aviso "Processo grande" saiu do caminho normal: com 350+ páginas (contadas antes de ler) ou texto acima de `LIMITE_CHARS_MESA`, a Mesa JÁ prepara o dossiê em segundo plano, sem perguntar e sem a exceção do modo automático (`assessorAuto`), para não correr o risco de perder parte dos autos. O aviso só aparece acima de `LIMITE_PAGINAS_GIGANTE` (3.000 páginas), onde o dossiê não cobre e o juiz decide (reduzir ou seguir com corte). Teste: `testes/teste_mesa_pdf_grande.py` (400 páginas → sem pergunta; 3.100 → pergunta).

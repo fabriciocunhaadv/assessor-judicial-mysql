@@ -78,7 +78,7 @@ import { contarPaginasDoPdf } from '../utils/pdfExtractor';
 import { AvisoInstalarExtensao } from './AvisoInstalarExtensao';
 import { caminhoAtual } from '../utils/pdfViaExtensao';
 import { guardarUploadPendente, apagarUploadPendente, lerUploadPendente } from '../utils/uploadsPendentes';
-import { gerenteGigantes } from '../utils/gigantes/gerente';
+import { gerenteGigantes, LIMITE_PAGINAS_GIGANTE } from '../utils/gigantes/gerente';
 import { descreverCorte, juntarComoServidor, CorteInfo } from '../utils/corteAutos';
 import { ProcessoGrandeDialog, EscolhaDossie } from './ProcessoGrandeDialog';
 import { PainelDossie } from './PainelDossie';
@@ -677,12 +677,17 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
       // PROCESSO GRANDE (centenas de páginas): ler tudo aqui, na tela, travava o navegador ("página sem resposta").
       // Conta as páginas SEM ler o texto e, se for grande, oferece o mesmo dossiê em lotes e em segundo plano dos Gigantes (a leitura roda no gerente e sobrevive a recarregar a página).
       const pdfsDaVez = fileArray.filter((f) => !f.name.toLowerCase().endsWith('.txt'));
-      if (pdfsDaVez.length && document.documentElement.dataset.assessorAuto !== '1') {
+      if (pdfsDaVez.length) {
         setExtractionProgressText('Conferindo o tamanho dos autos...');
         let paginasTotais = 0;
         for (const f of pdfsDaVez) paginasTotais += await contarPaginasDoPdf(f);
         if (paginasTotais >= LIMITE_PAGINAS_MESA_FOREGROUND) {
-          const escolhaG = await new Promise<EscolhaDossie>((resolver) => setDlgDossie({ paginas: paginasTotais, tokens: Math.round(paginasTotais * 950), corte: null, resolver }));
+          // PADRÃO (inclusive quando o processo vem pela extensão): processo grande vai direto para o dossiê em segundo plano, sem perguntar, para não correr o risco de perder parte dos autos.
+          // Só pergunta quando passa do que o dossiê cobre (3.000 páginas), porque aí o juiz precisa decidir (reduzir os autos ou seguir com corte).
+          setExtractionProgressText(`Processo grande (${paginasTotais.toLocaleString('pt-BR')} páginas): preparando o dossiê em segundo plano...`);
+          const escolhaG: EscolhaDossie = paginasTotais > LIMITE_PAGINAS_GIGANTE
+            ? await new Promise<EscolhaDossie>((resolver) => setDlgDossie({ paginas: paginasTotais, tokens: Math.round(paginasTotais * 950), corte: null, resolver }))
+            : 'preparar';
           setDlgDossie(null);
           if (escolhaG === 'cancelar') return;
           if (escolhaG === 'preparar') {
@@ -719,7 +724,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
 
       // Processo grande: acima do limite da Mesa, usa o dossiê preparado em lotes (lê todas as páginas, em segundo plano)
       let dossieJobIdNovo: string | undefined;
-      if (combinedText.length > LIMITE_CHARS_MESA && document.documentElement.dataset.assessorAuto !== '1') {
+      if (combinedText.length > LIMITE_CHARS_MESA) {
         await gerenteGigantes.carregar();
         const numero = (combinedText.slice(0, 30000).match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/) || [''])[0];
         const existente = gerenteGigantes.dossieDoProcesso(numero);
@@ -727,7 +732,7 @@ export const HearingWorkbenchModal: React.FC<HearingWorkbenchModalProps> = ({
           try { const d = await gerenteGigantes.obterDossie(existente); combinedText = d.texto; setExtractionProgressText('Usando o dossiê já pronto deste processo (todas as páginas foram lidas em lotes)...'); } catch { /* segue sem dossiê */ }
         } else {
           const paginas = extraidos.reduce((t, x) => t + (x.pageCount || 0), 0);
-          const escolhaD = await new Promise<EscolhaDossie>((resolver) => setDlgDossie({ paginas, tokens: Math.round(combinedText.length / 3.2), corte: (() => { try { return descreverCorte(juntarComoServidor(extraidos.map((x) => ({ nome: x.nome, texto: x.texto, paginas: x.pageCount }))), LIMITE_CHARS_MESA); } catch { return null; } })(), resolver }));
+          const escolhaD: EscolhaDossie = paginas <= LIMITE_PAGINAS_GIGANTE ? 'preparar' : await new Promise<EscolhaDossie>((resolver) => setDlgDossie({ paginas, tokens: Math.round(combinedText.length / 3.2), corte: (() => { try { return descreverCorte(juntarComoServidor(extraidos.map((x) => ({ nome: x.nome, texto: x.texto, paginas: x.pageCount }))), LIMITE_CHARS_MESA); } catch { return null; } })(), resolver }));
           setDlgDossie(null);
           if (escolhaD === 'cancelar') { setIsExtractingPdf(false); setExtractionProgressText(''); return; }
           if (escolhaD === 'preparar') {
