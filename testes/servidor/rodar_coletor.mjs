@@ -13,7 +13,7 @@ const site = http.createServer((req, res) => {
   const dec = decodeURIComponent(req.url);
   if (req.url.startsWith("/SCON/jt/jt.jsp")) id = "stj-jt-lista";
   const ed = dec.match(/livre='(\d+)' INPATH/); if (ed) id = `stj-jt-${ed[1]}`;
-  const pg = req.url.match(/informativos_jurisprudencia\?page=(\d+)/); if (pg) { const j = path.join(raiz, `testes/fixtures/coletor/tjgo-api-${pg[1]}.json`); try { const b = readFileSync(j); acessos++; res.writeHead(200, { "Content-Type": "application/json" }); return res.end(b); } catch { res.writeHead(404); return res.end(); } }
+  const pg = req.url.match(/informativos_jurisprudencia\?page=(\d+)/); if (pg) { if (!String(req.headers.accept || "").includes("json")) { res.writeHead(406); return res.end("Not Acceptable"); } const j = path.join(raiz, `testes/fixtures/coletor/tjgo-api-${pg[1]}.json`); try { const b = readFileSync(j); acessos++; res.writeHead(200, { "Content-Type": "application/json" }); return res.end(b); } catch { res.writeHead(404); return res.end(); } }
   let arq; try { arq = id && readFileSync(path.join(raiz, `testes/fixtures/coletor/${id}.html`)); } catch {}
   if (!arq) { res.writeHead(404); return res.end(); } acessos++; res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); res.end(arq);
 }).listen(8977);

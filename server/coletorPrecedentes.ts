@@ -136,8 +136,9 @@ export interface ResultadoColeta { anos: number[]; fontes: ResumoFonte[]; novos:
 /** Só para teste: com COLETOR_SITE_BASE definida, troca o endereço dos sites por um servidor local. */
 export const trocarBase = (url: string): string => { const b = process.env.COLETOR_SITE_BASE; return b ? url.replace(/^https:\/\/(tesesesumulas\.com\.br|scon\.stj\.jus\.br|transparencia\.tjgo\.jus\.br|transparencia-api\.tjgo\.jus\.br|dg-transparencia-admin-prd\.s3\.tjgo\.jus\.br)/, b) : url; };
 export async function baixarPagina(url: string): Promise<string> {
+  const original = url;
   url = trocarBase(url);
-  const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; AssessorJudicial-Coletor)", "Accept": "text/html" }, signal: AbortSignal.timeout(120_000) });
+  const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; AssessorJudicial-Coletor)", "Accept": /^https:\/\/transparencia-api\.tjgo\.jus\.br\//.test(original) ? "application/json, text/plain, */*" : "text/html" }, signal: AbortSignal.timeout(120_000) });
   if (!r.ok) throw new Error(`o site respondeu ${r.status}`);
   return await r.text();
 }
