@@ -118,6 +118,18 @@ export async function limparComparacoesVencidas(agora = Date.now(), simular = fa
   const [r]: any = await banco().query("DELETE FROM docs WHERE col REGEXP ? AND updated_at < ?", [TODAS, limite]);
   return Number(r?.affectedRows) || 0;
 }
+/** Super Admin: apaga comparações escolhidas ({ ids: [...] }) ou todas ({ todas: true }), de qualquer gabinete. */
+comparacoesRouter.post("/apagar", async (req: any, res) => {
+  try {
+    so(req); await garantirDocs();
+    if (req.body?.todas === true) { const [r]: any = await banco().query("DELETE FROM docs WHERE col REGEXP ?", [TODAS]); return void res.json({ ok: true, apagadas: Number(r?.affectedRows) || 0 }); }
+    const ids: string[] = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(idOk).filter(Boolean).slice(0, 500);
+    if (!ids.length) return void res.status(400).json({ erro: "nenhuma comparação escolhida" });
+    const [r]: any = await banco().query(`DELETE FROM docs WHERE col REGEXP ? AND id IN (${ids.map(() => "?").join(",")})`, [TODAS, ...ids]);
+    res.json({ ok: true, apagadas: Number(r?.affectedRows) || 0 });
+  } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : "não consegui apagar" }); }
+});
+
 /** Super Admin: roda a limpeza agora (ou só conta, com `simular`). */
 comparacoesRouter.post("/limpar", async (req: any, res) => {
   try { so(req); const n = await limparComparacoesVencidas(Date.now(), !!req.body?.simular); res.json({ ok: true, simulado: !!req.body?.simular, vencidas: n, dias: DIAS_GUARDA_COMPARACOES }); }

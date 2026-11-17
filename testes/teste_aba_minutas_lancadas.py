@@ -24,7 +24,8 @@ RESUMO = {"ok": True, "base": 1, "resumo": "O magistrado aceita o relatório e a
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path=glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome")[0], args=["--no-sandbox"]); erros = []
     pg = b.new_page(viewport={"width": 1400, "height": 1000}); pg.on("pageerror", lambda e: erros.append(str(e)[:200]))
-    posts = []; estado = {"linha": dict(LINHA), "vazio": True}
+    L2 = dict(LINHA, id="5009999-1700000000001", processo="5009999-11.2026.8.09.0166")
+    posts = []; estado = {"linha": dict(LINHA), "vazio": True, "extra": []}
     def rota(r):
         u, m = r.request.url, r.request.method
         if m == "POST": posts.append((u, r.request.post_data))
@@ -33,7 +34,14 @@ with sync_playwright() as p:
         if u.endswith("/textos"): return j({"processo": LINHA["processo"], "textoGerado": GERADO, "textoLancado": LANCADO})
         if u.endswith("/assinado"): estado["linha"]["assinado"] = {"aproveitamentoLancadaPct": 90, "aproveitamentoGeradaPct": 80, "dispositivoMudouDaLancada": True, "arquivo": "assinada.pdf"}; return j({"ok": True})
         if u.endswith("/resumo"): return j(RESUMO)
-        return j({"comparacoes": [] if estado["vazio"] else [estado["linha"]]})
+        if u.endswith("/apagar"):
+            c = json.loads(r.request.post_data or "{}"); antes = 1 + len(estado["extra"])
+            if c.get("todas"): estado["vazio"] = True; estado["extra"] = []; return j({"ok": True, "apagadas": antes})
+            ids = c.get("ids", []); n = 0
+            if LINHA["id"] in ids: estado["vazio"] = True; n += 1
+            if L2["id"] in ids: estado["extra"] = []; n += 1
+            return j({"ok": True, "apagadas": n})
+        return j({"comparacoes": ([] if estado["vazio"] else [estado["linha"]]) + estado["extra"]})
     pg.route("**/api/comparacoes-minuta**", rota)
     pg.goto("http://127.0.0.1:5198/testes/gigantes/minutas.html"); pg.wait_for_function("window.pronto"); pg.wait_for_selector("[data-testid=minutas-vazio]", timeout=15000)
     ok("Buscar minuta lançada" in pg.inner_text("[data-testid=minutas-vazio]"), "sem dados: explica como começar")
@@ -62,5 +70,21 @@ with sync_playwright() as p:
     with pg.expect_file_chooser() as fc: pg.click(f"[data-testid='btn-anexar-assinado-{LINHA['id']}']")
     fc.value.set_files(vazio); pg.wait_for_selector("[data-testid=msg-assinado]:has-text('Erro')", timeout=40000)
     ok("legível" in pg.inner_text("[data-testid=msg-assinado]"), "PDF sem texto: pede OCR")
+    # apagar: uma, marcadas e todas (com confirmação dentro da página)
+    estado["extra"] = [L2]; pg.click("text=Atualizar"); pg.wait_for_selector(f"[data-testid='apagar-{L2['id']}']", timeout=10000)
+    ok(pg.locator("[data-testid=btn-apagar-marcadas]").is_disabled(), "sem marcar nada, 'Apagar marcadas' fica desligado")
+    pg.click(f"[data-testid='apagar-{L2['id']}']"); pg.wait_for_selector("[data-testid=confirmar-apagar]")
+    ok("Apagar esta comparação" in pg.inner_text("[data-testid=confirmar-apagar]"), "apagar uma pede confirmação")
+    pg.click("text=Cancelar"); ok(not any(u.endswith("/apagar") for u, _ in posts), "cancelar não apaga nada")
+    pg.click(f"[data-testid='apagar-{L2['id']}']"); pg.click("[data-testid=btn-confirmar-apagar]"); pg.wait_for_selector("[data-testid=msg-apagar]:has-text('1 comparação')", timeout=10000)
+    ok(json.loads([d for u, d in posts if u.endswith("/apagar")][-1]) == {"ids": [L2["id"]]}, "apagar uma envia só o id dela")
+    estado["extra"] = [L2]; pg.click("text=Atualizar"); pg.wait_for_selector(f"[data-testid='marcar-{L2['id']}']", timeout=10000)
+    pg.check(f"[data-testid='marcar-{L2['id']}']"); ok("(1)" in pg.inner_text("[data-testid=btn-apagar-marcadas]"), "contador de marcadas")
+    pg.click("[data-testid=btn-apagar-marcadas]"); pg.click("[data-testid=btn-confirmar-apagar]"); pg.wait_for_selector("[data-testid=msg-apagar]:has-text('1 comparação')", timeout=10000)
+    ok(json.loads([d for u, d in posts if u.endswith("/apagar")][-1]) == {"ids": [L2["id"]]}, "apagar marcadas envia os ids marcados")
+    estado["extra"] = [L2]; pg.click("text=Atualizar"); pg.wait_for_selector("[data-testid=btn-apagar-todas]:not([disabled])", timeout=10000)
+    pg.click("[data-testid=btn-apagar-todas]"); ok("TODAS" in pg.inner_text("[data-testid=confirmar-apagar]"), "apagar todas avisa que são todas")
+    pg.click("[data-testid=btn-confirmar-apagar]"); pg.wait_for_selector("[data-testid=minutas-vazio]", timeout=10000)
+    ok(json.loads([d for u, d in posts if u.endswith("/apagar")][-1]) == {"todas": True}, "apagar todas envia todas:true e a tela volta ao estado vazio")
     ok(not erros, f"sem erros na página {erros}")
 print("TUDO OK" if not falhas else f"{falhas} FALHA(S)"); raise SystemExit(1 if falhas else 0)

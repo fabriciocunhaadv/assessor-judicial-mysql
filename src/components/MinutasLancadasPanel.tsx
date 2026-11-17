@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { GitCompare, RefreshCw, Loader2, AlertTriangle, Sparkles, FileUp, Copy } from "lucide-react";
+import { GitCompare, RefreshCw, Loader2, AlertTriangle, Sparkles, FileUp, Copy, Trash2 } from "lucide-react";
 import { compararMinutas } from "../utils/compararMinutas";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
 
@@ -29,6 +29,7 @@ export function MinutasLancadasPanel() {
   const [resumo, setResumo] = useState<Resumo | null>(null), [resumindo, setResumindo] = useState(false), [erroResumo, setErroResumo] = useState("");
   const [aberta, setAberta] = useState<string>(""), [msgAssinado, setMsgAssinado] = useState<Record<string, string>>({}), [lendo, setLendo] = useState("");
   const fileRef = useRef<HTMLInputElement>(null), alvo = useRef("");
+  const [marcadas, setMarcadas] = useState<Set<string>>(new Set()), [confirmar, setConfirmar] = useState<"" | "marcadas" | "todas" | string>(""), [apagando, setApagando] = useState(false), [msgApagar, setMsgApagar] = useState("");
 
   const carregar = useCallback(async () => {
     setCarregando(true); setErro("");
@@ -61,6 +62,16 @@ export function MinutasLancadasPanel() {
     setLendo("");
   };
 
+  const alternar = (id: string) => setMarcadas((m) => { const n = new Set(m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const apagar = async (modo: "marcadas" | "todas" | string) => {
+    setApagando(true); setMsgApagar("");
+    try {
+      const corpo = modo === "todas" ? { todas: true } : { ids: modo === "marcadas" ? [...marcadas] : [modo] };
+      const r = await api<{ apagadas: number }>("/api/comparacoes-minuta/apagar", corpo);
+      setMsgApagar(`${r.apagadas} comparação(ões) apagada(s).`); setMarcadas(new Set()); setResumo(null); await carregar();
+    } catch (e: any) { setMsgApagar(`Erro ao apagar: ${e.message}`); }
+    setApagando(false); setConfirmar("");
+  };
   const copiar = (t: string) => { try { void navigator.clipboard.writeText(t); } catch { /* sem cópia */ } };
   const card = (t: string, v: React.ReactNode, sub?: string) => <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3"><div className="text-[10px] uppercase text-slate-400 font-bold">{t}</div><div className="text-2xl font-black">{v}</div>{sub && <div className="text-[10px] text-slate-400">{sub}</div>}</div>;
   const tabela = (titulo: string, g: Grupo[]) => g.length > 0 && (
@@ -118,17 +129,32 @@ export function MinutasLancadasPanel() {
           </div>
 
           <div className="space-y-1.5" data-testid="minutas-lista">
-            <div className="text-xs font-black">Comparações guardadas</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-xs font-black">Comparações guardadas</div>
+              <label className="inline-flex items-center gap-1 text-[11px] text-slate-300 cursor-pointer"><input type="checkbox" data-testid="marcar-todas" checked={linhas.length > 0 && marcadas.size === linhas.length} onChange={(e) => setMarcadas(e.target.checked ? new Set(linhas.map((l) => l.id)) : new Set())} /> marcar todas</label>
+              <button onClick={() => setConfirmar("marcadas")} disabled={!marcadas.size || apagando} data-testid="btn-apagar-marcadas" className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-600/60 text-rose-200 hover:bg-rose-950/50 text-[11px] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> Apagar marcadas ({marcadas.size})</button>
+              <button onClick={() => setConfirmar("todas")} disabled={!linhas.length || apagando} data-testid="btn-apagar-todas" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-600/60 text-rose-200 hover:bg-rose-950/50 text-[11px] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> Apagar todas</button>
+            </div>
+            {confirmar && (
+              <div className="rounded-xl border border-rose-500/60 bg-rose-950/40 p-3 text-xs flex flex-wrap items-center gap-2" data-testid="confirmar-apagar">
+                <span className="flex-1 min-w-[200px]">{confirmar === "todas" ? `Apagar TODAS as ${linhas.length} comparações guardadas` : confirmar === "marcadas" ? `Apagar as ${marcadas.size} comparações marcadas` : "Apagar esta comparação"}, com as minutas guardadas? Não dá para desfazer.</span>
+                <button onClick={() => void apagar(confirmar)} disabled={apagando} data-testid="btn-confirmar-apagar" className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold cursor-pointer disabled:opacity-50">{apagando ? "Apagando…" : "Sim, apagar"}</button>
+                <button onClick={() => setConfirmar("")} disabled={apagando} className="px-3 py-1.5 rounded-lg border border-slate-600 hover:bg-slate-800 cursor-pointer">Cancelar</button>
+              </div>
+            )}
+            {msgApagar && <div className="text-[11px] text-sky-200" data-testid="msg-apagar">{msgApagar}</div>}
             <input ref={fileRef} type="file" accept="application/pdf" className="hidden" data-testid="input-pdf-assinado" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f && alvo.current) void anexar(f, alvo.current); }} />
             {linhas.map((l) => (
               <div key={l.id} className="rounded-xl border border-slate-700 bg-slate-900/60 p-2.5 text-xs">
                 <div className="flex flex-wrap items-center gap-2">
+                  <input type="checkbox" checked={marcadas.has(l.id)} onChange={() => alternar(l.id)} aria-label={`marcar ${l.processo}`} data-testid={`marcar-${l.id}`} />
                   <button onClick={() => setAberta(aberta === l.id ? "" : l.id)} className="font-bold underline-offset-2 hover:underline cursor-pointer text-left">{l.processo}</button>
                   <span className="text-slate-400">{quando(l.geradoEm)}{l.ato ? ` · ${l.ato}` : ""}{l.promptTitulo ? ` · ${l.promptTitulo}` : ""}</span>
                   <span className={`font-black ${cor(l.aproveitamentoPct)}`}>{l.aproveitamentoPct}%</span><span className="text-slate-500 text-[10px]" title="a comparação e as minutas guardadas somem sozinhas depois de 30 dias">apaga em {diasRestantes(l.geradoEm)} d</span>
                   {l.dispositivoMudou && <span className="px-1.5 rounded border border-amber-500/60 text-amber-200 text-[10px] font-bold">dispositivo alterado</span>}
                   {l.assinado && <span className="px-1.5 rounded border border-emerald-600/60 text-emerald-200 text-[10px] font-bold" title={l.assinado.arquivo}>assinada: {l.assinado.aproveitamentoLancadaPct}% da lançada{l.assinado.dispositivoMudouDaLancada ? " · dispositivo mudou" : ""}</span>}
                   <button onClick={() => { alvo.current = l.id; fileRef.current?.click(); }} disabled={lendo === l.id} data-testid={`btn-anexar-assinado-${l.id}`} className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-600 hover:bg-slate-800 cursor-pointer text-[11px] disabled:opacity-50">{lendo === l.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />} {l.assinado ? "Trocar documento assinado" : "Anexar documento assinado (PDF)"}</button>
+                  <button onClick={() => setConfirmar(l.id)} disabled={apagando} aria-label={`apagar ${l.processo}`} title="Apagar esta comparação" data-testid={`apagar-${l.id}`} className="p-1 rounded-lg border border-slate-700 hover:bg-rose-950/50 text-rose-300 cursor-pointer"><Trash2 className="w-3 h-3" /></button>
                 </div>
                 {msgAssinado[l.id] && <div className="mt-1 text-[11px] text-sky-200" data-testid="msg-assinado">{msgAssinado[l.id]}</div>}
                 {aberta === l.id && <div className="mt-2 space-y-1">{(l.mudancas || []).length === 0 ? <p className="text-slate-500">Nada mudou.</p> : (l.mudancas || []).map((m, i) => <p key={i} className="text-[11px] leading-relaxed"><strong className={m.tipo === "removido" ? "text-rose-300" : m.tipo === "adicionado" ? "text-emerald-300" : "text-amber-300"}>{m.tipo === "removido" ? "CORTADO" : m.tipo === "adicionado" ? "ACRESCENTADO" : "ALTERADO"} ({m.secao}):</strong> {m.original ? <span className="line-through text-slate-400">{m.original}</span> : null} {m.lancado}</p>)}</div>}

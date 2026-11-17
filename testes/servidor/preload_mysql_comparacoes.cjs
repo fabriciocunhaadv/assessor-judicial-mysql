@@ -9,6 +9,8 @@ const consulta = async (sql, args = []) => {
   if (/^\s*UPDATE docs SET data=\? WHERE col=\? AND id=\?/i.test(sql)) { const d = docs.get(k(args[1], args[2])); if (d) d.data = args[0]; return [{ affectedRows: d ? 1 : 0 }, []]; }
   if (/^\s*DELETE FROM docs WHERE col REGEXP \? AND updated_at < \?/i.test(sql)) { let n = 0; for (const [kk, d] of [...docs]) if (rx(args[0]).test(d.col) && d.updated_at < args[1]) { docs.delete(kk); n++; } return [{ affectedRows: n }, []]; }
   if (/^\s*SELECT COUNT\(\*\) AS n FROM docs WHERE col REGEXP \? AND updated_at < \?/i.test(sql)) return [[{ n: [...docs.values()].filter((d) => rx(args[0]).test(d.col) && d.updated_at < args[1]).length }], []];
+  if (/^\s*DELETE FROM docs WHERE col REGEXP \? AND id IN \(/i.test(sql)) { let n = 0; const ids = args.slice(1); for (const [kk, d] of [...docs]) if (rx(args[0]).test(d.col) && ids.includes(d.id)) { docs.delete(kk); n++; } return [{ affectedRows: n }, []]; }
+  if (/^\s*DELETE FROM docs WHERE col REGEXP \?\s*$/i.test(sql)) { let n = 0; for (const [kk, d] of [...docs]) if (rx(args[0]).test(d.col)) { docs.delete(kk); n++; } return [{ affectedRows: n }, []]; }
   let g;
   if ((g = /^\s*SELECT ((?:col, )?(?:id, )?data) FROM docs WHERE col REGEXP \?( AND id=\?)?(?: ORDER BY updated_at DESC LIMIT (\?|\d+))?/i.exec(sql))) {
     let l = [...docs.values()].filter((d) => rx(args[0]).test(d.col) && (!g[2] || d.id === args[1])).sort((a, b) => b.updated_at - a.updated_at);
