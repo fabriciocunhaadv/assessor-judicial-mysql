@@ -517,6 +517,7 @@ app.post("/api/gigante-lote", async (req, res) => {
             primaryModel: "gemini-3.8-flash",
             fallbackModel: "gemini-flash-latest",
             customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+            esperaProfundoMs: 120000,      // a ficha de cada trecho também espera o modelo forte (ficha rasa do modelo leve empobrece a minuta final do gigante)
             timeoutMs: 180000,
             maxCycles: 3,
             cycleDelayMs: 8000,
@@ -554,6 +555,7 @@ app.post("/api/gigante-fusao", async (req, res) => {
             primaryModel: "gemini-3.8-flash",
             fallbackModel: "gemini-flash-latest",
             customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+            esperaProfundoMs: 120000,      // idem: a fusão das fichas espera o modelo forte
             timeoutMs: 180000,
             maxCycles: 3,
             cycleDelayMs: 8000,
