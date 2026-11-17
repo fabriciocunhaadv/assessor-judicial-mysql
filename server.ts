@@ -27,6 +27,7 @@ import { outrasLeisRouter, consultarOutrasLeis } from './server/outrasLeis';
 import { listarRegimes, gravarRegime, apagarRegime, sanearRegime } from './server/taxonomiaDb';
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
 import { iniciarPulsoJson } from './server/pulsoJson';
+import { monitorRouter } from './server/monitorLeitura';
 import { coletarPrecedentes, FONTES_COLETA, trocarBase, type ResultadoColeta } from './server/coletorPrecedentes';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
@@ -272,6 +273,7 @@ app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
 app.use("/api", medirMotores);      // Calibragem: soma por hora e por motor (só mede, depois da resposta)
 app.use("/api", medirPedidos);      // Saúde do sistema: mede tempo e status de cada pedido
+app.use("/api/monitor", monitorRouter);      // Monitor SÓ DE LEITURA (token MONITOR_TOKEN ou Super Admin); antes do porteiro de sessão, porque o agente de monitoramento não tem login
 app.use("/api", exigirSessao);      // tudo em /api exige login (exceto /api/auth e a informação /api/native-key-info)
 // consumo de IA contado no servidor também para o chat da minuta, copiloto, modelos, assistente, OCR e processo gigante (antes dependia de o navegador gravar: o Chat/Refino aparecia zerado)
 app.use(["/api/chat-agaia", "/api/lateral-agent-chat", "/api/reestruturar-minuta", "/api/conferir-modelos", "/api/assistente-sugerir", "/api/ocr-paginas", "/api/gigante-lote", "/api/gigante-fusao"], contarUsoNoServidor((req: any) => isRequestNativeAllowed(req)));
