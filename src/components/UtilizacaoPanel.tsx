@@ -23,6 +23,9 @@ const hoje = () => new Date();
 const campo = "bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-100";
 const th = "px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-slate-400 whitespace-nowrap";
 const td = "px-2 py-1.5 text-xs text-slate-200 whitespace-nowrap";
+// Ao rolar a tabela para o lado, "Pessoa" e "Gabinete" ficam fixas à esquerda (fundo opaco para não misturar com o que passa por baixo).
+const FIXA_PESSOA = "sticky left-0 bg-slate-900 min-w-[210px] w-[210px] max-w-[210px]";
+const FIXA_GAB = "sticky left-[210px] bg-slate-900 min-w-[220px] w-[220px] max-w-[220px] border-r border-slate-700 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.6)]";
 
 /** Super Admin: utilização do sistema por pessoa e por módulo no período, e uso dos módulos liberados. */
 export function UtilizacaoPanel() {
@@ -124,12 +127,12 @@ export function UtilizacaoPanel() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead><tr><th className={th}>Pessoa</th><th className={th}>Gabinete</th><th className={th}>Execuções IA</th>{MODULOS.map(([m, r]) => <th key={m} className={th}>{r}</th>)}<th className={th}>Uso da extensão</th><th className={th}>Minutas salvas</th><th className={th} title="Minutas apagadas do Histórico pela própria pessoa ou pelo administrador">Excluídas</th><th className={th} title="Minutas apagadas sozinhas quando venceu o prazo do Histórico">Venceram (prazo)</th><th className={th} title="Minutas marcadas como lançadas no Projudi">Lançadas</th><th className={th} title="Mudanças de unidade/comarca das minutas da pessoa">Mud. unidade</th><th className={th} title="Minutas movidas para outro gabinete">Mud. gabinete</th><th className={th} title="Vezes que a minuta foi copiada">Cópias</th><th className={th} title="Vezes que a minuta foi exportada em DOCX">DOCX</th><th className={th} title="Vezes que a minuta foi gerada em PDF / impressa">PDF</th><th className={th}>Petições 360°</th><th className={th}>Tokens</th><th className={th}>Custo</th><th className={th}>Último uso</th></tr></thead>
+                <thead><tr><th className={`${th} ${FIXA_PESSOA} z-20`}>Pessoa</th><th className={`${th} ${FIXA_GAB} z-20`}>Gabinete</th><th className={th}>Execuções IA</th>{MODULOS.map(([m, r]) => <th key={m} className={th}>{r}</th>)}<th className={th}>Uso da extensão</th><th className={th}>Minutas salvas</th><th className={th} title="Minutas apagadas do Histórico pela própria pessoa ou pelo administrador">Excluídas</th><th className={th} title="Minutas apagadas sozinhas quando venceu o prazo do Histórico">Venceram (prazo)</th><th className={th} title="Minutas marcadas como lançadas no Projudi">Lançadas</th><th className={th} title="Mudanças de unidade/comarca das minutas da pessoa">Mud. unidade</th><th className={th} title="Minutas movidas para outro gabinete">Mud. gabinete</th><th className={th} title="Vezes que a minuta foi copiada">Cópias</th><th className={th} title="Vezes que a minuta foi exportada em DOCX">DOCX</th><th className={th} title="Vezes que a minuta foi gerada em PDF / impressa">PDF</th><th className={th}>Petições 360°</th><th className={th}>Tokens</th><th className={th}>Custo</th><th className={th}>Último uso</th></tr></thead>
                 <tbody>
                   {visiveis.map((l) => (
                     <tr key={l.email} className="border-t border-slate-800" data-testid="linha-utilizacao">
-                      <td className={td}><div className="font-bold text-white">{l.nome}</div><div className="text-[10px] text-slate-400">{l.email}{l.status === "fora do cadastro" ? " · fora do cadastro" : l.status !== "aprovado" ? ` · ${l.status}` : ""}</div></td>
-                      <td className={td}>{l.tenant || "—"}</td>
+                      <td className={`${td} ${FIXA_PESSOA} z-10`} data-testid="col-pessoa"><div className="font-bold text-white">{l.nome}</div><div className="text-[10px] text-slate-400">{l.email}{l.status === "fora do cadastro" ? " · fora do cadastro" : l.status !== "aprovado" ? ` · ${l.status}` : ""}</div></td>
+                      <td className={`${td} ${FIXA_GAB} z-10 overflow-hidden text-ellipsis`} title={l.tenant || ""} data-testid="col-gabinete">{l.tenant || "—"}</td>
                       <td className={`${td} font-bold text-amber-300`}>{num(l.execucoes)}</td>
                       {MODULOS.map(([m]) => <td key={m} className={td}>{l.modulos[m]?.n ? num(l.modulos[m].n) : "—"}</td>)}
                       <td className={td} title={Object.entries(l.extensao || {}).map(([k, n]) => `${ROTULOS_EXT[k] || k}: ${n}`).join("\n")} data-testid="uso-extensao">{l.extensaoTotal ? num(l.extensaoTotal) : "—"}</td>
