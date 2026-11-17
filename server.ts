@@ -3922,10 +3922,10 @@ async function contingenciaPorSecoes(a: { partes: any[]; sistema: string; minuta
     }
 }
 async function expandirMinutaResumida(a: { partes: any[]; sistema: string; minuta: any; falhas: string[]; req: any; res: any; userApiKey: any; timeoutMs: number; aoEsperar?: (s: number) => void }): Promise<{ relatorio: string; fundamentacao: string; dispositivo: string } | null> {
-    // até 3 tentativas, com pausa entre elas: quando o Google está sobrecarregado a primeira costuma falhar, e entregar a minuta curta sem tentar de novo era o defeito
+    // até 3 tentativas (espera total no pior caso ≈ 2 min; era ≈ 4 min e o usuário achou demorado), com pausa entre elas: quando o Google está sobrecarregado a primeira costuma falhar, e entregar a minuta curta sem tentar de novo era o defeito
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
-        if (tentativa > 1) await new Promise((r) => setTimeout(r, (tentativa === 2 ? 15000 : 30000) * (Number(process.env.ESPERA_PROFUNDO_ESCALA) || 1)));
-        const r = await expandirMinutaResumidaUmaVez(a, tentativa === 1 ? 90000 : 60000);
+        if (tentativa > 1) await new Promise((r) => setTimeout(r, (tentativa === 2 ? 8000 : 15000) * (Number(process.env.ESPERA_PROFUNDO_ESCALA) || 1)));
+        const r = await expandirMinutaResumidaUmaVez(a, tentativa === 1 ? 45000 : 30000);
         if (r) { if (tentativa > 1) console.log(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Expansão concluída na tentativa ${tentativa}.`); return r; }
         console.warn(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Tentativa ${tentativa}/3 de expandir a minuta não deu certo.`);
     }
