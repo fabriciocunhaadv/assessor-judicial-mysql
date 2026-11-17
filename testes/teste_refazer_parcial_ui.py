@@ -32,7 +32,7 @@ with sync_playwright() as p:
     for motor, quer in (("principal", 1), ("turbo", 0), ("gigante", 0), ("agaia", 0)):
         pg = novo(b, f"?motor={motor}"); pg.wait_for_timeout(600)
         ok(pg.locator("[data-testid=btn-refazer-parcial]").count() == quer, f"motor {motor}: botão {'aparece' if quer else 'NÃO aparece'}")
-        if motor == "principal": btn = pg.locator("[data-testid=btn-refazer-parcial]"); ok("Refazer só com alguns eventos" in btn.inner_text() and "from-amber-400" in btn.get_attribute("class"), "botão destacado, com o nome combinado"); pg.screenshot(path="/tmp/claude-0/work/teste/refazer_botao.png")
+        if motor == "principal": btn = pg.locator("[data-testid=btn-refazer-parcial]"); ok("Refazer só com alguns eventos" in btn.inner_text() and "from-amber-400" in btn.get_attribute("class"), "botão destacado, com o nome combinado"); ok(not pg.locator("[data-testid=dica-refazer-parcial]").is_visible(), "a janelinha de informação começa escondida"); btn.hover(); pg.wait_for_selector("[data-testid=dica-refazer-parcial]", state="visible", timeout=3000); d = pg.inner_text("[data-testid=dica-refazer-parcial]"); ok("só algumas movimentações" in d and "nova versão" in d and "continua guardada" in d and "fato anterior" in d, "passar o mouse abre a janelinha explicando o botão"); pg.screenshot(path="/tmp/claude-0/work/teste/refazer_botao.png"); pg.mouse.move(5, 5); pg.wait_for_selector("[data-testid=dica-refazer-parcial]", state="hidden", timeout=3000); ok(True, "tirar o mouse fecha a janelinha")
         pg.close()
     # 2) fluxo feliz
     pg = novo(b, "?motor=principal"); pg.wait_for_selector("[data-testid=btn-refazer-parcial]"); pg.click("[data-testid=btn-refazer-parcial]")

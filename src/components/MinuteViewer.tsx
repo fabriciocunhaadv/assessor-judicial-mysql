@@ -1299,16 +1299,25 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
               </button>
             )}
             {currentAnalysisId && atoDoHistorico && podeRefazerComPoucosEventos(atoDoHistorico) && (
-              <button
-                type="button"
-                onClick={() => setRefazerAberto(true)}
-                data-testid="btn-refazer-parcial"
-                className="h-8 px-2.5 inline-flex items-center gap-1 rounded-lg border text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow-sm border-amber-500 bg-gradient-to-r from-amber-400 to-orange-400 text-slate-900 hover:from-amber-300 hover:to-orange-300"
-                title="Processo grande? Escolha no Projudi só as movimentações que importam (por exemplo, as últimas) e o Studio gera uma nova versão desta minuta. A atual continua guardada."
-              >
-                <Scissors className="w-3.5 h-3.5" />
-                <span>Refazer só com alguns eventos</span>
-              </button>
+              <div className="relative group shrink-0" data-testid="refazer-parcial-grupo">
+                <button
+                  type="button"
+                  onClick={() => setRefazerAberto(true)}
+                  data-testid="btn-refazer-parcial"
+                  aria-describedby="dica-refazer-parcial"
+                  className="h-8 px-2.5 inline-flex items-center gap-1 rounded-lg border text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow-sm border-amber-500 bg-gradient-to-r from-amber-400 to-orange-400 text-slate-900 hover:from-amber-300 hover:to-orange-300"
+                >
+                  <Scissors className="w-3.5 h-3.5" />
+                  <span>Refazer só com alguns eventos</span>
+                </button>
+                {/* janelinha de informação: aparece ao passar o mouse (ou ao focar o botão pelo teclado) */}
+                <div id="dica-refazer-parcial" role="tooltip" data-testid="dica-refazer-parcial" className="hidden group-hover:block group-focus-within:block absolute left-0 top-full mt-1.5 z-50 w-72 rounded-xl border border-amber-300 bg-white p-3 text-left text-[11px] leading-relaxed text-slate-700 shadow-xl whitespace-normal">
+                  <p className="font-extrabold text-slate-900 text-xs mb-1">Processo grande? Refaça só com o que importa</p>
+                  <p>Se a minuta não ficou boa porque o processo é muito extenso, clique aqui para <b>refazê-la usando só algumas movimentações</b> (por exemplo, as últimas).</p>
+                  <p className="mt-1">O Projudi abre sozinho na tela de seleção: você marca as movimentações e devolve ao Studio, que gera uma <b>nova versão</b>. A minuta atual continua guardada no Histórico.</p>
+                  <p className="mt-1 text-amber-800">Dica: confira se nenhum fato anterior importante ficou de fora.</p>
+                </div>
+              </div>
             )}
             <button
               onClick={() => setActiveTab("editor")}
