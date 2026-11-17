@@ -47,22 +47,23 @@ export function CalibragemEnvioHost() {
       <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-950 text-slate-100 shadow-2xl">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-800">
           <FlaskConical className="w-5 h-5 text-emerald-300" />
-          <h2 className="font-black text-sm" data-testid="calibragem-titulo">{fase === "fim" ? mensagemFim().titulo : excluir ? "Antes de excluir: enviar para a calibragem?" : "Enviar para a calibragem?"}</h2>
+          <h2 className="font-black text-sm" data-testid="calibragem-titulo">{fase === "fim" ? mensagemFim().titulo : excluir ? "Antes de excluir: o sistema errou muito nesta minuta?" : "Esta minuta ficou muito diferente da final?"}</h2>
           {fase === "pergunta" && <button onClick={() => fechar("cancelar")} aria-label="Fechar" className="ml-auto p-1 rounded-lg hover:bg-slate-800 cursor-pointer"><X className="w-4 h-4" /></button>}
         </div>
         <div className="p-4 space-y-3 text-sm">
           <p className="text-[11px] text-slate-400">Processo <strong className="text-slate-200">{atual.pedido.processo}</strong></p>
           {fase === "pergunta" && (
             <>
-              <p className="leading-relaxed" data-testid="calibragem-texto">Você pode ajudar a melhorar o sistema. Se enviar, o sistema vai <strong>ler, no Projudi, a minuta que você cadastrou</strong> (o texto salvo na pré-análise) e juntar a <strong>minuta que ele mesmo gerou</strong>. As duas vão para o <strong>administrador do sistema</strong>, que compara para ver erros e acertos e como a minuta deveria ter ficado, e assim calibrar o sistema.</p>
+              <p className="leading-relaxed" data-testid="calibragem-texto">Envie para a calibragem <strong>só se</strong> a minuta que o sistema gerou ficou <strong>muito diferente</strong> da minuta final que você lançou no Projudi e, na sua opinião, o sistema <strong>precisa ser calibrado</strong>. Se ela ficou boa, ou precisou só de pequenos ajustes, <strong>não precisa enviar</strong>.</p>
+              <p className="text-[12px] text-slate-300 leading-relaxed">Se você enviar, o sistema <strong>lê, no Projudi, a minuta que você cadastrou</strong> (o texto salvo na pré-análise) e junta a <strong>minuta que ele mesmo gerou</strong>. As duas vão para o <strong>administrador do sistema</strong>, que compara para ver erros e acertos e como a minuta deveria ter ficado.</p>
               <ul className="text-[11px] text-slate-400 list-disc pl-5 space-y-0.5">
                 <li>Só é enviado se a minuta estiver mesmo lançada no Projudi (salva na pré-análise).</li>
                 <li>É preciso a extensão Conclusões Projudi atualizada e o Projudi aberto e logado.</li>
                 <li>O texto das minutas, com os dados do processo, fica guardado por 30 dias e depois é apagado.</li>
               </ul>
               <div className="flex flex-wrap gap-2 pt-1">
-                <button onClick={() => void enviar(undefined)} data-testid="calibragem-enviar" className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer">Enviar para calibragem e {acao}</button>
-                <button onClick={() => fechar("continuar")} data-testid="calibragem-sem-enviar" className="px-3 py-2 rounded-lg border border-slate-600 hover:bg-slate-800 text-xs font-bold cursor-pointer">{excluir ? "Excluir sem enviar" : "Só marcar como lançado"}</button>
+                <button onClick={() => fechar("continuar")} data-testid="calibragem-sem-enviar" className="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold cursor-pointer">{excluir ? "Excluir (não precisa enviar)" : "Marcar como lançado (não precisa enviar)"}</button>
+                <button onClick={() => void enviar(undefined)} data-testid="calibragem-enviar" className="px-3 py-2 rounded-lg border border-emerald-500/70 text-emerald-200 hover:bg-emerald-950/50 text-xs font-bold cursor-pointer">Ficou muito diferente: enviar para calibragem e {acao}</button>
                 <button onClick={() => fechar("cancelar")} data-testid="calibragem-cancelar" className="px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800 text-xs cursor-pointer">Cancelar</button>
               </div>
             </>
