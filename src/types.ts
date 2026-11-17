@@ -223,6 +223,8 @@ export interface GenerationResult {
   avisoVazamento?: string[];
   avisoCitacao?: string[];
   avisoFundamentoLegal?: string[];
+  /** Minuta entregue abaixo do piso de profundidade porque a esteira caiu no modelo leve e as tentativas de aprofundar falharam. */
+  avisoProfundidade?: string[];
   avisoDescumprimento?: { tipo: string; movDeterminacao?: number; movDecurso?: number; parcial: boolean; possivelCumprimento: boolean; decide: boolean; atoSugerido: string; motivo: string; minutaSentenciou?: boolean };
   espolioQualificado?: string[];
   /** Conferência por código da matriz Argumento × Resposta (argumentos sem resposta ou com resposta que não está na minuta). */

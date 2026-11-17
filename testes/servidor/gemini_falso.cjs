@@ -22,6 +22,7 @@ http.createServer((req, res) => {
   }
   if (/\/v1beta\/files\/falso/.test(req.url) && req.method === "GET") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ name: "files/falso1", uri: "x", state: "ACTIVE" })); return; }
   if (/\/v1beta\/files\/falso/.test(req.url) && req.method === "DELETE") { global.__apagados = (global.__apagados || 0) + 1; res.writeHead(200, { "Content-Type": "application/json" }); res.end("{}"); return; }
+  if (req.method === "GET" && req.url === "/__geracao") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ lista: global.__geracao || [], erros503: global.__erros503 || 0 })); return; }
   if (req.method === "GET" && req.url === "/__chat") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(global.__chat || {})); return; }
   if (req.method === "GET" && req.url === "/__arg") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(global.__arg || {})); return; }
   if (req.method === "GET" && req.url === "/__mutirao") { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(global.__mutirao || {})); return; }
@@ -33,6 +34,12 @@ http.createServer((req, res) => {
     // fila travada do Google (só em teste): GEMINI_FALSO_TRAVA="modelo1,modelo2" nunca responde para esses modelos
     if (process.env.GEMINI_FALSO_TRAVA && process.env.GEMINI_FALSO_TRAVA.split(",").some((m) => String(req.url).includes("/models/" + m + ":"))) { if (process.env.GEMINI_FALSO_LOG) console.log("trava", req.url); return; }
     let j = {}; try { j = JSON.parse(corpo); } catch {}
+    // Google sobrecarregado só nos modelos FORTES (3.6 / 3.8) durante os primeiros N segundos (só em teste): GEMINI_FALSO_503_FORTES_SEG=N
+    const modeloDaChamada = (/\/models\/([^:\/]+):/.exec(String(req.url)) || [])[1] || "";
+    global.__inicioFalso = global.__inicioFalso || Date.now();
+    if (process.env.GEMINI_FALSO_503_FORTES_SEG && /^gemini-3\.(6|8)-flash$/.test(modeloDaChamada) && (Date.now() - global.__inicioFalso) < Number(process.env.GEMINI_FALSO_503_FORTES_SEG) * 1000) {
+      global.__erros503 = (global.__erros503 || 0) + 1; res.writeHead(503, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { code: 503, message: "The model is overloaded. Please try again later.", status: "UNAVAILABLE" } })); return;
+    }
     if (/FALHAR-MOTOR/.test(corpo) && !/DEGRAVAÇÃO FIEL do áudio/.test(corpo)) { res.writeHead(500, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { code: 500, message: "falha simulada do motor", status: "INTERNAL" } })); return; }
     if (/CADERNO DE TESES E DIRETRIZES VINCULANTES/.test(corpo)) global.__comTesesTotal = (global.__comTesesTotal || 0) + 1;
     // teste da calibração: conta, por tipo de chamada, quantas levam a conferência de prontidão do ato
@@ -80,6 +87,7 @@ http.createServer((req, res) => {
         { parte: "reu", argumento: "ilegitimidade passiva", localizacao: "Mov. 31, Arq. 1, Pág. 2", resultado: "rejeitado", trechoNaMinuta: "Fundamentação com Mov. 1, Arq. 1, Pág. 1." },
         { parte: "reu", argumento: "prescrição da pretensão", localizacao: "Mov. 31, Arq. 1, Pág. 4", resultado: "nao_enfrentado", trechoNaMinuta: "" },
         { parte: "autor", argumento: "inversão do ônus da prova", localizacao: "Mov. 1, Arq. 1, Pág. 5", resultado: "acolhido", trechoNaMinuta: "inverto o ônus da prova em razão da hipossuficiência técnica do consumidor perante o fornecedor" }] } : null;
+      (global.__geracao ||= []).push({ modelo: modeloDaChamada, t: Date.now() - global.__inicioFalso });
       t = JSON.stringify({ minute: mm, ...mm, ...(matriz ? { auditAnalysis: matriz } : {}) }); }
     res.writeHead(200, { "Content-Type": "application/json" }); res.end(resposta(t, Math.min(200000, Math.ceil(corpo.length / 3))));
   });

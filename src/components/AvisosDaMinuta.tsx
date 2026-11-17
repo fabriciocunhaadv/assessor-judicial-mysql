@@ -124,6 +124,8 @@ export function AvisosDaMinuta({ result }: { result: Partial<GenerationResult> &
         {cf.tesesOmitidas ? <div className="mt-1">{cf.tesesOmitidas} tese(s) de mérito do Caderno deixaram de ser enviadas ao motor por causa da fase.</div> : null}
         {cf.sinais?.length ? <div className="mt-1 opacity-70">Sinais: {cf.sinais.join("; ")}.</div> : null}</>) });
   }
+  const prof = result?.avisoProfundidade;
+  if (prof?.length) itens.push({ id: "profundidade", tom: "perigo", rotulo: "⚠️ Minuta curta (contingência)", conteudo: caixa("border-red-400 bg-red-50 text-red-900", "aviso-profundidade", <><strong>Minuta gerada em contingência:</strong> {prof[0]}</>) });
   const fl = result?.avisoFundamentoLegal;
   if (fl?.length) itens.push({ id: "fundamento-legal", tom: "atencao", rotulo: `📚 Fundamento do indeferimento (${fl.length})`, conteudo: caixa("border-amber-300 bg-amber-50 text-amber-900", "aviso-fundamento-legal", <><strong>Conferir o fundamento legal:</strong><ul className="list-disc list-inside">{fl.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></>) });
   const esp = result?.espolioQualificado;

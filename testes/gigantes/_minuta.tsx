@@ -19,6 +19,7 @@ const result: any = {
   groundingStatus: "desligado",
   conferenciaFase: { fase: "cumprimento", confianca: "alta", sinais: [], avisos: ["A minuta decide o mérito"], refeita: true, resolvido: false, tesesOmitidas: 0 },
 };
+if (new URLSearchParams(location.search).get("prof") === "1") result.avisoProfundidade = ["O Google estava sobrecarregado e só o modelo mais leve respondeu. Esta minuta ficou abaixo do nível de profundidade esperado."];
 (window as any).__vezes = { lancado: 0 };
 function App() {
   const [m, setM] = useState<any>(minute);

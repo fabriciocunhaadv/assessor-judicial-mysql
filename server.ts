@@ -3576,6 +3576,13 @@ async function generateWithFallbackAndRetry(options) {
     // CICLOS COMPLETOS DA ESTEIRA: Se toda a esteira de modelos sofrer indisponibilidade temporária (503 / timeout na fila do Google),
     // o sistema reinicia a esteira desde o primeiro modelo, realizando os intervalos preventivos necessários para não estourar a cota nem sobrecarregar o cluster.
     const maxPipelineCycles = options.maxCycles || 3;
+    // ESPERA PELO MODELO PROFUNDO (geração de minutas): quando TODOS os modelos fortes (3.8 / 3.6) estão em resfriamento ou sem cota, em vez de cair direto no Flash-Lite (que entrega minuta curta)
+    // a esteira ESPERA o primeiro deles ficar livre (até `esperaProfundoMs` no total) e, depois, TENTA os fortes mesmo em resfriamento antes de aceitar o leve. O leve fica como último recurso.
+    const esperaProfundoMs = Math.max(0, Number(options.esperaProfundoMs) || 0);
+    let orcamentoEspera = esperaProfundoMs;
+    const inicioEsteira = Date.now();
+    const ehProfundo = (m: string) => !/lite|latest/i.test(m);
+    const liberaEm = (m: string) => Math.max(modeloAte.get(m) || 0, (keyPool.length > 0 && keyPool.every(k => (cotaAte.get(k + "|" + m) || 0) > Date.now())) ? Math.min(...keyPool.map(k => cotaAte.get(k + "|" + m) || 0)) : 0);
     // Timeout confortável e seguro por modelo (180 segundos por padrão): evita cortes precipitados de minutas longas e densas
     const modelTimeoutMs = Number(process.env.TIMEOUT_MODELO_MS) || options.timeoutMs || 180000;      // TIMEOUT_MODELO_MS só para os testes locais
 
@@ -3590,6 +3597,19 @@ async function generateWithFallbackAndRetry(options) {
         let anyDemandOverloadedInCycle = false;
         const permanentlyInvalidKeys = new Set<string>();
 
+        if (orcamentoEspera > 0) {
+            const profundos = modelsToTry.filter(ehProfundo);
+            if (profundos.length > 0 && profundos.every(m => modeloBloqueado(m, keyPool))) {
+                const espera = Math.min(Math.max(0, Math.min(...profundos.map(liberaEm)) - Date.now()), orcamentoEspera);
+                if (espera > 0) {
+                    console.log(`[Assessor Judicial - Esteira] Modelos profundos em resfriamento: aguardando ${Math.round(espera / 1000)}s por um modelo completo em vez de cair no modelo leve.`);
+                    try { options.aoEsperar?.(Math.round(espera / 1000)); } catch { /* o aviso nunca derruba a geração */ }
+                    await new Promise(resolve => setTimeout(resolve, espera));
+                    orcamentoEspera -= espera;
+                }
+            }
+        }
+
         // BLINDAGEM DO POOL DE CHAVES (SEM LIMITE DE QUANTIDADE DE CHAVES):
         // Itera pela esteira de modelos (do mais profundo ao mais ágil: 3.8 -> 3.7 -> 3.6 -> 3.5 -> Flash Latest -> Lite).
         // Em cada modelo, testa TODO o rol de chaves cadastradas do usuário (sejam 5, 8, 12 ou mais chaves em projetos distintos).
@@ -3599,9 +3619,15 @@ async function generateWithFallbackAndRetry(options) {
         // assegurando que cotas isoladas por modelo não impeçam o assessor de concluir a minuta com sucesso!
         for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
             const modelName = modelsToTry[mIdx];
+            // Não aceita o modelo LEVE (minuta curta) enquanto houver ciclos, orçamento de espera e tempo: encerra o ciclo para esperar o modelo profundo e recomeçar a esteira
+            if (esperaProfundoMs > 0 && !ehProfundo(modelName) && cycle < maxPipelineCycles && orcamentoEspera > 0 && (Date.now() - inicioEsteira) < 6 * 60000 && modelsToTry.some(ehProfundo)) {
+                console.log(`[Assessor Judicial - Esteira] Modelos profundos indisponíveis no ciclo ${cycle}/${maxPipelineCycles}: em vez de aceitar o modelo leve (${modelName}), espera e recomeça a esteira.`);
+                anyDemandOverloadedInCycle = true;
+                break;
+            }
             // Modelo em resfriamento (503 recente ou todas as chaves em 429): pula direto, a menos que seja a última opção
             const restantes = modelsToTry.slice(mIdx + 1).some(m => !modeloBloqueado(m, keyPool));
-            if (modeloBloqueado(modelName, keyPool) && restantes) {
+            if (modeloBloqueado(modelName, keyPool) && restantes && !(esperaProfundoMs > 0 && ehProfundo(modelName))) {      // com a espera ligada, os modelos profundos são TENTADOS mesmo em resfriamento
                 console.log(`[Assessor Judicial - Esteira] ${modelName} em resfriamento; pulando para o próximo modelo.`);
                 continue;
             }
@@ -3864,7 +3890,17 @@ function avaliarProfundidadeMinuta(m: any, tipo: string, tamAutos: number, model
     if (nPar < Math.ceil(p.par * fator)) falhas.push(`fundamentação com ${nPar} parágrafos (mínimo ${Math.ceil(p.par * fator)})`);
     return { ok: falhas.length === 0, falhas };
 }
-async function expandirMinutaResumida(a: { partes: any[]; sistema: string; minuta: any; falhas: string[]; req: any; res: any; userApiKey: any; timeoutMs: number }): Promise<{ relatorio: string; fundamentacao: string; dispositivo: string } | null> {
+async function expandirMinutaResumida(a: { partes: any[]; sistema: string; minuta: any; falhas: string[]; req: any; res: any; userApiKey: any; timeoutMs: number; aoEsperar?: (s: number) => void }): Promise<{ relatorio: string; fundamentacao: string; dispositivo: string } | null> {
+    // até 3 tentativas, com pausa entre elas: quando o Google está sobrecarregado a primeira costuma falhar, e entregar a minuta curta sem tentar de novo era o defeito
+    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+        if (tentativa > 1) await new Promise((r) => setTimeout(r, tentativa === 2 ? 15000 : 30000));
+        const r = await expandirMinutaResumidaUmaVez(a, tentativa === 1 ? 90000 : 60000);
+        if (r) { if (tentativa > 1) console.log(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Expansão concluída na tentativa ${tentativa}.`); return r; }
+        console.warn(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Tentativa ${tentativa}/3 de expandir a minuta não deu certo.`);
+    }
+    return null;
+}
+async function expandirMinutaResumidaUmaVez(a: { partes: any[]; sistema: string; minuta: any; falhas: string[]; req: any; res: any; userApiKey: any; timeoutMs: number; aoEsperar?: (s: number) => void }, esperaProfundoMs: number): Promise<{ relatorio: string; fundamentacao: string; dispositivo: string } | null> {
     try {
         const instrucao = `ATENÇÃO — A MINUTA PRELIMINAR ABAIXO FICOU RESUMIDA DEMAIS E NÃO ATENDE AOS PISOS DE PROFUNDIDADE: ${a.falhas.join("; ")}.
 REFAÇA integralmente os campos "relatorio", "fundamentacao" e "dispositivo", mantendo todos os fatos, partes, datas, valores e comandos corretos da minuta preliminar e ACRESCENTANDO tudo o que consta dos autos e foi omitido. Regras: (1) NÃO resuma, NÃO use listas telegráficas nem fórmulas genéricas; (2) um parágrafo próprio para cada pedido, ponto controvertido e prova relevante, com a localização (Mov. X, Arq. Y, Pág. Z) e transcrição literal entre aspas dos trechos centrais; (3) fundamentação em texto corrido e encadeado, SEM títulos numerados nem rótulos de estrutura de análise (só Preliminares, Mérito ou questão específica quando essencial), com os dispositivos legais e precedentes aplicáveis; (4) dispositivo operacional, pedido por pedido; (5) preserve o estilo, as teses e as diretrizes do gabinete já aplicados. Responda SOMENTE com o JSON {"relatorio": "...", "fundamentacao": "...", "dispositivo": "..."}.
@@ -3879,7 +3915,8 @@ ${JSON.stringify({ relatorio: a.minuta?.relatorio || "", fundamentacao: a.minuta
             fallbackModel: "gemini-3.8-flash",
             customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
             timeoutMs: a.timeoutMs,
-            maxCycles: 1,
+            maxCycles: 3, cycleDelayMs: 8000,
+            esperaProfundoMs, aoEsperar: a.aoEsperar,
             contents: [{ role: "user", parts: [...a.partes, { text: instrucao }] }],
             config: { systemInstruction: a.sistema, temperature: 0.2, maxOutputTokens: 32768, responseMimeType: "application/json" }
         });
@@ -6089,6 +6126,8 @@ for (const p of contentsParts) {
 
 let stage1Response: any = null;
 let stage1Json: any = null;
+let avisoProfundidade: string[] | null = null;      // minuta entregue abaixo do piso de profundidade (esteira em contingência): vira aviso visível na tela
+const TEXTO_AVISO_PROFUNDIDADE = "O Google estava sobrecarregado e só o modelo mais leve respondeu. Esta minuta ficou abaixo do nível de profundidade esperado (relatório, fundamentação e/ou dispositivo curtos), mesmo depois de 3 tentativas de aprofundar. Refaça a análise quando o Google normalizar ou peça ao chat para aprofundar a fundamentação antes de assinar.";
 
 if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object" && (stage1Snapshot.relatorio || stage1Snapshot.fundamentacao)) {
     console.log(`[Assessor Judicial - MODO DUAS ETAPAS] Reutilizando Snapshot validado da 1ª Etapa para o processo ${stage1Snapshot.processNumber || 'Autos'}. Avançando instantaneamente para a 2ª Etapa (Juiz Revisor)!`);
@@ -6132,6 +6171,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
         primaryModel: "gemini-3.8-flash",
         fallbackModel: "gemini-3.8-flash",
         customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+        esperaProfundoMs: 120000, aoEsperar: (seg: number) => setProg(progId, `Etapa 1 — o Google está sobrecarregado: aguardando ${seg}s por um modelo completo (para não entregar uma minuta curta)…`, undefined, 56),
         timeoutMs: TIMEOUT_ETAPA,
         maxCycles: 3,
         cycleDelayMs: 8000,
@@ -6205,11 +6245,12 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
         if (!av1.ok) {
             if (raso1) {
                 console.log(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 1 resumida (${av1.falhas.join("; ")}). Expandindo a minuta...`);
-                const exp1 = await expandirMinutaResumida({ partes: stage1ContentsParts, sistema: stage1SystemInstruction, minuta: stage1Json, falhas: av1.falhas, req, res, userApiKey, timeoutMs: TIMEOUT_ETAPA });
+                setProg(progId, "Etapa 1 — aprofundando a minuta (relatório e fundamentação ficaram curtos)…", undefined, 56);
+                const exp1 = await expandirMinutaResumida({ partes: stage1ContentsParts, sistema: stage1SystemInstruction, minuta: stage1Json, falhas: av1.falhas, req, res, userApiKey, timeoutMs: TIMEOUT_ETAPA, aoEsperar: (seg: number) => setProg(progId, `Etapa 1 — aguardando ${seg}s por um modelo completo para aprofundar a minuta…`, undefined, 56) });
                 if (exp1 && exp1.fundamentacao.length > String(stage1Json.fundamentacao || "").length) {
                     stage1Json = { ...stage1Json, ...exp1 };
                     console.log("[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 1 expandida com sucesso.");
-                }
+                } else { avisoProfundidade = [TEXTO_AVISO_PROFUNDIDADE]; }
             } else {
                 console.warn(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 1 (modelo profundo): ressalvas de piso detectadas (${av1.falhas.join("; ")}), mantendo sem expansão.`);
             }
@@ -6495,6 +6536,7 @@ if (executionStage === 1) {
         registrarGroundingNaSaude();
     }
     if (avisoDescumprimento) parsedStage1.avisoDescumprimento = avisoDescumprimento;
+    if (avisoProfundidade) parsedStage1.avisoProfundidade = avisoProfundidade;
     if (fontesParaTela()) parsedStage1.fontesConsultadas = fontesParaTela();
     try { const trocas = corrigirCitacoesDaMinuta(parsedStage1.minute, (accumulatedPdfText || "") + "\n" + (safeProcessText || "")); if (trocas) parsedStage1.citacoesCorrigidas = trocas; } catch { /* a correção nunca derruba a minuta */ }
     if (coberturaLeitura) parsedStage1.coberturaLeitura = coberturaLeitura;
@@ -6784,6 +6826,7 @@ try {
         primaryModel: "gemini-3.8-flash",
         fallbackModel: "gemini-3.8-flash",
         customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
+        esperaProfundoMs: 120000, aoEsperar: (seg: number) => setProg(progId, `Etapa 2 — o Google está sobrecarregado: aguardando ${seg}s por um modelo completo (para não entregar uma minuta curta)…`, undefined, 56),
         timeoutMs: TIMEOUT_ETAPA,
         maxCycles: 3,
         cycleDelayMs: 8000,
@@ -6931,13 +6974,15 @@ if (!stage2Failed) {
     if (!av2.ok) {
         if (raso2) {
             console.log(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 2 resumida (${av2.falhas.join("; ")}). Expandindo a minuta...`);
-            const exp2 = await expandirMinutaResumida({ partes: [{ text: stage2Prompt }], sistema: stage2SystemInstruction, minuta: parsed.minute, falhas: av2.falhas, req, res, userApiKey, timeoutMs: 150000 });
+            setProg(progId, "Etapa 2 — aprofundando a minuta (relatório e fundamentação ficaram curtos)…", undefined, 56);
+            const exp2 = await expandirMinutaResumida({ partes: [{ text: stage2Prompt }], sistema: stage2SystemInstruction, minuta: parsed.minute, falhas: av2.falhas, req, res, userApiKey, timeoutMs: 150000, aoEsperar: (seg: number) => setProg(progId, `Etapa 2 — aguardando ${seg}s por um modelo completo para aprofundar a minuta…`, undefined, 56) });
             if (exp2 && exp2.fundamentacao.length > String(parsed.minute.fundamentacao || "").length) {
                 parsed.minute.relatorio = exp2.relatorio || parsed.minute.relatorio;
                 parsed.minute.fundamentacao = exp2.fundamentacao;
                 parsed.minute.dispositivo = exp2.dispositivo || parsed.minute.dispositivo;
+                avisoProfundidade = null;      // aprofundada: o aviso da etapa 1 (se houve) não vale mais
                 console.log("[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 2 expandida com sucesso.");
-            }
+            } else { avisoProfundidade = [TEXTO_AVISO_PROFUNDIDADE]; }
         } else {
             console.warn(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 2 (modelo profundo): ressalvas de piso detectadas (${av2.falhas.join("; ")}), mantendo sem expansão.`);
         }
@@ -7286,6 +7331,7 @@ if (wasRotated && rotatedKey) {
     if ((stage1Response as any)?.autosReduzidos) parsed.autosReduzidos = (stage1Response as any).autosReduzidos;
     if (alertaInjecao) parsed.alertaInjecao = alertaInjecao;
     if (avisoDescumprimento) parsed.avisoDescumprimento = avisoDescumprimento;
+    if (avisoProfundidade) parsed.avisoProfundidade = avisoProfundidade;
     if (fontesParaTela()) parsed.fontesConsultadas = fontesParaTela();
     if (coberturaLeitura) parsed.coberturaLeitura = coberturaLeitura;
     try {      // artigos citados que o Planalto mostra como revogados, vetados ou inexistentes
