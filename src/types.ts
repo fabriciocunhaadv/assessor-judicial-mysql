@@ -341,6 +341,10 @@ export interface SavedAnalysis {
   chatMessages?: ChatMessage[];
   unitId?: string;
   lancadoProjudi?: number | null;      // quando o assessor marcou este ato como já lançado no Projudi (controle de quem já foi concluído)
+  /** “Refazer só com alguns eventos”: esta minuta é uma nova versão de outra do mesmo processo, feita só com parte das movimentações. */
+  refazerDe?: string;      // id da minuta de que esta é nova versão
+  versao?: number;      // 2, 3… (a primeira não tem)
+  faixaMovimentos?: { min: number; max: number; n: number; arquivos: number };      // movimentações usadas (a numeração do Projudi)
 }
 
 export interface InitialPetitionFile {

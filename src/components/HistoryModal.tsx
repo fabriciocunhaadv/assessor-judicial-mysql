@@ -138,6 +138,7 @@ const chaveAutor = (it: any): string => {
 };
 
 import { origemExterna, origemVideo, motorDaMinuta } from "../utils/origemDaMinuta";
+import { textoDaFaixa } from "../utils/refazerParcial";
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
   isOpen,
@@ -988,6 +989,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                         {origemExterna(item) && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-teal-100 text-teal-900 border-teal-400 whitespace-nowrap" title={origemExterna(item)!.dica} data-testid="etiqueta-agaia">{origemExterna(item)!.rotulo}</span>}
                         {origemVideo(item) && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-violet-100 text-violet-900 border-violet-400 whitespace-nowrap" title={origemVideo(item)!.dica} data-testid="etiqueta-video">{origemVideo(item)!.rotulo}</span>}
+                        {(item as any).versao > 1 && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-amber-100 text-amber-900 border-amber-300 whitespace-nowrap" title={`Nova versão da minuta, feita só com ${textoDaFaixa((item as any).faixaMovimentos) || "parte das movimentações"}.`} data-testid="etiqueta-versao">{`v${(item as any).versao}${(item as any).faixaMovimentos?.max ? ` · mov. ${(item as any).faixaMovimentos.min}–${(item as any).faixaMovimentos.max}` : ""}`}</span>}
                         {!origemExterna(item) && motorDaMinuta(item) && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-slate-100 text-slate-700 border-slate-300 whitespace-nowrap" title={motorDaMinuta(item)!.dica} data-testid="etiqueta-motor">{motorDaMinuta(item)!.rotulo}</span>}
                         {item.result?.conferenciaFase?.avisos?.length > 0 && !item.result.conferenciaFase.resolvido && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-red-50 text-red-800 border-red-300 whitespace-nowrap" title={item.result.conferenciaFase.avisos.join(" ")} data-testid="etiqueta-fase">🧭 Fora da fase?</span>}
                         {getSafeUnitText(item.result?.minute?.judicialUnit) ? (

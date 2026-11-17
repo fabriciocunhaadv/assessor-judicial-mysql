@@ -5,6 +5,8 @@ import { pedirEnvioCalibragem, pedidoDeAto, type ModoCalibragem } from "../utils
 import { idsDoMesmoProcesso } from "../utils/lancadoProcesso";
 import { AvisosDaMinuta } from "./AvisosDaMinuta";
 import { ComparacaoMinutaModal } from "./ComparacaoMinutaModal";
+import { RefazerParcialModal } from "./RefazerParcialModal";
+import { podeRefazerComPoucosEventos, textoDaFaixa } from "../utils/refazerParcial";
 import { textoCompletoDaMinuta } from "../utils/minutaLancada";
 import { AdaptarParadigmoModal } from "./AdaptarParadigmoModal";
 import { ConferirModelosModal } from "./ConferirModelosModal";
@@ -58,8 +60,7 @@ import {
   UserCheck,
   LayoutTemplate,
   ClipboardCheck,
-  GitCompare,
-} from "lucide-react";
+  GitCompare, Scissors } from "lucide-react";
 import { GenerationResult, MinuteData, ApiUsageMetadata, ChatMessage, MinuteVersion } from "../types";
 import { copyMinuteToClipboard, exportMinuteToDocx, printFormattedMinute } from "../utils/documentExport";
 import { updateAnalysisChatAndMinute } from "../lib/firestoreUtils";
@@ -139,7 +140,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
     let vivo = true;
     const ler = async () => {
       if (!currentAnalysisId) { if (vivo) { setLancado(null); setLancadoIds([]); } return; }
-      try { const lista = await getHistory(), ato = lista.find((i) => i.id === currentAnalysisId); if (!vivo) return; setLancado(ato?.lancadoProjudi || null); setPromptDoAto(String(ato?.promptTitle || "")); setLancadoIds(ato ? idsDoMesmoProcesso(lista, ato) : [currentAnalysisId]); } catch { /* sem lista: o botão ainda funciona pela minuta aberta */ }
+      try { const lista = await getHistory(), ato = lista.find((i) => i.id === currentAnalysisId); if (!vivo) return; setLancado(ato?.lancadoProjudi || null); setPromptDoAto(String(ato?.promptTitle || "")); setAtoDoHistorico(ato || null); setLancadoIds(ato ? idsDoMesmoProcesso(lista, ato) : [currentAnalysisId]); } catch { /* sem lista: o botão ainda funciona pela minuta aberta */ }
     };
     void ler(); window.addEventListener(HISTORICO_MUDOU, ler);
     return () => { vivo = false; window.removeEventListener(HISTORICO_MUDOU, ler); };
@@ -200,6 +201,8 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const topViewerRef = useRef<HTMLDivElement>(null);
   const tabContentRef = useRef<HTMLDivElement>(null);
+  const [refazerAberto, setRefazerAberto] = useState(false);      // “Refazer só com alguns eventos” (motor principal)
+  const [atoDoHistorico, setAtoDoHistorico] = useState<any>(null);      // o registro deste ato no Histórico (versão, faixa de movimentações, motor)
   const [comparacaoAberta, setComparacaoAberta] = useState(false);      // Super Admin: minuta gerada × lançada no Projudi
   const [promptDoAto, setPromptDoAto] = useState("");      // prompt que gerou este ato (do Histórico), para a calibragem por prompt
   const projudiTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1295,6 +1298,18 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 <span>{lancado ? "Lançado" : "Marcar lançado"}</span>
               </button>
             )}
+            {currentAnalysisId && atoDoHistorico && podeRefazerComPoucosEventos(atoDoHistorico) && (
+              <button
+                type="button"
+                onClick={() => setRefazerAberto(true)}
+                data-testid="btn-refazer-parcial"
+                className="h-8 px-2.5 inline-flex items-center gap-1 rounded-lg border text-xs font-extrabold transition cursor-pointer whitespace-nowrap shadow-sm border-amber-500 bg-gradient-to-r from-amber-400 to-orange-400 text-slate-900 hover:from-amber-300 hover:to-orange-300"
+                title="Processo grande? Escolha no Projudi só as movimentações que importam (por exemplo, as últimas) e o Studio gera uma nova versão desta minuta. A atual continua guardada."
+              >
+                <Scissors className="w-3.5 h-3.5" />
+                <span>Refazer só com alguns eventos</span>
+              </button>
+            )}
             <button
               onClick={() => setActiveTab("editor")}
               className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs ${activeTab === "editor" ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
@@ -1753,6 +1768,14 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             onInjectAsParadigm={handleTriggerInjectParadigm}
           />
         )}
+        {refazerAberto && (
+          <RefazerParcialModal
+            processo={minute.processNumber || result?.minute?.processNumber || ""}
+            idDaMinuta={currentAnalysisId || ""}
+            prompt={String(promptDoAto || (result as any)?.promptTitle || "")}
+            aoFechar={() => setRefazerAberto(false)}
+          />
+        )}
         {isSuperAdmin && comparacaoAberta && (
           <ComparacaoMinutaModal
             processo={minute.processNumber || result?.minute?.processNumber || ""}
@@ -1769,6 +1792,13 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
         {/* Tab 1: Formatted Document View */}
         {activeTab === "formatted" && (
           <div className="space-y-4">
+
+            {atoDoHistorico?.faixaMovimentos?.max > 0 && (
+              <div className="max-w-4xl mx-auto rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2 text-xs flex items-start gap-2" data-testid="aviso-versao-parcial">
+                <Scissors className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                <p><b>Versão {atoDoHistorico.versao || 2} desta minuta, feita só com {textoDaFaixa(atoDoHistorico.faixaMovimentos)}.</b> O que ficou fora dessa faixa não foi lido; confira se algum fato anterior importa para a decisão. A versão anterior continua no Histórico.</p>
+              </div>
+            )}
 
             {/* Automatic Pre-Audit Security Seal & Certificate */}
             {result?.auditAnalysis && (

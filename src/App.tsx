@@ -91,6 +91,7 @@ import { CalibragemEnvioHost } from "./components/CalibragemEnvioHost";
 import { iniciarMedidor } from "./utils/medidorEnvio";
 import { avisarVencimentos, carregarConfigRetencao, iniciarRetencao } from "./utils/retencaoDb";
 import { useConfigRetencao } from "./components/EtiquetaValidade";
+import { lerPedidoRefazer } from "./utils/refazerParcial";
 import { assinarHistorico, buscarAtosDosProcessos, retomarHistoricoPendente, saveToHistory, getHistory, deleteFromHistory, isCorruptedHistoryItem, SavedAnalysis } from "./utils/historyDb";
 import { findDossierForProcess, getProcessActsSummaryForPrompt } from "./utils/dossierUtils";
 import { ProcessTimelineModal } from "./components/ProcessTimelineModal";
@@ -1566,6 +1567,13 @@ export default function App() {
         creatorEmail: user?.email || "",
         chatMessages: [],
       };
+      try {      // “Refazer só com alguns eventos”: a extensão marca a página; esta minuta vira a nova versão da anterior (só vale para o mesmo processo e se o pedido for recente)
+        const ped = lerPedidoRefazer(document.documentElement.dataset.refazerPedido, effectiveProcessNum);
+        if (ped) {
+          const anterior = (await getHistory().catch(() => [] as SavedAnalysis[])).find((i) => i.id === ped.de);
+          analysisToSave.refazerDe = ped.de; analysisToSave.versao = (anterior?.versao || 1) + 1; analysisToSave.faixaMovimentos = { min: ped.min, max: ped.max, n: ped.n, arquivos: ped.arquivos };
+        }
+      } catch { /* sem o pedido: grava como minuta normal */ }
       const gravado = await saveToHistory(analysisToSave);
       void registrarOperacao({ ...dadosOp(), processo: effectiveProcessNum, resultado: gravado.ok ? "ok" : "nao_gravado", erro: gravado.erro });
       // avisa a extensão (esteira) se o ato foi mesmo gravado no Histórico, para ela não seguir adiante antes disso nem dar o processo por salvo sem estar

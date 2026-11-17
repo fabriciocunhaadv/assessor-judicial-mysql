@@ -1,0 +1,20 @@
+// Funções puras do “Refazer só com alguns eventos”. Rodar: npx tsx testes/teste_refazer_parcial.ts
+import { lerPedidoRefazer, textoDaFaixa, podeRefazerComPoucosEventos } from "../src/utils/refazerParcial";
+let falhas = 0;
+const ok = (c: boolean, m: string) => { if (!c) { falhas++; console.log("FALHOU:", m); } else console.log("ok:", m); };
+const agora = 1_800_000_000_000, proc = "5914870-27.2025.8.09.0166";
+const base = { de: "ana-1", min: 77, max: 83, n: 7, arquivos: 9, processo: proc, t: agora - 60_000 };
+ok(lerPedidoRefazer(JSON.stringify(base), proc, agora)?.max === 83, "pedido válido do mesmo processo");
+ok(lerPedidoRefazer(JSON.stringify({ ...base, processo: "5914870-27.2025.8.09.0999" }), "5914870-27.2025.8.09.0166", agora) !== null, "mesmo número (7 primeiros dígitos): vale");
+ok(lerPedidoRefazer(JSON.stringify({ ...base, processo: "1111111-11.2025.8.09.0166" }), proc, agora) === null, "outro processo: ignora");
+ok(lerPedidoRefazer(JSON.stringify({ ...base, t: agora - 3 * 3600_000 }), proc, agora) === null, "pedido com mais de 2 h: ignora");
+ok(lerPedidoRefazer(JSON.stringify({ ...base, de: "" }), proc, agora) === null, "sem a minuta de origem: ignora");
+ok(lerPedidoRefazer("isso não é json", proc, agora) === null && lerPedidoRefazer(undefined, proc, agora) === null && lerPedidoRefazer("", proc, agora) === null, "lixo ou vazio: ignora");
+ok(lerPedidoRefazer(JSON.stringify({ ...base, min: "x", n: -3 }), proc, agora)?.n === 0, "números inválidos viram 0");
+ok(textoDaFaixa({ min: 77, max: 83, n: 7, arquivos: 9 }) === "as movimentações 77 a 83 (7 marcadas, 9 arquivo(s))", "texto da faixa");
+ok(textoDaFaixa({ min: 5, max: 5, n: 1, arquivos: 1 }) === "a movimentação 5", "uma só movimentação");
+ok(textoDaFaixa(undefined) === "" && textoDaFaixa({ min: 0, max: 0, n: 0, arquivos: 0 }) === "", "sem faixa: vazio");
+ok(podeRefazerComPoucosEventos({ result: {} }) === true && podeRefazerComPoucosEventos({ result: { motor: "principal" } }) === true, "motor principal (ou sem etiqueta): pode");
+ok(podeRefazerComPoucosEventos({ result: { motor: "turbo" } }) === false && podeRefazerComPoucosEventos({ result: { motor: "gigante" } }) === false, "Turbo e Gigante: não");
+ok(podeRefazerComPoucosEventos({ result: { origemExterna: { sistema: "Agaia" } } }) === false && podeRefazerComPoucosEventos({ result: { origemVideo: { videos: ["a"] } } }) === false && podeRefazerComPoucosEventos(null) === false, "Agaia, vídeo e nada: não");
+console.log("FALHAS:", falhas); process.exit(falhas ? 1 : 0);
