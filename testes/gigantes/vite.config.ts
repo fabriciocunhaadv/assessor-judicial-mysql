@@ -7,6 +7,7 @@ const raiz = path.resolve(__dirname, '../..');
 export default defineConfig({
   root: raiz,
   plugins: [react(), tailwindcss()],
+  define: { __APP_VERSAO__: JSON.stringify({ commit: 'teste', data: 'teste' }) },
   resolve: { alias: [
     { find: /^firebase\/app$/, replacement: path.resolve(__dirname, '_stubs/app.ts') },
     { find: /^firebase\/auth$/, replacement: path.resolve(__dirname, '_stubs/auth.ts') },

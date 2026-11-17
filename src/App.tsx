@@ -285,6 +285,8 @@ export default function App() {
   const { resolver: resolverCoberturaLeitura, dialog: dialogCobertura } = useCoberturaLeitura();
   const coberturaEnvioRef = useRef<any>(null);
   const [progId, setProgId] = useState<string | null>(null);
+  const [retomando, setRetomando] = useState<{ progId: string } | null>(null);      // análise que ficou rodando no servidor e está sendo retomada: mostra o cartão de progresso no painel
+  const pararRetomadaRef = useRef<(() => void) | null>(null);
   const [dlgGigante, setDlgGigante] = useState<{ paginas: number; tokens: number; corte: CorteInfo | null; resolver: (e: EscolhaGigante) => void } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
@@ -1746,6 +1748,7 @@ export default function App() {
     const aoParar = () => { parar.v = true; limparPendente(pend.progId); toast.dismiss(tid); toast("Parei de aguardar essa análise. Ela pode continuar no servidor, mas não será mais buscada.", { icon: "⏹️", duration: 6000 }); };
     try {
       toast.loading(<AvisoRetomada texto="Retomando a análise que estava rodando no servidor…" aoParar={aoParar} />, { id: tid });
+      setRetomando({ progId: pend.progId }); pararRetomadaRef.current = aoParar;
       const limite = Date.now() + 25 * 60_000;
       while (Date.now() < limite && !parar.v) {
         let r: any = null; try { r = await consultarResultado(pend.progId); } catch { r = null; }
@@ -1753,7 +1756,7 @@ export default function App() {
         if (parar.v) return;
         if (r.desconhecido) {
           const novo = await reenviarRequisicao(pend.progId);      // o servidor perdeu o resultado (reiniciou): envia de novo o pedido guardado no navegador
-          if (novo) { pend.progId = novo; pend.iniciadoEm = Date.now(); salvarPendente(pend); toast.loading(<AvisoRetomada texto="O servidor foi reiniciado: refazendo a análise sozinho…" aoParar={aoParar} />, { id: tid }); reportarSaude({ tipo: "retomada", modulo: "analise", severidade: "info", mensagem: "Análise reenviada automaticamente após reinício do servidor" }, true); await esperar(5000); continue; }
+          if (novo) { pend.progId = novo; pend.iniciadoEm = Date.now(); salvarPendente(pend); setRetomando({ progId: novo }); toast.loading(<AvisoRetomada texto="O servidor foi reiniciado: refazendo a análise sozinho…" aoParar={aoParar} />, { id: tid }); reportarSaude({ tipo: "retomada", modulo: "analise", severidade: "info", mensagem: "Análise reenviada automaticamente após reinício do servidor" }, true); await esperar(5000); continue; }
           toast("A análise anterior não foi encontrada no servidor (ele pode ter sido reiniciado) e o pedido não estava guardado. Inicie de novo.", { id: tid, icon: "ℹ️", duration: 9000 }); limparPendente(pend.progId); return;
         }
         if (r.pronto) {
@@ -1791,7 +1794,7 @@ export default function App() {
       }
       if (parar.v) return;
       toast.error("A análise ainda não terminou no servidor. Abra o sistema de novo em alguns minutos.", { id: tid, duration: 9000 });
-    } finally { recuperandoRef.current = false; }
+    } finally { recuperandoRef.current = false; setRetomando(null); pararRetomadaRef.current = null; }
   };
   // Turbo e Lupa: se a página fechou no meio, busca o resultado no servidor e guarda onde cada módulo guarda o seu (histórico do Turbo; lista de auditorias da Lupa).
   const modulosRecuperandoRef = useRef<Set<string>>(new Set());
@@ -2473,15 +2476,21 @@ export default function App() {
         {dlgGigante && <GiganteDialog paginas={dlgGigante.paginas} tokens={dlgGigante.tokens} corte={dlgGigante.corte} onEscolha={dlgGigante.resolver} />}
 
         {/* Loading Progress Card */}
-        {(isLoading || isProceedingToStage2) && (
-          <div className="sticky top-24 z-30 p-5 bg-white border border-emerald-400 rounded-xl shadow-lg flex flex-col items-center justify-center text-center space-y-3">
+        {(isLoading || isProceedingToStage2 || retomando) && (
+          <div className="sticky top-24 z-30 p-5 bg-white border border-emerald-400 rounded-xl shadow-lg flex flex-col items-center justify-center text-center space-y-3" data-testid={retomando && !isLoading && !isProceedingToStage2 ? "cartao-retomada" : undefined}>
             <div className="w-9 h-9 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin" />
             <PainelProgresso
-              ativo={isLoading || isProceedingToStage2}
-              progId={progId}
-              titulo={isProceedingToStage2 && !isLoading ? "2ª Etapa — Juiz Revisor" : "Executando prompt no processo"}
-              fallbackTexto={loadingStep}
+              ativo={isLoading || isProceedingToStage2 || !!retomando}
+              progId={!isLoading && !isProceedingToStage2 && retomando ? retomando.progId : progId}
+              titulo={isProceedingToStage2 && !isLoading ? "2ª Etapa — Juiz Revisor" : retomando && !isLoading ? "Retomando a análise que ficou no servidor" : "Executando prompt no processo"}
+              fallbackTexto={retomando && !isLoading ? "Conectando ao servidor para buscar o andamento…" : loadingStep}
             />
+            {retomando && !isLoading && !isProceedingToStage2 && (
+              <>
+                <p className="text-[11px] text-slate-600 max-w-xl" data-testid="retomada-explicacao">Esta análise já estava rodando no servidor quando a página foi atualizada. Quando terminar, a minuta aparece aqui e é gravada no Histórico sozinha. Você pode esperar nesta tela.</p>
+                <button type="button" onClick={() => pararRetomadaRef.current?.()} className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700" data-testid="retomada-parar">Parar de aguardar</button>
+              </>
+            )}
           </div>
         )}
 
