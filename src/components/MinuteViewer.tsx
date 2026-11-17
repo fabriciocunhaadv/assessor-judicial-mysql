@@ -1751,6 +1751,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
           <ComparacaoMinutaModal
             processo={minute.processNumber || result?.minute?.processNumber || ""}
             textoGerado={textoCompletoDaMinuta(minute)}
+            cabecalho={String(minute.header || "")}
             ato={String((result as any)?.actType || minute.title || "").slice(0, 30)}
             promptTitulo={String((result as any)?.promptTitle || "").slice(0, 120)}
             aoFechar={() => setComparacaoAberta(false)}

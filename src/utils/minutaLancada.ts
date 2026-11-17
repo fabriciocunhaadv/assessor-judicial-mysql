@@ -12,7 +12,7 @@ export const estadoDaExtensaoParaMinutaLancada = (): EstadoExtensaoMinutaLancada
 export interface MinutaLancadaLida { ok: boolean; html?: string; tela?: string; erro?: string }
 
 /** Nunca lança: falha vira { ok: false, erro }. */
-export function buscarMinutaLancada(processo: string, aoProgresso?: (texto: string) => void, sinal?: AbortSignal): Promise<MinutaLancadaLida> {
+export function buscarMinutaLancada(processo: string, aoProgresso?: (texto: string) => void, sinal?: AbortSignal, cabecalho?: string): Promise<MinutaLancadaLida> {
   return new Promise((resolver) => {
     const reqId = "ml" + Date.now() + Math.random().toString(36).slice(2, 6);
     let fim = false;
@@ -25,7 +25,7 @@ export function buscarMinutaLancada(processo: string, aoProgresso?: (texto: stri
     };
     window.addEventListener("message", ouvir);
     sinal?.addEventListener("abort", () => terminar({ ok: false, erro: "Cancelado." }));
-    window.postMessage({ __projudi: "minuta-lancada", fase: "ler", reqId, processo }, window.location.origin);
+    window.postMessage({ __projudi: "minuta-lancada", fase: "ler", reqId, processo, cabecalho: String(cabecalho || "").slice(0, 1500) }, window.location.origin);
   });
 }
 

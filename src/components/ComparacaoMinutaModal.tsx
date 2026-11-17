@@ -4,7 +4,7 @@ import { buscarMinutaLancada, estadoDaExtensaoParaMinutaLancada } from "../utils
 import { compararMinutas, textoDeHtml, type ResultadoComp, type BlocoComp } from "../utils/compararMinutas";
 
 // Mostra o que mudou entre a minuta que o Studio gerou e a que ficou salva (lançada) na pré-análise do Projudi. Só Super Admin (o botão só aparece para ele; o servidor também confere).
-export function ComparacaoMinutaModal({ processo, textoGerado, ato, promptTitulo, aoFechar }: { processo: string; textoGerado: string; ato: string; promptTitulo?: string; aoFechar: () => void }) {
+export function ComparacaoMinutaModal({ processo, textoGerado, cabecalho, ato, promptTitulo, aoFechar }: { processo: string; textoGerado: string; cabecalho?: string; ato: string; promptTitulo?: string; aoFechar: () => void }) {
   const [fase, setFase] = useState<"lendo" | "pronto" | "erro">("lendo");
   const [andamento, setAndamento] = useState("Pedindo o texto à extensão…");
   const [erro, setErro] = useState(""), [tela, setTela] = useState("");
@@ -18,7 +18,7 @@ export function ComparacaoMinutaModal({ processo, textoGerado, ato, promptTitulo
     const est = estadoDaExtensaoParaMinutaLancada();
     if (est !== "ok") { setErro(est === "antiga" ? "Atualize a extensão Conclusões Projudi (precisa da versão 3.0.6 ou mais nova)." : "Instale a extensão Conclusões Projudi e deixe o Projudi aberto e logado."); setFase("erro"); return; }
     ctl.current = new AbortController();
-    const r = await buscarMinutaLancada(processo, setAndamento, ctl.current.signal);
+    const r = await buscarMinutaLancada(processo, setAndamento, ctl.current.signal, ((cabecalho || "") + "\n" + textoGerado).slice(0, 1500));
     if (!r.ok) { setErro(r.erro || "Não consegui ler a minuta no Projudi."); setTela(r.tela || ""); setFase("erro"); return; }
     const texto = textoDeHtml(r.html || "");
     if (texto.replace(/\s+/g, " ").length < 120) { setErro("O editor da pré-análise veio quase vazio (só o modelo-padrão?). Salve o texto parcial no Projudi e tente de novo."); setTela(r.tela || ""); setFase("erro"); return; }
@@ -29,7 +29,7 @@ export function ComparacaoMinutaModal({ processo, textoGerado, ato, promptTitulo
       const resp = await fetch("/api/comparacoes-minuta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ processo, ato, promptTitulo, ...c, blocos: undefined, mudancas, textoLancado: texto, textoGerado }) });
       setGuardado(resp.ok ? "sim" : "nao");
     } catch { setGuardado("nao"); }
-  }, [processo, textoGerado, ato, promptTitulo]);
+  }, [processo, textoGerado, cabecalho, ato, promptTitulo]);
 
   useEffect(() => { void rodar(); return () => ctl.current?.abort(); }, [rodar]);
 
