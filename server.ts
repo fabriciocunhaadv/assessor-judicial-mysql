@@ -15,7 +15,7 @@ import { docsRouter } from './server/docsRoutes';
 import { retencaoRouter, iniciarRetencaoNoServidor } from './server/retencaoServidor';
 import { fontesPendentesRouter, detectoresDosMotores } from './server/fontesPendentes';
 import { medirMotores, iniciarMetricasDosMotores } from './server/motoresMetricas';
-import { PRONTIDAO_DO_ATO, PRONTIDAO_AUDITORIA, PRONTIDAO_MAPA } from './server/prontidaoDoAto';
+import { PRONTIDAO_DO_ATO, PRONTIDAO_AUDITORIA, PRONTIDAO_MAPA, REGRA_CONDICIONAL_AUDITORIA } from './server/prontidaoDoAto';
 import { chamadoAnexosRouter, iniciarChamadoAnexos } from './server/chamadoAnexos';
 import { filaRouter, iniciarFilaCelular } from './server/filaCelular';
 import { centralRouter } from './server/centralDecisoes';
@@ -2151,7 +2151,8 @@ CALIBRAGEM DO AUDITOR (VALE PARA QUALQUER PROCESSO E QUALQUER ÁREA):
 10. PROVA LITERAL (REGRA DO SISTEMA): todo apontamento em "criticalAlerts" exige trechos LITERAIS copiados do texto: "minutaTrecho" (da minuta) e/ou "autosTrecho" (dos autos), conforme o "tipoProva": contradicao = a minuta diz uma coisa e os autos outra (os dois trechos); omissao = os autos têm algo que a minuta deveria tratar e não trata (trecho dos autos); sem_lastro = a minuta afirma algo que os autos não mostram (trecho da minuta); forma = defeito de redação ou estrutura (trecho da minuta). O servidor CONFERE se os trechos existem e DESCARTA o apontamento que não tiver prova. Não parafraseie dentro dos trechos.
 11. FICHA DOS AUTOS: a ficha da etapa 1 é só um mapa. Confirme nos autos antes de apontar; se a ficha e os autos divergirem, vale o texto dos autos. Use a ficha para não deixar passar solicitação sem resposta, ordem condicional cuja condição ocorreu e pendência formal (procuração, citação, prazo, cumprimento).
 12. NADA SOLTO: toda observação para o juiz deve ser um apontamento em "criticalAlerts" que diga com clareza (a) o que observar, (b) ONDE: na minuta (trecho literal) e nos autos (Mov./Arq./Pág.), e (c) o que o juiz deve conferir ou decidir. Não deixe observação genérica ou solta no summary sem apontamento correspondente. Preencha os campos de resumo só com o que você de fato conferiu; se não conferiu algo, deixe o campo vazio em vez de afirmar regularidade.
-13. TPU (CNJ): os códigos e descrições de movimentação das Tabelas Processuais Unificadas servem só para o assessor/juiz lançar o ato no Projudi. NÃO use TPU para avaliar a minuta e NÃO aponte ausência, excesso, erro ou incoerência de TPU/"CNJ:código" (ex.: linha "TPU a ser cadastrada"). Ignore essas linhas na conferência.${regraLupaArgumentos()}
+13. TPU (CNJ): os códigos e descrições de movimentação das Tabelas Processuais Unificadas servem só para o assessor/juiz lançar o ato no Projudi. NÃO use TPU para avaliar a minuta e NÃO aponte ausência, excesso, erro ou incoerência de TPU/"CNJ:código" (ex.: linha "TPU a ser cadastrada"). Ignore essas linhas na conferência.
+${REGRA_CONDICIONAL_AUDITORIA}${regraLupaArgumentos()}
 
 Você deve responder ESTRITAMENTE em formato JSON com o seguinte schema obrigatório:
 {
