@@ -1,7 +1,7 @@
 import React from "react";
-import { Compass, Gauge, HeartPulse, Activity, BarChart3, Bug, Eye, Building, Users, ShieldCheck, Megaphone, Database, Zap } from "lucide-react";
+import { GitCompare, Compass, Gauge, HeartPulse, Activity, BarChart3, Bug, Eye, Building, Users, ShieldCheck, Megaphone, Database, Zap } from "lucide-react";
 
-export type AbaSuper = "central" | "calibragem" | "saude" | "operacao" | "utilizacao" | "monitor" | "erros" | "tokens" | "tenants" | "users" | "snapshots" | "broadcast" | "migration";
+export type AbaSuper = "central" | "calibragem" | "saude" | "operacao" | "utilizacao" | "monitor" | "minutas" | "erros" | "tokens" | "tenants" | "users" | "snapshots" | "broadcast" | "migration";
 export interface ItemNav { id: AbaSuper; rotulo: string; dica: string; Icone: any; cor: string; testid: string; badge?: string | number | null; alerta?: boolean }
 export interface GrupoNav { titulo: string; itens: ItemNav[] }
 
@@ -17,6 +17,7 @@ export function gruposDoMenu(c: { gabinetes: number; usuarios: number; snapshots
       { id: "operacao", rotulo: "Operação", dica: "O que cada usuário fez", Icone: Activity, cor: "text-sky-400", testid: "aba-monitor-operacao" },
       { id: "utilizacao", rotulo: "Utilização", dica: "Quanto cada pessoa usou", Icone: BarChart3, cor: "text-cyan-300", testid: "aba-utilizacao" },
       { id: "monitor", rotulo: "Monitor", dica: "Uso de IA, erros e banco (só leitura)", Icone: Eye, cor: "text-sky-300", testid: "aba-monitor" },
+      { id: "minutas", rotulo: "Minutas lançadas", dica: "Gerada × lançada × assinada", Icone: GitCompare, cor: "text-violet-300", testid: "aba-minutas" },
       { id: "erros", rotulo: "Erros", dica: "Erros vistos nas telas", Icone: Bug, cor: "text-rose-400", testid: "aba-monitor-erros" },
       { id: "tokens", rotulo: "Tokens", dica: "Uso da chave nativa", Icone: Zap, cor: "text-amber-400", testid: "aba-tokens" },
     ] },

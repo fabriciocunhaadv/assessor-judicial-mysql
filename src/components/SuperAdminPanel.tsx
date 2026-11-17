@@ -73,6 +73,7 @@ import { CentralDecisoesPanel } from './CentralDecisoesPanel';
 import { SaudePanel } from './SaudePanel';
 import { UtilizacaoPanel } from './UtilizacaoPanel';
 import { MonitorPanel } from './MonitorPanel';
+import { MinutasLancadasPanel } from './MinutasLancadasPanel';
 import { db } from '../lib/firebase';
 import { linkDeAcesso } from '../utils/linkAcesso';
 import { ChavesResumo } from './ChavesResumo';
@@ -141,7 +142,7 @@ interface SuperAdminPanelProps {
 let limpezaSnapsFeita = false;
 export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClose, onOpenTicketsModal }) => {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'tenants' | 'users' | 'snapshots' | 'broadcast' | 'migration' | 'tokens' | 'erros' | 'operacao' | 'saude' | 'utilizacao' | 'monitor' | 'central' | 'calibragem'>('central');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'users' | 'snapshots' | 'broadcast' | 'migration' | 'tokens' | 'erros' | 'operacao' | 'saude' | 'utilizacao' | 'monitor' | 'minutas' | 'central' | 'calibragem'>('central');
 
   // Snapshots & Healing State
   const [snapshots, setSnapshots] = useState<GlobalDatabaseSnapshot[]>([]);
@@ -3338,6 +3339,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
           {activeTab === 'saude' && <SaudePanel />}
           {activeTab === 'utilizacao' && <UtilizacaoPanel />}
           {activeTab === 'monitor' && <MonitorPanel />}
+          {activeTab === 'minutas' && <MinutasLancadasPanel />}
 
           {activeTab === 'tokens' && (
             <div className="space-y-6">

@@ -26,7 +26,7 @@ export function ComparacaoMinutaModal({ processo, textoGerado, ato, promptTitulo
     setRes(c); setFase("pronto");
     try {      // guarda para a calibragem (só números, trechos curtos do que mudou e o texto lançado)
       const mudancas = c.blocos.filter((b) => b.tipo !== "igual").slice(0, 80).map((b) => ({ tipo: b.tipo, secao: b.secao, original: b.original, lancado: b.lancado }));
-      const resp = await fetch("/api/comparacoes-minuta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ processo, ato, promptTitulo, ...c, blocos: undefined, mudancas, textoLancado: texto }) });
+      const resp = await fetch("/api/comparacoes-minuta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ processo, ato, promptTitulo, ...c, blocos: undefined, mudancas, textoLancado: texto, textoGerado }) });
       setGuardado(resp.ok ? "sim" : "nao");
     } catch { setGuardado("nao"); }
   }, [processo, textoGerado, ato, promptTitulo]);
