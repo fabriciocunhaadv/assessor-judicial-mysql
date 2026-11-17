@@ -89,6 +89,7 @@ export function GigantesPanel({ config, onVerHistorico }: { config: ConfigGigant
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate" title={j.nome}>{j.numeroProcesso ? `${j.numeroProcesso} — ` : ""}{j.nome}</div>
+                  {(j.config?.unitName || j.config?.unitId) && <div className="mt-0.5"><span className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded-md border border-indigo-200 bg-indigo-50 text-indigo-800 text-[10px] font-bold truncate" title={`Cadastrado na serventia: ${j.config.unitName || j.config.unitId} (a escolhida quando o processo foi enviado; mudar a unidade depois não altera onde ele fica)`} data-testid="gigante-serventia">🏛 {j.config.unitName || j.config.unitId}</span></div>}
                   <div className="text-[10px] text-slate-500">{j.totalPaginas ? `${j.totalPaginas} págs · ${j.lotes.length} lote(s) · ~${Math.round(j.totalTokensEstimados / 1000)} mil tokens` : "preparando…"}</div>
                 </div>
                 <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${COR[j.status]}`}>{ROTULO[j.status]}</span>
