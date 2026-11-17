@@ -87,6 +87,7 @@ import { subscribeToTickets, getLocalTickets, isTicketModuleEnabled } from "./ut
 import { SavedKnowledgeDoc, getKnowledgeDocs } from "./utils/knowledgeDb";
 import { definirSuperAdminHistorico } from "./lib/firestoreUtils";
 import { registrarOperacao } from "./utils/monitorOperacao";
+import { CalibragemEnvioHost } from "./components/CalibragemEnvioHost";
 import { iniciarMedidor } from "./utils/medidorEnvio";
 import { avisarVencimentos, carregarConfigRetencao, iniciarRetencao } from "./utils/retencaoDb";
 import { useConfigRetencao } from "./components/EtiquetaValidade";
@@ -2280,6 +2281,7 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#f3f4f6] text-slate-900 font-sans selection:bg-slate-200">
       <AvisoExtensao />
+      <CalibragemEnvioHost />
       <Toaster position="bottom-right" containerStyle={{ zIndex: 99999 }} toastOptions={{ duration: 4000, style: { background: '#1e293b', color: '#fff', border: '1px solid #334155' } }} />
       <AvisoNovaVersao />
       <AssistenteBoasVindas aoAcao={aoAcaoAssistente} />

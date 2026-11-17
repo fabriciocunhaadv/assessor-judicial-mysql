@@ -8,7 +8,7 @@ let falhas = 0; const ok = (c, m) => { if (!c) { falhas++; console.log("FALHOU:"
 try {
   for (let i = 0; i < 120; i++) { try { if ((await fetch("http://localhost:3098/api/native-key-info")).ok) break; } catch {} await new Promise((r) => setTimeout(r, 500)); }
   const chama = async (rota, metodo = "GET") => (await fetch(`http://localhost:3098${rota}`, { method: metodo, headers: { "content-type": "application/json" }, body: metodo === "POST" ? "{}" : undefined })).status;
-  for (const [m, r] of [["GET", "/api/comparacoes-minuta"], ["GET", "/api/comparacoes-minuta/padroes"], ["GET", "/api/comparacoes-minuta/abc/textos"], ["POST", "/api/comparacoes-minuta"], ["POST", "/api/comparacoes-minuta/abc/assinado"], ["POST", "/api/comparacoes-minuta/resumo"], ["POST", "/api/comparacoes-minuta/apagar"], ["POST", "/api/comparacoes-minuta/exportar"], ["POST", "/api/comparacoes-minuta/limpar"]])
+  for (const [m, r] of [["GET", "/api/comparacoes-minuta"], ["GET", "/api/comparacoes-minuta/padroes"], ["GET", "/api/comparacoes-minuta/abc/textos"], ["POST", "/api/comparacoes-minuta"], ["POST", "/api/comparacoes-minuta/abc/assinado"], ["POST", "/api/comparacoes-minuta/resumo"], ["POST", "/api/comparacoes-minuta/apagar"], ["POST", "/api/comparacoes-minuta/enviar"], ["POST", "/api/comparacoes-minuta/exportar"], ["POST", "/api/comparacoes-minuta/limpar"]])
     ok(await chama(r, m) === 401, `${m} ${r} sem login: 401`);
 } finally { try { process.kill(-p.pid); } catch {} }
 console.log(falhas ? `\n${falhas} FALHA(S)` : "\nTUDO OK"); process.exit(falhas ? 1 : 0);

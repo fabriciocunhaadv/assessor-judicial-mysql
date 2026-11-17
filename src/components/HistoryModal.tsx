@@ -65,6 +65,7 @@ import { isInvalidPartyName, extractFromCoverPage } from "../utils/judicialMetad
 import { detectPromptCategory } from "../utils/promptCategoryHelper";
 import { ProcessTimelineModal } from "./ProcessTimelineModal";
 import { EditProcessUnitModal } from "./EditProcessUnitModal";
+import { pedirEnvioCalibragem, pedidoDeAto, jaEnviouCalibragem, type ModoCalibragem, type Desfecho } from "../utils/calibragemEnvio";
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -340,6 +341,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const confirmDelete = async () => {
     if (!itemToDelete || isDeleting) return;
     const target = itemToDelete;
+    if ((await perguntarCalibragem(target, "excluir")) === "cancelar") { setItemToDelete(null); return; }
     setIsDeleting(true);
     try {
       await handleDirectDeleteAnalysis(target);
@@ -352,6 +354,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const confirmDeleteDossier = async () => {
     if (!dossierToDelete || isDeleting) return;
     const target = dossierToDelete;
+    if ((await perguntarCalibragem(maisRecente(target.analyses.filter((a) => podeExcluirAto(a, currentUid))), "excluir")) === "cancelar") { setDossierToDelete(null); return; }
     setIsDeleting(true);
     try {
       await handleDirectDeleteDossier(target);
@@ -458,10 +461,19 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
 
   // Controle de lançamento no Projudi: o assessor marca o PROCESSO que já lançou. A marcação vale para TODAS as minutas do processo (a mais recente, as antigas, quantas houver),
   // para o processo não aparecer ao mesmo tempo em "A lançar" e em "Lançados". O mesmo vale para desfazer.
+  /** Oferece enviar o ato para a calibragem (janela do app). A lista traz só o resumo: a minuta completa é baixada agora. "cancelar" = o usuário desistiu da ação. */
+  const perguntarCalibragem = async (ato: SavedAnalysis | undefined, modo: ModoCalibragem): Promise<Desfecho> => {
+    if (!ato || jaEnviouCalibragem(ato.id)) return "continuar";
+    const completo = await abrirAtoCompleto(ato).catch(() => null);
+    return pedirEnvioCalibragem(completo ? pedidoDeAto(completo as any, modo) : null);
+  };
+  const maisRecente = (lista: SavedAnalysis[]) => [...lista].sort((x, y) => (Number(x.date) || 0) - (Number(y.date) || 0)).pop();
+
   const alternarLancado = async (ato: SavedAnalysis, e?: React.MouseEvent) => {
     e?.stopPropagation();
     const quando = ato.lancadoProjudi ? null : Date.now();
     const ids = idsDoMesmoProcesso(history, ato);
+    if (quando && (await perguntarCalibragem(maisRecente(history.filter((h) => ids.includes(h.id))) || ato, "lancado")) === "cancelar") return;
     setRecemMarcados((prev) => { const n = new Set(prev); ids.forEach((i) => n.add(i)); return n; });
     setHistory((prev) => prev.map((it) => (ids.includes(it.id) ? { ...it, lancadoProjudi: quando } : it)));
     try {

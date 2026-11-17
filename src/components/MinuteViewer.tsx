@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
 import { getHistory, marcarLancadoProjudi, HISTORICO_MUDOU } from "../utils/historyDb";
+import { pedirEnvioCalibragem, pedidoDeAto, type ModoCalibragem } from "../utils/calibragemEnvio";
 import { idsDoMesmoProcesso } from "../utils/lancadoProcesso";
 import { AvisosDaMinuta } from "./AvisosDaMinuta";
 import { ComparacaoMinutaModal } from "./ComparacaoMinutaModal";
@@ -143,9 +144,12 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
     void ler(); window.addEventListener(HISTORICO_MUDOU, ler);
     return () => { vivo = false; window.removeEventListener(HISTORICO_MUDOU, ler); };
   }, [currentAnalysisId]);
+  /** Janela de envio para a calibragem (qualquer motor): vale ao marcar como lançado e ao excluir. "cancelar" = o usuário desistiu. */
+  const perguntarCalibragem = (modo: ModoCalibragem) => pedirEnvioCalibragem(result ? pedidoDeAto({ id: currentAnalysisId || "", processNumber: minute.processNumber || result?.minute?.processNumber || "", promptTitle: promptDoAto || (result as any)?.promptTitle || "", result: result as any }, modo) : null);
   const alternarLancadoDaMinuta = async () => {
     if (!currentAnalysisId) return;
     const quando = lancado ? null : Date.now(), ids = lancadoIds.length ? lancadoIds : [currentAnalysisId];
+    if (quando && (await perguntarCalibragem("lancado")) === "cancelar") return;
     setLancado(quando);
     try { await Promise.all(ids.map((id) => marcarLancadoProjudi(id, quando))); toast.success(quando ? `Processo ${result?.minute?.processNumber || ""} marcado como LANÇADO no Projudi.` : "Marcação de lançamento removida."); }
     catch { toast.error("Não consegui gravar a marcação agora; tente de novo."); setLancado(lancado); }
@@ -1457,8 +1461,9 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
                 Cancelar
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   setIsConfirmingDelete(false);
+                  if ((await perguntarCalibragem("excluir")) === "cancelar") return;
                   if (onDeleteMinute) onDeleteMinute();
                 }}
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition cursor-pointer shadow-sm"

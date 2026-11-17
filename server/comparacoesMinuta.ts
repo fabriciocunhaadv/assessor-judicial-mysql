@@ -14,23 +14,51 @@ export const DIAS_GUARDA_COMPARACOES = 30;
 const num = (v: any) => Math.max(0, Math.min(1e9, Number(v) || 0));
 const curto = (v: any, n: number) => String(v || "").slice(0, n);
 
-comparacoesRouter.post("/", async (req: any, res) => {
-  try {
-    const u = so(req), b = req.body || {};
-    const processo = curto(b.processo, 40); if (!processo) return void res.status(400).json({ erro: "processo ausente" });
-    const doc = {
+/** Monta o documento da comparação a partir do corpo recebido (números e trechos curtos; os textos têm teto). */
+function montarDoc(b: any, u: any, extra: Record<string, any> = {}) {
+  const processo = curto(b.processo, 40);
+  return {
       processo, ato: curto(b.ato, 30), geradoEm: Date.now(), por: curto(u.email, 190), promptTitulo: curto(b.promptTitulo, 120), motor: curto(b.motor, 30),
       aproveitamentoPct: num(b.aproveitamentoPct), coberturaPct: num(b.coberturaPct), palavrasOriginal: num(b.palavrasOriginal), palavrasLancado: num(b.palavrasLancado), mantidas: num(b.mantidas), removidas: num(b.removidas), acrescentadas: num(b.acrescentadas),
       dispositivoMudou: !!b.dispositivoMudou, dispositivoAproveitamentoPct: b.dispositivoAproveitamentoPct == null ? null : num(b.dispositivoAproveitamentoPct),
       porSecao: (Array.isArray(b.porSecao) ? b.porSecao : []).slice(0, 8).map((s: any) => ({ secao: curto(s?.secao, 30), palavrasOriginais: num(s?.palavrasOriginais), mantidas: num(s?.mantidas), aproveitamentoPct: num(s?.aproveitamentoPct) })),
       mudancas: (Array.isArray(b.mudancas) ? b.mudancas : []).slice(0, 80).map((m: any) => ({ tipo: curto(m?.tipo, 12), secao: curto(m?.secao, 30), original: curto(m?.original, 400), lancado: curto(m?.lancado, 400) })),
-      textoLancado: curto(b.textoLancado, 200_000), textoGerado: curto(b.textoGerado, 200_000),
-    };
+      textoLancado: curto(b.textoLancado, 200_000), textoGerado: curto(b.textoGerado, 200_000), ...extra,
+  };
+}
+
+comparacoesRouter.post("/", async (req: any, res) => {
+  try {
+    const u = so(req), b = req.body || {};
+    if (!curto(b.processo, 40)) return void res.status(400).json({ erro: "processo ausente" });
+    const doc = montarDoc(b, u);
+    const processo = doc.processo;
     await garantirDocs();
     const id = `${processo.replace(/[^0-9a-zA-Z.\-]/g, "")}-${doc.geradoEm}`.slice(0, 190);
     await banco().query("INSERT INTO docs (col,id,data,updated_at) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE data=VALUES(data), updated_at=VALUES(updated_at)", [col(u.tenant), id, JSON.stringify(doc), doc.geradoEm]);
     res.json({ ok: true, id });
   } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : "não consegui guardar a comparação" }); }
+});
+
+// ---- Envio pelo próprio usuário (assessor/juiz) ao marcar como lançado ou ao excluir a minuta: a minuta LANÇADA no Projudi (lida pela extensão) + a GERADA pelo sistema, para a calibragem do administrador ----
+const envios = new Map<string, { janela: number; n: number }>();
+const podeEnviar = (chave: string) => { const t = Date.now(), e = envios.get(chave); if (envios.size > 500) envios.clear(); if (!e || t - e.janela > 60_000) { envios.set(chave, { janela: t, n: 1 }); return true; } return ++e.n <= 20; };
+comparacoesRouter.post("/enviar", async (req: any, res) => {
+  try {
+    const u = req.usuarioSessao; if (!u) return void res.status(401).json({ erro: "login necessário" });
+    if (!podeEnviar(u.uid || u.email)) return void res.status(429).json({ erro: "muitos envios seguidos; espere um minuto" });
+    const b = req.body || {};
+    if (!curto(b.processo, 40)) return void res.status(400).json({ erro: "processo ausente" });
+    if (curto(b.textoLancado, 200_000).replace(/\s+/g, " ").length < 120) return void res.status(400).json({ erro: "a minuta lançada no Projudi não veio (nada a comparar)" });
+    if (curto(b.textoGerado, 200_000).replace(/\s+/g, " ").length < 50) return void res.status(400).json({ erro: "a minuta gerada pelo sistema não veio" });
+    const doc = montarDoc(b, u, { origem: "usuario", nomeUsuario: curto(u.name, 120), motivo: b.motivo === "excluir" ? "excluir" : "lancado" });
+    await garantirDocs();
+    const base = curto(b.analysisId, 60).replace(/[^0-9a-zA-Z._\-]/g, "") || `${doc.processo.replace(/[^0-9a-zA-Z.\-]/g, "")}-${doc.geradoEm}`;
+    const id = `u-${base}`.slice(0, 190);      // o mesmo ato reenviado substitui o anterior (sem duplicar)
+    await banco().query("DELETE FROM docs WHERE col REGEXP ? AND id=? AND col<>?", [TODAS, id, col(u.tenant)]);      // o mesmo ato enviado de outro gabinete (seletor do Super Admin) não duplica
+    await banco().query("INSERT INTO docs (col,id,data,updated_at) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE data=VALUES(data), updated_at=VALUES(updated_at)", [col(u.tenant), id, JSON.stringify(doc), doc.geradoEm]);
+    res.json({ ok: true, id });
+  } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : "não consegui guardar o envio" }); }
 });
 
 /** Últimas comparações (sem o texto lançado), opcionalmente de um processo. */

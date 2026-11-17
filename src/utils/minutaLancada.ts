@@ -12,7 +12,7 @@ export const estadoDaExtensaoParaMinutaLancada = (): EstadoExtensaoMinutaLancada
 export interface MinutaLancadaLida { ok: boolean; html?: string; tela?: string; erro?: string }
 
 /** Nunca lança: falha vira { ok: false, erro }. */
-export function buscarMinutaLancada(processo: string, aoProgresso?: (texto: string) => void, sinal?: AbortSignal, cabecalho?: string): Promise<MinutaLancadaLida> {
+export function buscarMinutaLancada(processo: string, aoProgresso?: (texto: string) => void, sinal?: AbortSignal, cabecalho?: string, serventiaUrl?: string): Promise<MinutaLancadaLida> {
   return new Promise((resolver) => {
     const reqId = "ml" + Date.now() + Math.random().toString(36).slice(2, 6);
     let fim = false;
@@ -25,7 +25,7 @@ export function buscarMinutaLancada(processo: string, aoProgresso?: (texto: stri
     };
     window.addEventListener("message", ouvir);
     sinal?.addEventListener("abort", () => terminar({ ok: false, erro: "Cancelado." }));
-    window.postMessage({ __projudi: "minuta-lancada", fase: "ler", reqId, processo, cabecalho: String(cabecalho || "").slice(0, 1500) }, window.location.origin);
+    window.postMessage({ __projudi: "minuta-lancada", fase: "ler", reqId, processo, cabecalho: String(cabecalho || "").slice(0, 1500), serventiaUrl: serventiaUrl || "" }, window.location.origin);
   });
 }
 
@@ -34,4 +34,22 @@ export function textoCompletoDaMinuta(minute: MinuteData): string {
   if (minute.fullFormattedText && minute.fullFormattedText.trim().length > 0) return minute.fullFormattedText;
   const nl = (s: string) => s.replace(/\\\\n/g, "\n").replace(/\\n/g, "\n");
   return [minute.header, minute.title, minute.relatorio ? `I - RELATÓRIO\n\n${nl(minute.relatorio)}` : "", minute.fundamentacao ? `II - FUNDAMENTAÇÃO\n\n${nl(minute.fundamentacao)}` : "", minute.dispositivo ? `III - DISPOSITIVO\n\n${nl(minute.dispositivo)}` : "", minute.closing ? nl(minute.closing) : ""].filter(Boolean).join("\n\n");
+}
+
+// ---- Escolha da serventia: quando o processo não é achado na serventia que a extensão tentou, o usuário indica em qual serventia do Projudi procurar ----
+export interface ServentiaProjudi { serventia: string; perfil: string; url: string }
+export const extensaoTemSeletorDeServentia = (): boolean => (document.documentElement.dataset.assessorExtensaoRecursos || "").split(",").includes("minuta-serventia");
+/** Serventias do usuário (as não ocultas na extensão) e a sugerida para este processo. Nunca lança: sem resposta em 8 s devolve lista vazia. */
+export function listarServentiasProjudi(processo: string): Promise<{ serventias: ServentiaProjudi[]; sugerida: string }> {
+  return new Promise((resolver) => {
+    const reqId = "sv" + Date.now() + Math.random().toString(36).slice(2, 6);
+    const fim = (r: { serventias: ServentiaProjudi[]; sugerida: string }) => { clearTimeout(t); window.removeEventListener("message", ouvir); resolver(r); };
+    const t = setTimeout(() => fim({ serventias: [], sugerida: "" }), 8000);
+    const ouvir = (ev: MessageEvent) => {
+      const d = ev.data; if (ev.source !== window || !d || d.__projudiResp !== "minuta-lancada" || d.reqId !== reqId || d.tipo !== "serventias") return;
+      fim({ serventias: (Array.isArray(d.serventias) ? d.serventias : []).filter((x: any) => x && x.url).map((x: any) => ({ serventia: String(x.serventia || ""), perfil: String(x.perfil || ""), url: String(x.url) })), sugerida: String(d.sugerida || "") });
+    };
+    window.addEventListener("message", ouvir);
+    window.postMessage({ __projudi: "minuta-lancada", fase: "serventias", reqId, processo }, window.location.origin);
+  });
 }

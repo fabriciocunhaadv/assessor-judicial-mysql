@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { GitCompare, X, Loader2, AlertTriangle, Copy } from "lucide-react";
 import { buscarMinutaLancada, estadoDaExtensaoParaMinutaLancada } from "../utils/minutaLancada";
+import { SeletorServentia } from "./SeletorServentia";
 import { compararMinutas, textoDeHtml, type ResultadoComp, type BlocoComp } from "../utils/compararMinutas";
 
 // Mostra o que mudou entre a minuta que o Studio gerou e a que ficou salva (lançada) na pré-análise do Projudi. Só Super Admin (o botão só aparece para ele; o servidor também confere).
@@ -13,12 +14,12 @@ export function ComparacaoMinutaModal({ processo, textoGerado, cabecalho, ato, p
   const [verIguais, setVerIguais] = useState(false);
   const ctl = useRef<AbortController | null>(null);
 
-  const rodar = useCallback(async () => {
+  const rodar = useCallback(async (serventiaUrl?: string) => {
     setFase("lendo"); setErro(""); setTela(""); setRes(null); setGuardado("");
     const est = estadoDaExtensaoParaMinutaLancada();
     if (est !== "ok") { setErro(est === "antiga" ? "Atualize a extensão Conclusões Projudi (precisa da versão 3.0.6 ou mais nova)." : "Instale a extensão Conclusões Projudi e deixe o Projudi aberto e logado."); setFase("erro"); return; }
     ctl.current = new AbortController();
-    const r = await buscarMinutaLancada(processo, setAndamento, ctl.current.signal, ((cabecalho || "") + "\n" + textoGerado).slice(0, 1500));
+    const r = await buscarMinutaLancada(processo, setAndamento, ctl.current.signal, ((cabecalho || "") + "\n" + textoGerado).slice(0, 1500), serventiaUrl);
     if (!r.ok) { setErro(r.erro || "Não consegui ler a minuta no Projudi."); setTela(r.tela || ""); setFase("erro"); return; }
     const texto = textoDeHtml(r.html || "");
     if (texto.replace(/\s+/g, " ").length < 120) { setErro("O editor da pré-análise veio quase vazio (só o modelo-padrão?). Salve o texto parcial no Projudi e tente de novo."); setTela(r.tela || ""); setFase("erro"); return; }
@@ -31,7 +32,7 @@ export function ComparacaoMinutaModal({ processo, textoGerado, cabecalho, ato, p
     } catch { setGuardado("nao"); }
   }, [processo, textoGerado, cabecalho, ato, promptTitulo, motor]);
 
-  useEffect(() => { void rodar(); return () => ctl.current?.abort(); }, [rodar]);
+  useEffect(() => { void rodar(undefined); return () => ctl.current?.abort(); }, [rodar]);
 
   const cor = (p: number) => (p >= 85 ? "text-emerald-300" : p >= 60 ? "text-amber-300" : "text-rose-300");
   const bloco = (b: BlocoComp, i: number) => {
@@ -56,6 +57,7 @@ export function ComparacaoMinutaModal({ processo, textoGerado, cabecalho, ato, p
               <div className="flex gap-2"><AlertTriangle className="w-4 h-4 shrink-0" /><span>{erro}</span></div>
               {tela && <details><summary className="cursor-pointer text-[11px] text-rose-300">O que a extensão viu na tela (para diagnóstico)</summary><p className="mt-1 text-[11px] text-slate-300 break-words">{tela}</p><button onClick={() => { try { void navigator.clipboard.writeText(tela); } catch { /* sem cópia */ } }} className="mt-1 inline-flex items-center gap-1 text-[11px] underline cursor-pointer"><Copy className="w-3 h-3" /> copiar</button></details>}
               <button onClick={() => void rodar()} className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold cursor-pointer">Tentar de novo</button>
+              {estadoDaExtensaoParaMinutaLancada() === "ok" && <SeletorServentia processo={processo} aoTentar={(url) => void rodar(url)} />}
             </div>
           )}
           {fase === "pronto" && res && (
