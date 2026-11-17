@@ -37,6 +37,7 @@ import { filterInnocuousCertificates, cleanJudicialPdfText } from './src/utils/j
 import { deduplicateJudicialPdfFiles, deduplicateTextBlocks } from './src/utils/documentDeduplicator';
 import { extractFromCoverPage } from './src/utils/judicialMetadataExtractor';
 import { gerarComAutosGrandes, reduzirPorRelevancia } from './src/utils/autosGrandes';
+import { expandirPorSecoes } from './server/contingenciaSecoes';
 import { detectarInjecao, instrucaoDefesaInjecao } from './src/utils/promptInjection';
 import { descreverCorte, textoDoCorte, CorteArquivo } from './src/utils/corteAutos';
 import { montarCobertura } from './server/coberturaLeitura';
@@ -3580,7 +3581,8 @@ async function generateWithFallbackAndRetry(options) {
     const maxPipelineCycles = options.maxCycles || 3;
     // ESPERA PELO MODELO PROFUNDO (geração de minutas): quando TODOS os modelos fortes (3.8 / 3.6) estão em resfriamento ou sem cota, em vez de cair direto no Flash-Lite (que entrega minuta curta)
     // a esteira ESPERA o primeiro deles ficar livre (até `esperaProfundoMs` no total) e, depois, TENTA os fortes mesmo em resfriamento antes de aceitar o leve. O leve fica como último recurso.
-    const esperaProfundoMs = Math.max(0, Number(options.esperaProfundoMs) || 0);
+    const escalaEspera = Number(process.env.ESPERA_PROFUNDO_ESCALA) || 1;      // só para os testes locais (encurta as esperas)
+    const esperaProfundoMs = Math.max(0, Math.round((Number(options.esperaProfundoMs) || 0) * escalaEspera));
     let orcamentoEspera = esperaProfundoMs;
     const inicioEsteira = Date.now();
     const ehProfundo = (m: string) => !/lite|latest/i.test(m);
@@ -3591,7 +3593,7 @@ async function generateWithFallbackAndRetry(options) {
     for (let cycle = 1; cycle <= maxPipelineCycles; cycle++) {
         if (cycle > 1) {
             // Intervalo necessário para resfriamento de cluster sem estourar limites por minuto
-            const cycleInterval = options.cycleDelayMs || (cycle === 2 ? 3000 : 4500);
+            const cycleInterval = Math.round((options.cycleDelayMs || (cycle === 2 ? 3000 : 4500)) * (Number(process.env.ESPERA_PROFUNDO_ESCALA) || 1));      // a escala só existe nos testes locais
             console.log(`[Assessor Judicial] Indisponibilidade de toda a esteira por alta demanda transitória. Reiniciando esteira completa (Ciclo ${cycle}/${maxPipelineCycles}) com intervalo preventivo (${cycleInterval}ms)...`);
             await new Promise(resolve => setTimeout(resolve, cycleInterval));
         }
@@ -3622,7 +3624,7 @@ async function generateWithFallbackAndRetry(options) {
         for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
             const modelName = modelsToTry[mIdx];
             // Não aceita o modelo LEVE (minuta curta) enquanto houver ciclos, orçamento de espera e tempo: encerra o ciclo para esperar o modelo profundo e recomeçar a esteira
-            if (esperaProfundoMs > 0 && !ehProfundo(modelName) && cycle < maxPipelineCycles && orcamentoEspera > 0 && (Date.now() - inicioEsteira) < 6 * 60000 && modelsToTry.some(ehProfundo)) {
+            if (esperaProfundoMs > 0 && !ehProfundo(modelName) && cycle < maxPipelineCycles && orcamentoEspera > 0 && (Date.now() - inicioEsteira) < 6 * 60000 * escalaEspera && modelsToTry.some(ehProfundo)) {
                 console.log(`[Assessor Judicial - Esteira] Modelos profundos indisponíveis no ciclo ${cycle}/${maxPipelineCycles}: em vez de aceitar o modelo leve (${modelName}), espera e recomeça a esteira.`);
                 anyDemandOverloadedInCycle = true;
                 break;
@@ -3892,10 +3894,37 @@ function avaliarProfundidadeMinuta(m: any, tipo: string, tamAutos: number, model
     if (nPar < Math.ceil(p.par * fator)) falhas.push(`fundamentação com ${nPar} parágrafos (mínimo ${Math.ceil(p.par * fator)})`);
     return { ok: falhas.length === 0, falhas };
 }
+/** CONTINGÊNCIA POR SEÇÕES (ver server/contingenciaSecoes.ts): usada quando a expansão em uma chamada falhou e só o modelo leve responde. Devolve os 3 campos montados ou null. */
+async function contingenciaPorSecoes(a: { partes: any[]; sistema: string; minuta: any; falhas: string[]; tipo: string; tamAutos: number; req: any; res: any; userApiKey: any; timeoutMs: number; progresso?: (t: string) => void }): Promise<{ relatorio: string; fundamentacao: string; dispositivo: string } | null> {
+    const pisos = PISOS_PROFUNDIDADE[a.tipo] || PISOS_PROFUNDIDADE.sentenca;
+    const fator = a.tamAutos > 400000 ? 1.4 : a.tamAutos > 150000 ? 1.2 : 1;
+    try {
+        const r = await expandirPorSecoes({
+            minuta: { relatorio: String(a.minuta?.relatorio || ""), fundamentacao: String(a.minuta?.fundamentacao || ""), dispositivo: String(a.minuta?.dispositivo || "") },
+            falhas: a.falhas, pisos, fator, aoProgresso: a.progresso,
+            gerar: async ({ etapa, instrucao, json }) => {
+                const resp: any = await generateWithFallbackAndRetry({
+                    apiKey: a.userApiKey, keyPool: extractApiKeyPool(a.req), isNativeAllowed: isRequestNativeAllowed(a.req), res: a.res,
+                    primaryModel: "gemini-3.6-flash", fallbackModel: "gemini-3.8-flash",
+                    customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],      // se um modelo forte voltar no meio, ele assume; senão o leve segue seção a seção
+                    timeoutMs: etapa === "roteiro" ? a.timeoutMs : Math.min(a.timeoutMs, 120000), maxCycles: 2, cycleDelayMs: 4000,
+                    contents: [{ role: "user", parts: etapa === "roteiro" ? [...a.partes, { text: instrucao }] : [{ text: instrucao }] }],
+                    config: { systemInstruction: a.sistema, temperature: json ? 0.2 : 0.35, maxOutputTokens: 16384, ...(json ? { responseMimeType: "application/json" } : {}) },
+                });
+                return String(resp?.text || "");
+            },
+        });
+        if (r) console.log(`[Assessor Judicial - CONTINGÊNCIA POR SEÇÕES] Minuta montada: ${r.topicos} tópico(s), ${r.chamadas} chamada(s); fundamentação com ${r.fundamentacao.length} caracteres.`);
+        return r ? { relatorio: r.relatorio, fundamentacao: r.fundamentacao, dispositivo: r.dispositivo } : null;
+    } catch (e: any) {
+        console.warn("[Assessor Judicial - CONTINGÊNCIA POR SEÇÕES] não concluída:", e?.message || e);
+        return null;
+    }
+}
 async function expandirMinutaResumida(a: { partes: any[]; sistema: string; minuta: any; falhas: string[]; req: any; res: any; userApiKey: any; timeoutMs: number; aoEsperar?: (s: number) => void }): Promise<{ relatorio: string; fundamentacao: string; dispositivo: string } | null> {
     // até 3 tentativas, com pausa entre elas: quando o Google está sobrecarregado a primeira costuma falhar, e entregar a minuta curta sem tentar de novo era o defeito
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
-        if (tentativa > 1) await new Promise((r) => setTimeout(r, tentativa === 2 ? 15000 : 30000));
+        if (tentativa > 1) await new Promise((r) => setTimeout(r, (tentativa === 2 ? 15000 : 30000) * (Number(process.env.ESPERA_PROFUNDO_ESCALA) || 1)));
         const r = await expandirMinutaResumidaUmaVez(a, tentativa === 1 ? 90000 : 60000);
         if (r) { if (tentativa > 1) console.log(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Expansão concluída na tentativa ${tentativa}.`); return r; }
         console.warn(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Tentativa ${tentativa}/3 de expandir a minuta não deu certo.`);
@@ -6129,6 +6158,7 @@ for (const p of contentsParts) {
 let stage1Response: any = null;
 let stage1Json: any = null;
 let avisoProfundidade: string[] | null = null;      // minuta entregue abaixo do piso de profundidade (esteira em contingência): vira aviso visível na tela
+const TEXTO_AVISO_SECOES = "O Google estava sobrecarregado e os modelos mais completos não responderam. Para não entregar uma minuta curta, o sistema montou esta minuta por seções (um tópico por vez) com o modelo mais leve. Ela tende a ser menos refinada que a normal: confira os fundamentos, as citações, os valores e o dispositivo com atenção antes de assinar, ou refaça a análise quando o Google normalizar.";
 const TEXTO_AVISO_PROFUNDIDADE = "O Google estava sobrecarregado e só o modelo mais leve respondeu. Esta minuta ficou abaixo do nível de profundidade esperado (relatório, fundamentação e/ou dispositivo curtos), mesmo depois de 3 tentativas de aprofundar. Refaça a análise quando o Google normalizar ou peça ao chat para aprofundar a fundamentação antes de assinar.";
 
 if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object" && (stage1Snapshot.relatorio || stage1Snapshot.fundamentacao)) {
@@ -6252,7 +6282,12 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
                 if (exp1 && exp1.fundamentacao.length > String(stage1Json.fundamentacao || "").length) {
                     stage1Json = { ...stage1Json, ...exp1 };
                     console.log("[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 1 expandida com sucesso.");
-                } else { avisoProfundidade = [TEXTO_AVISO_PROFUNDIDADE]; }
+                } else {
+                    setProg(progId, "Etapa 1 — modo de contingência: escrevendo a minuta por seções…", undefined, 56);
+                    const sec1 = await contingenciaPorSecoes({ partes: stage1ContentsParts, sistema: stage1SystemInstruction, minuta: stage1Json, falhas: av1.falhas, tipo: tipo1, tamAutos: (accumulatedPdfText || safeProcessText || "").length, req, res, userApiKey, timeoutMs: TIMEOUT_ETAPA, progresso: (t: string) => setProg(progId, "Etapa 1 — " + t, undefined, 56) });
+                    if (sec1 && sec1.fundamentacao.length > String(stage1Json.fundamentacao || "").length) { stage1Json = { ...stage1Json, ...sec1 }; avisoProfundidade = [TEXTO_AVISO_SECOES]; }
+                    else avisoProfundidade = [TEXTO_AVISO_PROFUNDIDADE];
+                }
             } else {
                 console.warn(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 1 (modelo profundo): ressalvas de piso detectadas (${av1.falhas.join("; ")}), mantendo sem expansão.`);
             }
@@ -6984,7 +7019,14 @@ if (!stage2Failed) {
                 parsed.minute.dispositivo = exp2.dispositivo || parsed.minute.dispositivo;
                 avisoProfundidade = null;      // aprofundada: o aviso da etapa 1 (se houve) não vale mais
                 console.log("[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 2 expandida com sucesso.");
-            } else { avisoProfundidade = [TEXTO_AVISO_PROFUNDIDADE]; }
+            } else {
+                setProg(progId, "Etapa 2 — modo de contingência: escrevendo a minuta por seções…", undefined, 56);
+                const sec2 = await contingenciaPorSecoes({ partes: [{ text: stage2Prompt }], sistema: stage2SystemInstruction, minuta: parsed.minute, falhas: av2.falhas, tipo: resolvedActType, tamAutos: (accumulatedPdfText || safeProcessText || "").length, req, res, userApiKey, timeoutMs: 150000, progresso: (t: string) => setProg(progId, "Etapa 2 — " + t, undefined, 56) });
+                if (sec2 && sec2.fundamentacao.length > String(parsed.minute.fundamentacao || "").length) {
+                    parsed.minute.relatorio = sec2.relatorio || parsed.minute.relatorio; parsed.minute.fundamentacao = sec2.fundamentacao; parsed.minute.dispositivo = sec2.dispositivo || parsed.minute.dispositivo;
+                    avisoProfundidade = [TEXTO_AVISO_SECOES];
+                } else avisoProfundidade = [TEXTO_AVISO_PROFUNDIDADE];
+            }
         } else {
             console.warn(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 2 (modelo profundo): ressalvas de piso detectadas (${av2.falhas.join("; ")}), mantendo sem expansão.`);
         }
