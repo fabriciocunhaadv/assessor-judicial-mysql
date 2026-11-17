@@ -2835,6 +2835,7 @@ export default function App() {
           {/* RIGHT COLUMN: Resultado & Análise + Assessor Judicial */}
           <div className={`${isFormCollapsed ? "xl:col-span-12" : "xl:col-span-6"} space-y-4`}>
             <MinuteViewer
+              isSuperAdmin={!!isSuperAdmin}
               result={generationResult}
               onUpdateMinute={handleUpdateMinute}
               originalProcessText={

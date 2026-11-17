@@ -28,6 +28,7 @@ import { listarRegimes, gravarRegime, apagarRegime, sanearRegime } from './serve
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
 import { iniciarPulsoJson } from './server/pulsoJson';
 import { monitorRouter } from './server/monitorLeitura';
+import { comparacoesRouter } from './server/comparacoesMinuta';
 import { coletarPrecedentes, FONTES_COLETA, trocarBase, type ResultadoColeta } from './server/coletorPrecedentes';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
@@ -287,6 +288,7 @@ app.use("/api/chamados/anexos", chamadoAnexosRouter);      // Chamados: anexos (
 app.use("/api/fila", filaRouter);      // Fila no celular: resumo enviado pela extensão, "Minha fila" e avisos (Web Push)
 app.use("/api/central", centralRouter);      // Super Admin: Central de decisões (o que precisa de atenção + status dos erros agrupados)
 app.use("/api/saude", saudeRouter);      // Super Admin: painel Saúde do sistema; qualquer usuário logado só envia eventos (POST /evento)
+app.use("/api/comparacoes-minuta", comparacoesRouter);      // Super Admin: comparação entre a minuta gerada e a lançada no Projudi (calibragem)
 app.use("/api/utilizacao", utilizacaoRouter);      // Super Admin: quanto cada pessoa usou o sistema no período
 for (const [rota, , mw] of detectoresDosMotores) app.use(rota, mw);      // Fontes pendentes: todo motor alimenta a mesma lista do que foi citado e o Studio não tem
 app.use("/api/fontes/pendentes", fontesPendentesRouter);

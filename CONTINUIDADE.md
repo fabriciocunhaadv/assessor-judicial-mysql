@@ -126,3 +126,9 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 - Só SELECT; não devolve senhas, chaves nem texto de autos/minutas.
 - Para ligar: criar `MONITOR_TOKEN` no painel da Hostinger (valor aleatório longo), reimplantar, e liberar o host do Studio na rede do ambiente do agente. Testes: `testes/teste_monitor_leitura.ts`, `testes/servidor/rodar_monitor.mjs`.
 - **Aba "Monitor" no painel do Super Admin** (`src/components/MonitorPanel.tsx`, item "Monitor" em `SuperAdminNav.tsx` > Acompanhamento): lê `/api/monitor/uso|saude|banco` com o login do Super Admin (sem token): cartões (execuções, tokens, custo, usuários), tokens por hora, por módulo, por usuário, por modelo, maiores execuções, erros agrupados e tamanho do banco; período 24 h/7 d/30 d; atualiza a cada 1 min. Só GET. Se o monitor responder erro, mostra aviso na própria aba. Teste: `testes/teste_aba_monitor.py` (harness `testes/gigantes/monitor.html`).
+
+### Buscar minuta lançada — etapa 1 (17/11, NÃO publicada)
+- Botão "Buscar minuta lançada" no `MinuteViewer` (grupo "Ato"), SÓ Super Admin (prop `isSuperAdmin`; o servidor também confere). Usa a extensão 3.0.6 (recurso `minuta-lancada`) para LER o texto salvo na pré-análise do Projudi (`src/utils/minutaLancada.ts`) e compara com a minuta gerada (`src/utils/compararMinutas.ts`: parágrafos mantidos/cortados/acrescentados, % por seção Relatório/Fundamentação/Dispositivo, alerta se o dispositivo mudou) em `ComparacaoMinutaModal.tsx`.
+- Ao concluir, grava em `gabinetes/<tenant>/comparacoes` via `server/comparacoesMinuta.ts` (`/api/comparacoes-minuta`, só Super Admin; GET lista sem o texto).
+- Testes: `testes/teste_comparar_minutas.ts`, `testes/teste_comparacao_minuta.py`.
+- PENDENTE: etapa 2 (aba de calibragem com padrões) e etapa 3 (documento assinado/PDF + resumo por IA com sugestões de prompt) — só com autorização. Publicar só quando o usuário disser que não há nada rodando.

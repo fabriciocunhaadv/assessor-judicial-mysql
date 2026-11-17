@@ -3,6 +3,8 @@ import toast from "react-hot-toast";
 import { getHistory, marcarLancadoProjudi, HISTORICO_MUDOU } from "../utils/historyDb";
 import { idsDoMesmoProcesso } from "../utils/lancadoProcesso";
 import { AvisosDaMinuta } from "./AvisosDaMinuta";
+import { ComparacaoMinutaModal } from "./ComparacaoMinutaModal";
+import { textoCompletoDaMinuta } from "../utils/minutaLancada";
 import { AdaptarParadigmoModal } from "./AdaptarParadigmoModal";
 import { ConferirModelosModal } from "./ConferirModelosModal";
 import ReactMarkdown from "react-markdown";
@@ -55,6 +57,7 @@ import {
   UserCheck,
   LayoutTemplate,
   ClipboardCheck,
+  GitCompare,
 } from "lucide-react";
 import { GenerationResult, MinuteData, ApiUsageMetadata, ChatMessage, MinuteVersion } from "../types";
 import { copyMinuteToClipboard, exportMinuteToDocx, printFormattedMinute } from "../utils/documentExport";
@@ -73,6 +76,8 @@ import { usaClaude } from "../utils/provedorIA";
 import { useAuth } from "../lib/AuthContext";
 
 interface MinuteViewerProps {
+  /** Só o Super Admin vê o botão “Buscar minuta lançada” (comparação com o que foi lançado no Projudi). */
+  isSuperAdmin?: boolean;
   result: GenerationResult | null;
   onUpdateMinute: (newMinute: MinuteData) => void;
   originalProcessText: string;
@@ -99,6 +104,7 @@ interface MinuteViewerProps {
 }
 
 export const MinuteViewer: React.FC<MinuteViewerProps> = ({
+  isSuperAdmin,
   result,
   onUpdateMinute,
   originalProcessText,
@@ -190,6 +196,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const topViewerRef = useRef<HTMLDivElement>(null);
   const tabContentRef = useRef<HTMLDivElement>(null);
+  const [comparacaoAberta, setComparacaoAberta] = useState(false);      // Super Admin: minuta gerada × lançada no Projudi
   const projudiTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleTriggerInjectParadigm = (selectedSnippet: string) => {
@@ -1291,6 +1298,18 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
               <Edit3 className="w-3.5 h-3.5" />
               <span>Editar</span>
             </button>
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => setComparacaoAberta(true)}
+                data-testid="btn-buscar-minuta-lancada"
+                className="h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-xs font-semibold transition cursor-pointer whitespace-nowrap shadow-2xs border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800"
+                title="Super Admin: lê no Projudi o texto salvo na pré-análise deste processo e compara com a minuta que o Studio gerou (para calibrar prompts). Não altera nada no Projudi."
+              >
+                <GitCompare className="w-3.5 h-3.5 text-sky-600" />
+                <span>Buscar minuta lançada</span>
+              </button>
+            )}
           </div>
 
           <div role="group" aria-label="Modelos" className="flex flex-nowrap sm:flex-wrap items-center gap-1 shrink-0 max-sm:pl-1.5 max-sm:border-l sm:pl-2 sm:border-l border-slate-200">
@@ -1726,6 +1745,15 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
           <FloatingTextSelectionToolbar
             containerRef={tabContentRef}
             onInjectAsParadigm={handleTriggerInjectParadigm}
+          />
+        )}
+        {isSuperAdmin && comparacaoAberta && (
+          <ComparacaoMinutaModal
+            processo={minute.processNumber || result?.minute?.processNumber || ""}
+            textoGerado={textoCompletoDaMinuta(minute)}
+            ato={String((result as any)?.actType || minute.title || "").slice(0, 30)}
+            promptTitulo={String((result as any)?.promptTitle || "").slice(0, 120)}
+            aoFechar={() => setComparacaoAberta(false)}
           />
         )}
         <ConferirModelosModal aberto={conferirAberto} aoFechar={() => setConferirAberto(false)} minuta={minute} aoAplicar={aplicarConferencia} aoAplicarInteiro={(id) => { setAdaptarModelo("pj:" + id); setAdaptarAberto(true); }} />
