@@ -28,7 +28,7 @@ import { listarRegimes, gravarRegime, apagarRegime, sanearRegime } from './serve
 import { listarPrecedentes, listarConferencias, gravarPrecedentes, apagarPrecedente, marcarConferencia } from './server/precedentesDb';
 import { iniciarPulsoJson } from './server/pulsoJson';
 import { monitorRouter } from './server/monitorLeitura';
-import { comparacoesRouter, definirIA as definirIAComparacoes } from './server/comparacoesMinuta';
+import { comparacoesRouter, iniciarLimpezaDasComparacoes, definirIA as definirIAComparacoes } from './server/comparacoesMinuta';
 import { coletarPrecedentes, FONTES_COLETA, trocarBase, type ResultadoColeta } from './server/coletorPrecedentes';
 import { matchApplicableBindingPrecedents } from './src/utils/bindingPrecedents';
 import { lerFicha } from './src/utils/fichaTolerante';
@@ -7405,7 +7405,7 @@ if (process.env.NODE_ENV !== "production") {
     }).then(vite => {
         app.use(vite.middlewares);
         const server = app.listen(PORT, "0.0.0.0", () => {
-            iniciarRetencaoNoServidor(); iniciarSaudeDoSistema(); iniciarMetricasDosMotores(); iniciarFilaCelular(); iniciarChamadoAnexos();
+            iniciarRetencaoNoServidor(); iniciarLimpezaDasComparacoes(); iniciarSaudeDoSistema(); iniciarMetricasDosMotores(); iniciarFilaCelular(); iniciarChamadoAnexos();
             console.log("Server running on http://localhost:" + PORT);
         });
         server.setTimeout(600000);
@@ -7419,7 +7419,7 @@ if (process.env.NODE_ENV !== "production") {
         res.sendFile(path.join(distPath, 'index.html'));
     });
     const server = app.listen(PORT, "0.0.0.0", () => {
-        iniciarRetencaoNoServidor(); iniciarSaudeDoSistema(); iniciarMetricasDosMotores(); iniciarFilaCelular(); iniciarChamadoAnexos();
+        iniciarRetencaoNoServidor(); iniciarLimpezaDasComparacoes(); iniciarSaudeDoSistema(); iniciarMetricasDosMotores(); iniciarFilaCelular(); iniciarChamadoAnexos();
         console.log("Server running on port " + PORT);
     });
     server.setTimeout(600000);

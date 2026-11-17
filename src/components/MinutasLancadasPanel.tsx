@@ -14,6 +14,7 @@ interface Linha { id: string; processo: string; ato?: string; geradoEm: number; 
 interface Resumo { base: number; resumo: string; padroes: string[]; sugestoes: { titulo: string; secao: string; instrucao: string; motivo: string; confianca: string }[] }
 
 const quando = (t: number) => { try { return new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+const diasRestantes = (t: number) => Math.max(0, 30 - Math.floor((Date.now() - t) / 86_400_000));
 const cor = (p: number) => (p >= 85 ? "text-emerald-300" : p >= 60 ? "text-amber-300" : "text-rose-300");
 async function api<T>(rota: string, corpo?: any): Promise<T> {
   const r = await fetch(rota, corpo === undefined ? undefined : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
@@ -73,7 +74,7 @@ export function MinutasLancadasPanel() {
         <GitCompare className="w-5 h-5 text-sky-300" /><h2 className="font-black">Minutas lançadas — calibragem</h2>
         <button onClick={() => void carregar()} disabled={carregando} className="ml-auto inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-xs cursor-pointer disabled:opacity-50">{carregando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Atualizar</button>
       </div>
-      <p className="text-[11px] text-slate-400">A minuta <strong>lançada no Projudi é a referência</strong> (o que vale). O Studio é medido por quanto chega perto dela: <em>cobertura</em> = quanto da lançada ele já tinha; <em>aproveitamento</em> = quanto do que ele escreveu sobrou.</p>
+      <p className="text-[11px] text-slate-400">A minuta <strong>lançada no Projudi é a referência</strong> (o que vale). O Studio é medido por quanto chega perto dela: <em>cobertura</em> = quanto da lançada ele já tinha; <em>aproveitamento</em> = quanto do que ele escreveu sobrou. <strong>As comparações (com as minutas guardadas) são apagadas sozinhas depois de 30 dias.</strong></p>
       {erro && <div className="rounded-xl border border-rose-500/50 bg-rose-950/40 p-3 text-xs flex gap-2" data-testid="minutas-erro"><AlertTriangle className="w-4 h-4 shrink-0" />{erro}</div>}
       {pad && pad.total === 0 && <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 text-sm text-slate-300" data-testid="minutas-vazio">Ainda não há comparações. Na minuta pronta, use <strong>“Buscar minuta lançada”</strong> (precisa da extensão 3.0.6) depois que o assessor lançar o texto no Projudi.</div>}
       {pad && pad.total > 0 && (
@@ -124,7 +125,7 @@ export function MinutasLancadasPanel() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button onClick={() => setAberta(aberta === l.id ? "" : l.id)} className="font-bold underline-offset-2 hover:underline cursor-pointer text-left">{l.processo}</button>
                   <span className="text-slate-400">{quando(l.geradoEm)}{l.ato ? ` · ${l.ato}` : ""}{l.promptTitulo ? ` · ${l.promptTitulo}` : ""}</span>
-                  <span className={`font-black ${cor(l.aproveitamentoPct)}`}>{l.aproveitamentoPct}%</span>
+                  <span className={`font-black ${cor(l.aproveitamentoPct)}`}>{l.aproveitamentoPct}%</span><span className="text-slate-500 text-[10px]" title="a comparação e as minutas guardadas somem sozinhas depois de 30 dias">apaga em {diasRestantes(l.geradoEm)} d</span>
                   {l.dispositivoMudou && <span className="px-1.5 rounded border border-amber-500/60 text-amber-200 text-[10px] font-bold">dispositivo alterado</span>}
                   {l.assinado && <span className="px-1.5 rounded border border-emerald-600/60 text-emerald-200 text-[10px] font-bold" title={l.assinado.arquivo}>assinada: {l.assinado.aproveitamentoLancadaPct}% da lançada{l.assinado.dispositivoMudouDaLancada ? " · dispositivo mudou" : ""}</span>}
                   <button onClick={() => { alvo.current = l.id; fileRef.current?.click(); }} disabled={lendo === l.id} data-testid={`btn-anexar-assinado-${l.id}`} className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-600 hover:bg-slate-800 cursor-pointer text-[11px] disabled:opacity-50">{lendo === l.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />} {l.assinado ? "Trocar documento assinado" : "Anexar documento assinado (PDF)"}</button>

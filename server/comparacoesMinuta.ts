@@ -8,6 +8,9 @@ import { agregarPadroes, montarPromptResumo, lerRespostaResumo, type DocComparac
 export const comparacoesRouter = express.Router();
 const so = (req: any) => { if (!req.usuarioSessao?.superAdmin) throw Object.assign(new Error("somente o super administrador"), { status: 403 }); return req.usuarioSessao; };
 const col = (tenant: string) => `gabinetes/${tenant || "unassigned"}/comparacoes`;
+/** O Super Admin vê as comparações de TODOS os gabinetes, não só do que está escolhido no seletor do alto da tela (o seletor muda o gabinete da requisição e a lista “sumia”). */
+const TODAS = "^gabinetes/[^/]+/comparacoes$";
+export const DIAS_GUARDA_COMPARACOES = 30;
 const num = (v: any) => Math.max(0, Math.min(1e9, Number(v) || 0));
 const curto = (v: any, n: number) => String(v || "").slice(0, n);
 
@@ -34,7 +37,7 @@ comparacoesRouter.post("/", async (req: any, res) => {
 comparacoesRouter.get("/", async (req: any, res) => {
   try {
     const u = so(req); await garantirDocs();
-    const [rows]: any = await banco().query("SELECT id, data FROM docs WHERE col=? ORDER BY updated_at DESC LIMIT 200", [col(u.tenant)]);
+    const [rows]: any = await banco().query("SELECT id, data FROM docs WHERE col REGEXP ? ORDER BY updated_at DESC LIMIT 200", [TODAS]);
     const proc = String(req.query.processo || "");
     const lista = rows.map((r: any) => { try { const d = JSON.parse(r.data); delete d.textoLancado; delete d.textoGerado; d.id = r.id; return d; } catch { return null; } }).filter((d: any) => d && (!proc || d.processo === proc)).slice(0, 50);
     res.json({ comparacoes: lista });
@@ -46,9 +49,9 @@ let gerarIA: ((req: any, prompt: string) => Promise<string>) | null = null;
 /** O server.ts entrega aqui a função que chama a IA (com as chaves e o motor do próprio app). */
 export const definirIA = (f: (req: any, prompt: string) => Promise<string>) => { gerarIA = f; };
 
-async function lerDocs(tenant: string, limite = 200): Promise<(DocComparacao & { id: string })[]> {
+async function lerDocs(_tenant: string, limite = 200): Promise<(DocComparacao & { id: string })[]> {
   await garantirDocs();
-  const [rows]: any = await banco().query("SELECT id, data FROM docs WHERE col=? ORDER BY updated_at DESC LIMIT ?", [col(tenant), limite]);
+  const [rows]: any = await banco().query("SELECT id, data FROM docs WHERE col REGEXP ? ORDER BY updated_at DESC LIMIT ?", [TODAS, limite]);
   return rows.map((r: any) => { try { const d = JSON.parse(r.data); delete d.textoLancado; delete d.textoGerado; d.id = r.id; return d; } catch { return null; } }).filter(Boolean);
 }
 const idOk = (v: any) => { const id = String(v || ""); return /^[0-9a-zA-Z.\-]{1,190}$/.test(id) ? id : ""; };
@@ -63,7 +66,7 @@ comparacoesRouter.get("/:id/textos", async (req: any, res) => {
   try {
     const u = so(req), id = idOk(req.params.id); if (!id) return void res.status(400).json({ erro: "identificação inválida" });
     await garantirDocs();
-    const [rows]: any = await banco().query("SELECT data FROM docs WHERE col=? AND id=?", [col(u.tenant), id]);
+    const [rows]: any = await banco().query("SELECT data FROM docs WHERE col REGEXP ? AND id=?", [TODAS, id]);
     if (!rows.length) return void res.status(404).json({ erro: "comparação não encontrada" });
     const d = JSON.parse(rows[0].data); res.json({ processo: d.processo, textoGerado: d.textoGerado || "", textoLancado: d.textoLancado || "" });
   } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : "não consegui ler os textos" }); }
@@ -74,7 +77,7 @@ comparacoesRouter.post("/:id/assinado", async (req: any, res) => {
   try {
     const u = so(req), id = idOk(req.params.id), b = req.body || {}; if (!id) return void res.status(400).json({ erro: "identificação inválida" });
     await garantirDocs();
-    const [rows]: any = await banco().query("SELECT data FROM docs WHERE col=? AND id=?", [col(u.tenant), id]);
+    const [rows]: any = await banco().query("SELECT col, data FROM docs WHERE col REGEXP ? AND id=?", [TODAS, id]);
     if (!rows.length) return void res.status(404).json({ erro: "comparação não encontrada" });
     const d = JSON.parse(rows[0].data);
     d.assinado = {
@@ -82,7 +85,7 @@ comparacoesRouter.post("/:id/assinado", async (req: any, res) => {
       dispositivoMudouDaLancada: !!b.dispositivoMudouDaLancada, arquivo: curto(b.arquivo, 160), em: Date.now(),
       mudancas: (Array.isArray(b.mudancas) ? b.mudancas : []).slice(0, 60).map((m: any) => ({ tipo: curto(m?.tipo, 12), secao: curto(m?.secao, 30), original: curto(m?.original, 400), lancado: curto(m?.lancado, 400) })),
     };
-    await banco().query("UPDATE docs SET data=?, updated_at=? WHERE col=? AND id=?", [JSON.stringify(d), Date.now(), col(u.tenant), id]);
+    await banco().query("UPDATE docs SET data=? WHERE col=? AND id=?", [JSON.stringify(d), rows[0].col, id]);      // updated_at fica: a guarda de 30 dias conta da comparação
     res.json({ ok: true });
   } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : "não consegui guardar o documento assinado" }); }
 });
@@ -97,7 +100,7 @@ comparacoesRouter.post("/resumo", async (req: any, res) => {
     resumindo = true;
     try {
       const p = agregarPadroes(await lerDocs(u.tenant, 200));
-      const [rows]: any = await banco().query("SELECT data FROM docs WHERE col=? ORDER BY updated_at DESC LIMIT 60", [col(u.tenant)]);
+      const [rows]: any = await banco().query("SELECT data FROM docs WHERE col REGEXP ? ORDER BY updated_at DESC LIMIT 60", [TODAS]);
       const brutos = rows.map((r: any) => { try { return JSON.parse(r.data); } catch { return null; } }).filter((d: any) => d && d.textoLancado);
       const referencias = brutos.sort((a: any, b: any) => (a.coberturaPct ?? a.aproveitamentoPct) - (b.coberturaPct ?? b.aproveitamentoPct)).slice(0, 5)
         .map((d: any) => ({ processo: d.processo, ato: d.ato || "", cobertura: d.coberturaPct ?? null, gerada: String(d.textoGerado || "").slice(0, 500), lancada: String(d.textoLancado || "").slice(0, 900) }));
@@ -106,3 +109,25 @@ comparacoesRouter.post("/resumo", async (req: any, res) => {
     } finally { resumindo = false; }
   } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : `não consegui gerar o resumo: ${String(e?.message || e).slice(0, 200)}` }); }
 });
+
+// ---- Guarda de 30 dias: apaga as comparações (com as minutas lançada/gerada e os trechos guardados) que passaram do prazo, em todos os gabinetes ----
+export async function limparComparacoesVencidas(agora = Date.now(), simular = false): Promise<number> {
+  await garantirDocs();
+  const limite = agora - DIAS_GUARDA_COMPARACOES * 86_400_000;
+  if (simular) { const [r]: any = await banco().query("SELECT COUNT(*) AS n FROM docs WHERE col REGEXP ? AND updated_at < ?", [TODAS, limite]); return Number(r[0]?.n) || 0; }
+  const [r]: any = await banco().query("DELETE FROM docs WHERE col REGEXP ? AND updated_at < ?", [TODAS, limite]);
+  return Number(r?.affectedRows) || 0;
+}
+/** Super Admin: roda a limpeza agora (ou só conta, com `simular`). */
+comparacoesRouter.post("/limpar", async (req: any, res) => {
+  try { so(req); const n = await limparComparacoesVencidas(Date.now(), !!req.body?.simular); res.json({ ok: true, simulado: !!req.body?.simular, vencidas: n, dias: DIAS_GUARDA_COMPARACOES }); }
+  catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : "não consegui limpar" }); }
+});
+let limpezaLigada = false;
+/** 1 minuto depois de o servidor subir e depois a cada 12 horas. Falha nunca derruba o servidor. */
+export function iniciarLimpezaDasComparacoes(): void {
+  if (limpezaLigada) return; limpezaLigada = true;
+  const rodar = () => { limparComparacoesVencidas().then((n) => { if (n) console.log(`[comparações] ${n} comparação(ões) com mais de ${DIAS_GUARDA_COMPARACOES} dias apagada(s)`); }).catch((e) => console.warn("[comparações] limpeza falhou:", e?.message || e)); };
+  setTimeout(rodar, 60_000).unref?.();
+  setInterval(rodar, 12 * 3_600_000).unref?.();
+}
