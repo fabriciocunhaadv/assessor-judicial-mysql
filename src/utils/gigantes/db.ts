@@ -31,6 +31,8 @@ export interface JobGig {
   atualizadoEm: number;
   status: "preparando" | "na_fila" | "ocr" | "lendo" | "fundindo" | "redigindo" | "concluido" | "erro" | "pausado" | "cancelado";
   etapa: string;
+  /** Espera por um modelo completo do Google em curso (barra de tempo no painel). Só em memória: `ate` já passado = sem espera. */
+  espera?: { ate: number; total: number } | null;
   progresso: { feitas: number; total: number };
   arquivos: { nome: string; paginas: number; semTexto: number[]; naoLidas: number[]; totalOriginal?: number }[];
   antecessorId?: string;

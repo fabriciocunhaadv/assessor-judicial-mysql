@@ -282,7 +282,20 @@ class Gerente {
         const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 14 * 60000);
         (this.ctls.get(id) || this.ctls.set(id, new Set()).get(id)!).add(ctl);
         let txt = "";
-        try { const r = await fetch(rota, { method: "POST", headers: getApiHeaders(), body: JSON.stringify(corpo), signal: ctl.signal }); txt = await r.text(); } finally { clearTimeout(to); this.ctls.get(id)?.delete(ctl); }
+        // leitura de trecho e fusão: o servidor informa quanto falta da espera por um modelo completo do Google (o painel mostra uma barra que diminui)
+        const acompanhar = rota === "/api/gigante-lote" || rota === "/api/gigante-fusao";
+        const progId = acompanhar ? `gig-${id}-${Date.now().toString(36)}` : "";
+        const vigia = acompanhar ? setInterval(async () => {
+          try {
+            const j = this.jobs.get(id); if (!j) return;
+            const e = (await (await fetch(`/api/progresso/${encodeURIComponent(progId)}`, { cache: "no-store" })).json())?.espera;
+            const nova = e && e.restanteSeg > 0 ? { ate: Date.now() + e.restanteSeg * 1000, total: e.totalSeg * 1000 } : null;
+            if (!nova && !j.espera) return;
+            if (nova && j.espera && Math.abs(j.espera.ate - nova.ate) < 2500 && j.espera.total === nova.total) return;      // mesma espera: não redesenha
+            j.espera = nova; this.avisar();
+          } catch { /* sem conexão por um instante */ }
+        }, 2500) : null;
+        try { const r = await fetch(rota, { method: "POST", headers: getApiHeaders(), body: JSON.stringify(acompanhar ? { ...corpo, progId } : corpo), signal: ctl.signal }); txt = await r.text(); } finally { clearTimeout(to); if (vigia) clearInterval(vigia); const jj = this.jobs.get(id); if (jj?.espera) { jj.espera = null; this.avisar(); } this.ctls.get(id)?.delete(ctl); }
         let data: any; try { data = JSON.parse(txt.trim()); } catch { throw new Error("resposta do servidor incompleta"); }
         if (data?.error || data?.isError) throw Object.assign(new Error(typeof data.error === "string" ? data.error : "erro do servidor"), { codigo: data?.codigo });
         this.registrarUso(id, rota, data);

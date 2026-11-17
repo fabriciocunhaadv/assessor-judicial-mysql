@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 
-interface Andamento { texto?: string; pct?: number | null; teto?: number; idadeSeg?: number }
+import { BarraEspera } from "./BarraEspera";
+
+interface Andamento { texto?: string; pct?: number | null; teto?: number; idadeSeg?: number; espera?: { restanteSeg: number; totalSeg: number } }
 
 const formatar = (seg: number) => `${String(Math.floor(seg / 60)).padStart(2, "0")}:${String(seg % 60).padStart(2, "0")}`;
 
@@ -54,6 +56,7 @@ export function PainelProgresso({ ativo, progId, titulo, fallbackTexto }: { ativ
           : <div className="h-full w-1/3 bg-emerald-500 rounded-full animate-pulse" />}
       </div>
       <p className="text-xs font-medium text-slate-800">{ando.texto || fallbackTexto || "Iniciando…"}</p>
+      {ando.espera && ando.espera.restanteSeg > 0 && <BarraEspera ate={recebidoEm.current + ando.espera.restanteSeg * 1000} total={ando.espera.totalSeg * 1000} />}
       <p className="text-[11px] text-slate-500">O sistema está trabalhando. Autos longos podem levar vários minutos; não feche esta aba.</p>
     </div>
   );

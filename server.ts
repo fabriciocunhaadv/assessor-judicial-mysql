@@ -508,6 +508,7 @@ app.post("/api/gigante-lote", async (req, res) => {
         const contexto = String(req.body?.contexto || "").slice(0, 3000);
         let injecao: any = null, defesa = "";
         try { const r = detectarInjecao(texto); if (r.verificado) injecao = r; if (r.total > 0) defesa = instrucaoDefesaInjecao(r); } catch { /* ignora */ }
+        const progIdGig = String(req.body?.progId || "").slice(0, 80);
         manterViva(res);
         const opcoes: any = {
             apiKey: extractApiKey(req),
@@ -518,7 +519,7 @@ app.post("/api/gigante-lote", async (req, res) => {
             primaryModel: "gemini-3.8-flash",
             fallbackModel: "gemini-flash-latest",
             customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
-            esperaProfundoMs: 120000,      // a ficha de cada trecho também espera o modelo forte (ficha rasa do modelo leve empobrece a minuta final do gigante)
+            esperaProfundoMs: 120000, aoEsperar: progIdGig ? (seg: number) => setProg(progIdGig, `Aguardando o Google liberar um modelo completo (${seg}s)…`, undefined, undefined, { seg }) : undefined,      // a ficha de cada trecho também espera o modelo forte (ficha rasa do modelo leve empobrece a minuta final do gigante)
             timeoutMs: 180000,
             maxCycles: 3,
             cycleDelayMs: 8000,
@@ -546,6 +547,7 @@ app.post("/api/gigante-fusao", async (req, res) => {
     try {
         const fichas: any[] = Array.isArray(req.body?.fichas) ? req.body.fichas : [];
         if (fichas.length < 1) return res.status(400).json({ error: "Informe ao menos uma ficha." });
+        const progIdGig = String(req.body?.progId || "").slice(0, 80);
         manterViva(res);
         const opcoes: any = {
             apiKey: extractApiKey(req),
@@ -556,7 +558,7 @@ app.post("/api/gigante-fusao", async (req, res) => {
             primaryModel: "gemini-3.8-flash",
             fallbackModel: "gemini-flash-latest",
             customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
-            esperaProfundoMs: 120000,      // idem: a fusão das fichas espera o modelo forte
+            esperaProfundoMs: 120000, aoEsperar: progIdGig ? (seg: number) => setProg(progIdGig, `Aguardando o Google liberar um modelo completo (${seg}s)…`, undefined, undefined, { seg }) : undefined,      // idem: a fusão das fichas espera o modelo forte
             timeoutMs: 180000,
             maxCycles: 3,
             cycleDelayMs: 8000,
@@ -581,12 +583,13 @@ app.post("/api/gigante-fusao", async (req, res) => {
 });
 
 // ====== Andamento das análises longas: o app consulta a cada poucos segundos e mostra etapa e porcentagem reais ======
-const progressos = new Map<string, { texto: string; pct: number | null; teto: number; ini: number; t: number }>();
-function setProg(id: string, texto: string, pct?: number | null, teto?: number) {
+const progressos = new Map<string, { texto: string; pct: number | null; teto: number; ini: number; t: number; espera?: { ate: number; total: number } }>();
+function setProg(id: string, texto: string, pct?: number | null, teto?: number, espera?: { seg: number }) {
     if (!id) return;
     const a = progressos.get(id);
     const novo = pct == null ? (a?.pct ?? null) : Math.max(a?.pct ?? 0, Math.min(99, Math.round(pct)));
-    progressos.set(id, { texto, pct: novo, teto: Math.min(99, teto ?? a?.teto ?? 99), ini: a?.ini ?? Date.now(), t: Date.now() });
+    // `espera`: o sistema está esperando um modelo completo do Google; a tela mostra uma barra de tempo que vai diminuindo (some quando o próximo aviso chega sem `espera`)
+    progressos.set(id, { texto, pct: novo, teto: Math.min(99, teto ?? a?.teto ?? 99), ini: a?.ini ?? Date.now(), t: Date.now(), ...(espera && espera.seg > 0 ? { espera: { ate: Date.now() + espera.seg * 1000, total: espera.seg * 1000 } } : {}) });
     if (progressos.size > 200) for (const [k, v] of progressos) if (Date.now() - v.t > 30 * 60000) progressos.delete(k);
 }
 // CAIXA DE RESULTADOS: a análise continua no servidor mesmo que o navegador (principalmente no celular) feche a página ou perca a conexão. O resultado fica guardado por 1 hora, pelo
@@ -627,7 +630,8 @@ app.get("/api/resultado/:id", (req: any, res) => {
 
 app.get("/api/progresso/:id", (req, res) => {
     const p = progressos.get(String(req.params.id || ""));
-    res.json(p ? { texto: p.texto, pct: p.pct, teto: p.teto, decorridoSeg: Math.round((Date.now() - p.ini) / 1000), idadeSeg: Math.round((Date.now() - p.t) / 1000) } : {});
+    const esp = p?.espera && p.espera.ate > Date.now() ? { restanteSeg: Math.ceil((p.espera.ate - Date.now()) / 1000), totalSeg: Math.round(p.espera.total / 1000) } : undefined;
+    res.json(p ? { texto: p.texto, pct: p.pct, teto: p.teto, decorridoSeg: Math.round((Date.now() - p.ini) / 1000), idadeSeg: Math.round((Date.now() - p.t) / 1000), ...(esp ? { espera: esp } : {}) } : {});
 });
 
 app.post("/api/ocr-paginas", async (req, res) => {
@@ -3635,6 +3639,10 @@ async function generateWithFallbackAndRetry(options) {
                 console.log(`[Assessor Judicial - Esteira] ${modelName} em resfriamento; pulando para o próximo modelo.`);
                 continue;
             }
+            // Modelo forte em resfriamento só é TESTADO de novo (com a espera ligada): se a fila do Google ainda estiver retida, a sonda falha em ~75 s em vez de gastar o limite inteiro (150–220 s) por chave.
+            // Modelo saudável (fora do resfriamento) mantém o limite cheio, para respostas longas e autos grandes.
+            const sondando = esperaProfundoMs > 0 && ehProfundo(modelName) && modeloBloqueado(modelName, keyPool);
+            const tempoTentativa = sondando ? Math.min(modelTimeoutMs, Number(process.env.TIMEOUT_SONDA_MS) || 75000) : modelTimeoutMs;
             keyPool = await prepararChaves(keyPool, modelName, estTokensChamada);      // chave com mais folga primeiro
             let falhasDemanda = 0;      // 503/timeouts neste modelo: 503 é do modelo, não da chave
 
@@ -3649,7 +3657,7 @@ async function generateWithFallbackAndRetry(options) {
                 const ai = new GoogleGenAI({
                     apiKey: currentKey,
                     httpOptions: {
-                        timeout: modelTimeoutMs + 10000,      // nosso temporizador dispara antes e registra o erro corretamente
+                        timeout: tempoTentativa + 10000,      // nosso temporizador dispara antes e registra o erro corretamente
                         headers: {
                             'User-Agent': 'assessor-judicial'
                         }
@@ -3659,12 +3667,12 @@ async function generateWithFallbackAndRetry(options) {
                 let timerHandle: any = null;
 
                 try {
-                    console.log(`[Assessor Judicial - Pool de Chaves] Ciclo ${cycle}/${maxPipelineCycles} | Modelo ${modelName} | Chave ${kIdx + 1}/${keyPool.length} (${maskedKey}) [Limite Fila: ${modelTimeoutMs / 1000}s]`);
+                    console.log(`[Assessor Judicial - Pool de Chaves] Ciclo ${cycle}/${maxPipelineCycles} | Modelo ${modelName} | Chave ${kIdx + 1}/${keyPool.length} (${maskedKey}) [Limite Fila: ${tempoTentativa / 1000}s${sondando ? ", sonda" : ""}]`);
                     
                     const timeoutPromise = new Promise<never>((_, reject) => {
                         timerHandle = setTimeout(() => {
-                            reject(new Error(`GOOGLE_QUEUE_TIMEOUT: Tempo limite de espera na fila do Google esgotado (${modelTimeoutMs / 1000}s) no modelo ${modelName}. Passando imediatamente ao próximo modelo.`));
-                        }, modelTimeoutMs);
+                            reject(new Error(`GOOGLE_QUEUE_TIMEOUT: Tempo limite de espera na fila do Google esgotado (${tempoTentativa / 1000}s) no modelo ${modelName}. Passando imediatamente ao próximo modelo.`));
+                        }, tempoTentativa);
                         if (timerHandle && typeof timerHandle.unref === 'function') {
                             timerHandle.unref();
                         }
@@ -3750,7 +3758,7 @@ async function generateWithFallbackAndRetry(options) {
                     }
                     if (isTimeout) registrarUso(currentKey, modelName, estTokensChamada);      // tempo esgotado: o Google pode ter contado os tokens da tentativa
 
-                    const statusReason = isTimeout ? `Fila do Google retida (Timeout ${modelTimeoutMs / 1000}s)` :
+                    const statusReason = isTimeout ? `Fila do Google retida (Timeout ${tempoTentativa / 1000}s)` :
                                          errMsg.includes("503") || errMsg.includes("high demand") ? "Alta demanda temporária no cluster Google (503)" :
                                          isQuotaError ? "Cota esgotada (429)" :
                                          isAuthError ? "Chave não autorizada (403)" :
@@ -3817,7 +3825,7 @@ async function generateWithFallbackAndRetry(options) {
                             delete activeConfig.responseSchema;
                         }
                         falhasDemanda++;
-                        const maxTentativas = Math.min(2, keyPool.length);      // 503 é do modelo: no máximo 2 chaves por modelo
+                        const maxTentativas = isTimeout ? 1 : Math.min(2, keyPool.length);      // 503 é do modelo: no máximo 2 chaves por modelo; fila retida (timeout de minutos) também é do modelo: não repete com a 2ª chave
                         if (falhasDemanda < maxTentativas && kIdx < keyPool.length - 1) {
                             console.log(`[Assessor Judicial - 503/Fila Failover] Tentando mais uma chave (${kIdx + 2}/${keyPool.length}) no mesmo modelo...`);
                             await new Promise(r => setTimeout(r, 500));
@@ -6203,7 +6211,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
         primaryModel: "gemini-3.8-flash",
         fallbackModel: "gemini-3.8-flash",
         customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
-        esperaProfundoMs: 60000, aoEsperar: (seg: number) => setProg(progId, `Etapa 1 — o Google está sobrecarregado: aguardando ${seg}s por um modelo completo (para não entregar uma minuta curta)…`, undefined, 56),
+        esperaProfundoMs: 60000, aoEsperar: (seg: number) => setProg(progId, `Etapa 1 — o Google está sobrecarregado: aguardando ${seg}s por um modelo completo (para não entregar uma minuta curta)…`, undefined, 56, { seg }),
         timeoutMs: TIMEOUT_ETAPA,
         maxCycles: 3,
         cycleDelayMs: 8000,
@@ -6278,7 +6286,7 @@ if (executionStage === 2 && stage1Snapshot && typeof stage1Snapshot === "object"
             if (raso1) {
                 console.log(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 1 resumida (${av1.falhas.join("; ")}). Expandindo a minuta...`);
                 setProg(progId, "Etapa 1 — aprofundando a minuta (relatório e fundamentação ficaram curtos)…", undefined, 56);
-                const exp1 = await expandirMinutaResumida({ partes: stage1ContentsParts, sistema: stage1SystemInstruction, minuta: stage1Json, falhas: av1.falhas, req, res, userApiKey, timeoutMs: TIMEOUT_ETAPA, aoEsperar: (seg: number) => setProg(progId, `Etapa 1 — aguardando ${seg}s por um modelo completo para aprofundar a minuta…`, undefined, 56) });
+                const exp1 = await expandirMinutaResumida({ partes: stage1ContentsParts, sistema: stage1SystemInstruction, minuta: stage1Json, falhas: av1.falhas, req, res, userApiKey, timeoutMs: TIMEOUT_ETAPA, aoEsperar: (seg: number) => setProg(progId, `Etapa 1 — aguardando ${seg}s por um modelo completo para aprofundar a minuta…`, undefined, 56, { seg }) });
                 if (exp1 && exp1.fundamentacao.length > String(stage1Json.fundamentacao || "").length) {
                     stage1Json = { ...stage1Json, ...exp1 };
                     console.log("[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 1 expandida com sucesso.");
@@ -6863,7 +6871,7 @@ try {
         primaryModel: "gemini-3.8-flash",
         fallbackModel: "gemini-3.8-flash",
         customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
-        esperaProfundoMs: 60000, aoEsperar: (seg: number) => setProg(progId, `Etapa 2 — o Google está sobrecarregado: aguardando ${seg}s por um modelo completo (para não entregar uma minuta curta)…`, undefined, 56),
+        esperaProfundoMs: 60000, aoEsperar: (seg: number) => setProg(progId, `Etapa 2 — o Google está sobrecarregado: aguardando ${seg}s por um modelo completo (para não entregar uma minuta curta)…`, undefined, 56, { seg }),
         timeoutMs: TIMEOUT_ETAPA,
         maxCycles: 3,
         cycleDelayMs: 8000,
@@ -7012,7 +7020,7 @@ if (!stage2Failed) {
         if (raso2) {
             console.log(`[Assessor Judicial - PORTÃO DE PROFUNDIDADE] Etapa 2 resumida (${av2.falhas.join("; ")}). Expandindo a minuta...`);
             setProg(progId, "Etapa 2 — aprofundando a minuta (relatório e fundamentação ficaram curtos)…", undefined, 56);
-            const exp2 = await expandirMinutaResumida({ partes: [{ text: stage2Prompt }], sistema: stage2SystemInstruction, minuta: parsed.minute, falhas: av2.falhas, req, res, userApiKey, timeoutMs: 150000, aoEsperar: (seg: number) => setProg(progId, `Etapa 2 — aguardando ${seg}s por um modelo completo para aprofundar a minuta…`, undefined, 56) });
+            const exp2 = await expandirMinutaResumida({ partes: [{ text: stage2Prompt }], sistema: stage2SystemInstruction, minuta: parsed.minute, falhas: av2.falhas, req, res, userApiKey, timeoutMs: 150000, aoEsperar: (seg: number) => setProg(progId, `Etapa 2 — aguardando ${seg}s por um modelo completo para aprofundar a minuta…`, undefined, 56, { seg }) });
             if (exp2 && exp2.fundamentacao.length > String(parsed.minute.fundamentacao || "").length) {
                 parsed.minute.relatorio = exp2.relatorio || parsed.minute.relatorio;
                 parsed.minute.fundamentacao = exp2.fundamentacao;

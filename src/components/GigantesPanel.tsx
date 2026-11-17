@@ -2,6 +2,7 @@ import { NoDock } from "./DockLateral";
 import React, { useEffect, useRef, useState } from "react";
 import { gerenteGigantes, ConfigGigante } from "../utils/gigantes/gerente";
 import type { JobGig } from "../utils/gigantes/db";
+import { BarraEspera } from "./BarraEspera";
 import { useUmAbertoPorVez, CLASSE_PAINEL_FLUTUANTE } from "../utils/flutuantes";
 
 function PesquisaNosAutos({ jobId }: { jobId: string }) {
@@ -94,6 +95,7 @@ export function GigantesPanel({ config, onVerHistorico }: { config: ConfigGigant
               </div>
               {ATIVO(j.status) && <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-sky-600 transition-all" style={{ width: `${pct(j)}%` }} /></div>}
               <div className="text-[11px] text-slate-600">{j.etapa}</div>
+              {ATIVO(j.status) && j.espera && j.espera.ate > Date.now() - 1000 && <BarraEspera ate={j.espera.ate} total={j.espera.total} />}
               {j.erro && <div className="text-[11px] text-red-700 bg-red-50 rounded p-1.5">{j.erro}</div>}
               {j.config?.finalidade === "dossie" && <div className="text-[10px] font-bold text-indigo-700">Dossiê para {j.config.origem === "mesa" ? "a Mesa de Audiência" : j.config.origem === "lupa" ? "a Lupa do Magistrado" : "uso nos módulos"}: não gera minuta própria.</div>}
               {j.status === "ocr" && <button onClick={() => gerenteGigantes.pularOcr(j.id)} className="px-2 py-1 rounded-md bg-teal-50 border border-teal-300 text-teal-800 text-[11px] font-bold cursor-pointer" data-testid="gigante-pular-ocr">Pular o OCR (seguir só com as páginas que têm texto)</button>}
