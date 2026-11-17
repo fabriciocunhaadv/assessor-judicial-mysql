@@ -160,3 +160,7 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 
 ### Apagar comparações (17/11, commitado, NÃO publicado)
 - Aba "Minutas lançadas": caixa de seleção por comparação, "marcar todas", lixeira por linha, "Apagar marcadas (N)" e "Apagar todas", sempre com confirmação na própria página (sem `confirm()`). Servidor: `POST /api/comparacoes-minuta/apagar` `{ids:[…]}` (até 500) ou `{todas:true}` (Super Admin; de todos os gabinetes). Apagar leva junto as minutas guardadas. Testes: `testes/teste_aba_minutas_lancadas.py` (cenários de apagar), `testes/servidor/rodar_comparacoes_dados.mjs`, `rodar_comparacoes.mjs`.
+
+### Laboratório de calibragem — item 1 (17/11, commitado)
+- Aba "Minutas lançadas" > "Levar para o laboratório": "Montar pacote" (das comparações marcadas, ou de todas) gera UM arquivo Markdown geral e inteiro (`src/utils/pacoteCalibragem.ts`): resumo, e por comparação o prompt/motor, métricas, a minuta LANÇADA (referência) e a GERADA com os textos completos, o que mudou e o que mudou na assinatura. Botões: "Copiar para a área de transferência" e "Baixar arquivo (.md)"; o usuário cola/anexa na conversa com o Claude. Servidor: `POST /api/comparacoes-minuta/exportar` (Super Admin; até 500). O pacote contém texto de minutas (dados do processo): fica só no computador do usuário e na conversa. Testes: `testes/teste_pacote_calibragem.ts`, `teste_aba_minutas_lancadas.py`, `rodar_comparacoes_dados.mjs`.
+- Item 2 (laboratório visual aqui, na conversa) depende deste pacote.

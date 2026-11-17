@@ -118,6 +118,19 @@ export async function limparComparacoesVencidas(agora = Date.now(), simular = fa
   const [r]: any = await banco().query("DELETE FROM docs WHERE col REGEXP ? AND updated_at < ?", [TODAS, limite]);
   return Number(r?.affectedRows) || 0;
 }
+/** Super Admin: pacote COMPLETO (com o texto gerado e o lançado) das comparações escolhidas ({ ids }) ou de todas, para levar ao laboratório de calibragem. */
+comparacoesRouter.post("/exportar", async (req: any, res) => {
+  try {
+    so(req); await garantirDocs();
+    const ids: string[] = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(idOk).filter(Boolean).slice(0, 500);
+    const [rows]: any = ids.length
+      ? await banco().query(`SELECT id, data FROM docs WHERE col REGEXP ? AND id IN (${ids.map(() => "?").join(",")}) ORDER BY updated_at DESC LIMIT 500`, [TODAS, ...ids])
+      : await banco().query("SELECT id, data FROM docs WHERE col REGEXP ? ORDER BY updated_at DESC LIMIT 500", [TODAS]);
+    const comparacoes = rows.map((r: any) => { try { const d = JSON.parse(r.data); d.id = r.id; return d; } catch { return null; } }).filter(Boolean);
+    res.json({ comparacoes, geradoEm: Date.now() });
+  } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : "não consegui montar o pacote" }); }
+});
+
 /** Super Admin: apaga comparações escolhidas ({ ids: [...] }) ou todas ({ todas: true }), de qualquer gabinete. */
 comparacoesRouter.post("/apagar", async (req: any, res) => {
   try {

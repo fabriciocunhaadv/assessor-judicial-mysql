@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { GitCompare, RefreshCw, Loader2, AlertTriangle, Sparkles, FileUp, Copy, Trash2 } from "lucide-react";
+import { GitCompare, RefreshCw, Loader2, AlertTriangle, Sparkles, FileUp, Copy, Trash2, FlaskConical, Download, Check } from "lucide-react";
 import { compararMinutas } from "../utils/compararMinutas";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
+import { montarPacoteCalibragem } from "../utils/pacoteCalibragem";
 
 // Aba "Minutas lançadas" do Super Admin: padrões do que o juiz/assessor mantém, corta e acrescenta; comparação com o documento ASSINADO (PDF) e resumo por IA com sugestões de prompt (só sugere; nada é alterado sozinho).
 interface Grupo { nome: string; n: number; aproveitamentoPct: number; dispositivoAlteradoPct: number }
@@ -62,6 +63,29 @@ export function MinutasLancadasPanel() {
     setLendo("");
   };
 
+  // Pacote para o laboratório (conversa com o Claude): arquivo geral INTEIRO, com os textos gerado e lançado de cada comparação (as marcadas, ou todas se nenhuma estiver marcada)
+  const [pacote, setPacote] = useState<{ texto: string; n: number } | null>(null), [montando, setMontando] = useState(false), [msgPacote, setMsgPacote] = useState("");
+  const prepararPacote = async () => {
+    setMontando(true); setMsgPacote(""); setPacote(null);
+    try {
+      const r = await api<{ comparacoes: any[]; geradoEm: number }>("/api/comparacoes-minuta/exportar", { ids: [...marcadas] });
+      setPacote({ texto: montarPacoteCalibragem(r.comparacoes, r.geradoEm), n: r.comparacoes.length });
+    } catch (e: any) { setMsgPacote(`Erro ao montar o pacote: ${e.message}`); }
+    setMontando(false);
+  };
+  const copiarPacote = async () => {
+    if (!pacote) return;
+    try { await navigator.clipboard.writeText(pacote.texto); setMsgPacote("Copiado para a área de transferência. Cole na conversa com o Claude."); }
+    catch { setMsgPacote("O navegador bloqueou a cópia automática: use “Baixar arquivo” e anexe o arquivo na conversa."); }
+  };
+  const baixarPacote = () => {
+    if (!pacote) return;
+    try {
+      const url = URL.createObjectURL(new Blob([pacote.texto], { type: "text/markdown;charset=utf-8" })), a = document.createElement("a");
+      a.href = url; a.download = `pacote-calibragem-${new Date().toISOString().slice(0, 10)}.md`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setMsgPacote("Arquivo baixado. Anexe na conversa com o Claude.");
+    } catch { setMsgPacote("Não consegui baixar o arquivo: use “Copiar”."); }
+  };
   const alternar = (id: string) => setMarcadas((m) => { const n = new Set(m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const apagar = async (modo: "marcadas" | "todas" | string) => {
     setApagando(true); setMsgApagar("");
@@ -105,6 +129,20 @@ export function MinutasLancadasPanel() {
               <div className="rounded-xl border border-emerald-800/50 bg-emerald-950/20 p-3"><div className="text-xs font-black mb-1.5 text-emerald-200">Trechos que mais se repetem entre os ACRESCENTADOS</div>{pad.maisAcrescentados.map((x, i) => <p key={i} className="text-[11px] py-0.5"><span className="text-emerald-300 font-bold">{x.vezes}×</span> ({x.secao}) {x.trecho}</p>)}{!pad.maisAcrescentados.length && <p className="text-[11px] text-slate-500">Nada repetido ainda.</p>}</div>
             </div>
           )}
+
+          <div className="rounded-xl border border-emerald-700/50 bg-emerald-950/20 p-3 space-y-2" data-testid="minutas-laboratorio">
+            <div className="flex flex-wrap items-center gap-2"><FlaskConical className="w-4 h-4 text-emerald-300" /><span className="text-sm font-black">Levar para o laboratório</span>
+              <button onClick={() => void prepararPacote()} disabled={montando} data-testid="btn-preparar-pacote" className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold cursor-pointer disabled:opacity-50">{montando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FlaskConical className="w-3.5 h-3.5" />} {montando ? "Montando…" : marcadas.size ? `Montar pacote (${marcadas.size} marcadas)` : "Montar pacote (todas)"}</button></div>
+            <p className="text-[11px] text-slate-400">Um arquivo geral e inteiro: padrões, o que mudou e os textos completos da minuta gerada e da lançada (referência) de cada comparação. Copie e cole na conversa com o Claude (ou baixe e anexe) para calibrar os prompts e o Studio. Marque comparações na lista para levar só algumas.</p>
+            {pacote && (
+              <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="pacote-pronto">
+                <span className="text-emerald-200"><Check className="w-3.5 h-3.5 inline" /> Pacote com {pacote.n} comparação(ões) · {Math.max(1, Math.round(pacote.texto.length / 1024)).toLocaleString("pt-BR")} KB</span>
+                <button onClick={() => void copiarPacote()} data-testid="btn-copiar-pacote" className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-600 hover:bg-slate-800 cursor-pointer"><Copy className="w-3.5 h-3.5" /> Copiar para a área de transferência</button>
+                <button onClick={baixarPacote} data-testid="btn-baixar-pacote" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-600 hover:bg-slate-800 cursor-pointer"><Download className="w-3.5 h-3.5" /> Baixar arquivo (.md)</button>
+              </div>
+            )}
+            {msgPacote && <div className="text-[11px] text-sky-200" data-testid="msg-pacote">{msgPacote}</div>}
+          </div>
 
           <div className="rounded-xl border border-violet-700/50 bg-violet-950/20 p-3 space-y-2" data-testid="minutas-resumo-ia">
             <div className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-violet-300" /><span className="text-sm font-black">Resumo por IA e sugestões de prompt</span>

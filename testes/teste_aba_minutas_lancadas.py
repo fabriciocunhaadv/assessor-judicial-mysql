@@ -23,7 +23,7 @@ PAD = {"total": 1, "aproveitamentoMedioPct": 82.5, "dispositivoAlteradoPct": 0, 
 RESUMO = {"ok": True, "base": 1, "resumo": "O magistrado aceita o relatório e acrescenta multa na fundamentação.", "padroes": ["Acréscimo de multa na fundamentação."], "sugestoes": [{"titulo": "Citar a multa contratual", "secao": "Fundamentação", "instrucao": "Sempre mencione a multa contratual quando houver.", "motivo": "Acrescentada na comparação 5001234.", "confianca": "baixa"}]}
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path=glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome")[0], args=["--no-sandbox"]); erros = []
-    pg = b.new_page(viewport={"width": 1400, "height": 1000}); pg.on("pageerror", lambda e: erros.append(str(e)[:200]))
+    ctx = b.new_context(viewport={"width": 1400, "height": 1000}, permissions=["clipboard-read", "clipboard-write"], accept_downloads=True); pg = ctx.new_page(); pg.on("pageerror", lambda e: erros.append(str(e)[:200]))
     L2 = dict(LINHA, id="5009999-1700000000001", processo="5009999-11.2026.8.09.0166")
     posts = []; estado = {"linha": dict(LINHA), "vazio": True, "extra": []}
     def rota(r):
@@ -34,6 +34,9 @@ with sync_playwright() as p:
         if u.endswith("/textos"): return j({"processo": LINHA["processo"], "textoGerado": GERADO, "textoLancado": LANCADO})
         if u.endswith("/assinado"): estado["linha"]["assinado"] = {"aproveitamentoLancadaPct": 90, "aproveitamentoGeradaPct": 80, "dispositivoMudouDaLancada": True, "arquivo": "assinada.pdf"}; return j({"ok": True})
         if u.endswith("/resumo"): return j(RESUMO)
+        if u.endswith("/exportar"):
+            ids = json.loads(r.request.post_data or "{}").get("ids", [])
+            return j({"geradoEm": 1763377200000, "comparacoes": [dict(LINHA, textoLancado=LANCADO, textoGerado=GERADO)] if (not ids or LINHA["id"] in ids) else []})
         if u.endswith("/apagar"):
             c = json.loads(r.request.post_data or "{}"); antes = 1 + len(estado["extra"])
             if c.get("todas"): estado["vazio"] = True; estado["extra"] = []; return j({"ok": True, "apagadas": antes})
@@ -70,6 +73,16 @@ with sync_playwright() as p:
     with pg.expect_file_chooser() as fc: pg.click(f"[data-testid='btn-anexar-assinado-{LINHA['id']}']")
     fc.value.set_files(vazio); pg.wait_for_selector("[data-testid=msg-assinado]:has-text('Erro')", timeout=40000)
     ok("legível" in pg.inner_text("[data-testid=msg-assinado]"), "PDF sem texto: pede OCR")
+    # laboratório: pacote geral inteiro, copiar e baixar
+    pg.click("[data-testid=btn-preparar-pacote]"); pg.wait_for_selector("[data-testid=pacote-pronto]", timeout=10000)
+    ok("todas" in pg.inner_text("[data-testid=btn-preparar-pacote]"), "sem marcar nada, o pacote leva todas")
+    pg.click("[data-testid=btn-copiar-pacote]"); pg.wait_for_selector("[data-testid=msg-pacote]:has-text('Copiado')", timeout=10000)
+    copiado = pg.evaluate("navigator.clipboard.readText()")
+    ok(copiado.startswith("# PACOTE DE CALIBRAGEM") and "MINUTA LANÇADA NO PROJUDI (REFERÊNCIA)" in copiado and "multa contratual" in copiado and "MINUTA GERADA PELO STUDIO" in copiado and "integralidade do valor pedido" in copiado, "a área de transferência recebe o pacote inteiro (lançada e gerada)")
+    with pg.expect_download() as dl: pg.click("[data-testid=btn-baixar-pacote]")
+    ok(dl.value.suggested_filename.startswith("pacote-calibragem-") and dl.value.suggested_filename.endswith(".md"), f"baixa o arquivo .md ({dl.value.suggested_filename})")
+    pg.check(f"[data-testid='marcar-{LINHA['id']}']"); ok("1 marcadas" in pg.inner_text("[data-testid=btn-preparar-pacote]"), "com comparação marcada, o pacote leva só as marcadas")
+    pg.uncheck(f"[data-testid='marcar-{LINHA['id']}']")
     # apagar: uma, marcadas e todas (com confirmação dentro da página)
     estado["extra"] = [L2]; pg.click("text=Atualizar"); pg.wait_for_selector(f"[data-testid='apagar-{L2['id']}']", timeout=10000)
     ok(pg.locator("[data-testid=btn-apagar-marcadas]").is_disabled(), "sem marcar nada, 'Apagar marcadas' fica desligado")

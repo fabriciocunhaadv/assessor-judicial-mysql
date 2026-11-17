@@ -28,6 +28,9 @@ try {
   r = await chama("/api/comparacoes-minuta/limpar", "POST", {}); ok(r.s === 200 && r.j.vencidas === 1, "limpeza apaga 1");
   r = await chama("/api/comparacoes-minuta"); ok(r.j.comparacoes.length === 1 && r.j.comparacoes[0].processo === base.processo, "só a recente ficou");
   r = await chama("/api/comparacoes-minuta/resumo", "POST", {}); ok([200, 400, 503].includes(r.s) || r.s === 500, `resumo responde sem derrubar (${r.s} ${JSON.stringify(r.j).slice(0, 90)})`);
+  // pacote do laboratório: devolve os textos inteiros (gerado e lançado)
+  r = await chama("/api/comparacoes-minuta/exportar", "POST", {}); ok(r.s === 200 && r.j.comparacoes.length === 1 && r.j.comparacoes[0].textoLancado.includes("arquive-se") && r.j.comparacoes[0].textoGerado.includes("Trata-se"), "exportar: todas, com os textos inteiros");
+  r = await chama("/api/comparacoes-minuta/exportar", "POST", { ids: ["nao-existe"] }); ok(r.s === 200 && r.j.comparacoes.length === 0, "exportar: id inexistente não devolve nada");
   // apagar: escolhidas, e todas
   const a = (await chama("/api/comparacoes-minuta", "POST", { ...base, processo: "APAGA-1" }, "gabinete_a")).j.id, b = (await chama("/api/comparacoes-minuta", "POST", { ...base, processo: "APAGA-2" }, "gabinete_b")).j.id;
   r = await chama("/api/comparacoes-minuta"); ok(r.j.comparacoes.length === 3, "3 comparações (de 2 gabinetes)");
