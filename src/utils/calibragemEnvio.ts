@@ -47,6 +47,17 @@ export async function lerEEnviar(p: PedidoCalibragem, aoProgresso?: (t: string) 
   } catch (e: any) { return { status: "erro", mensagem: String(e?.message || e) }; }
 }
 
+// ---- chave geral (ligada/desligada pelo Super Admin; começa desligada) ----
+let chave: { ativo: boolean; t: number } | null = null;
+export const esquecerChaveCalibragem = () => { chave = null; };
+/** Se o pedido de envio está ligado. Guarda a resposta por 60 s; sem resposta do servidor = desligado (nunca atrapalha o usuário). */
+export async function envioDeCalibragemAtivo(): Promise<boolean> {
+  if (chave && Date.now() - chave.t < 60_000) return chave.ativo;
+  let ativo = false;
+  try { const r = await fetch("/api/comparacoes-minuta/config"); if (r.ok) ativo = (await r.json())?.ativo === true; } catch { ativo = false; }
+  chave = { ativo, t: Date.now() }; return ativo;
+}
+
 // ---- janela (CalibragemEnvioHost) ----
 const EVENTO = "assessor:calibragem-pedir";
 let hospedeiro = 0, fila: Promise<unknown> = Promise.resolve();
@@ -58,7 +69,10 @@ export const NOME_EVENTO_CALIBRAGEM = EVENTO;
  *  Sem janela montada, sem minuta, ou se este ato já foi enviado: "continuar" na hora (nunca trava o fluxo). */
 export function pedirEnvioCalibragem(pedido: PedidoCalibragem | null): Promise<Desfecho> {
   if (!pedido || !hospedeiro || (pedido.analysisId && jaEnviouCalibragem(pedido.analysisId))) return Promise.resolve("continuar");
-  const vez = fila.then(() => new Promise<Desfecho>((resolver) => { window.dispatchEvent(new CustomEvent<DetalheEvento>(EVENTO, { detail: { pedido, resolver } })); }));
+  const vez = fila.then(async () => {
+    if (!(await envioDeCalibragemAtivo())) return "continuar" as Desfecho;      // chave desligada pelo administrador: não pergunta nada
+    return new Promise<Desfecho>((resolver) => { window.dispatchEvent(new CustomEvent<DetalheEvento>(EVENTO, { detail: { pedido, resolver } })); });
+  });
   fila = vez.catch(() => undefined);
   return vez;
 }

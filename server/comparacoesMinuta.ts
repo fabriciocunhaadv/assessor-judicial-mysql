@@ -40,12 +40,38 @@ comparacoesRouter.post("/", async (req: any, res) => {
   } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : "não consegui guardar a comparação" }); }
 });
 
+// ---- Chave geral: o Super Admin liga/desliga o pedido de envio aos usuários. Começa DESLIGADA (sem registro = desligada). ----
+const COL_CFG = "settings", ID_CFG = "calibragem_envio";
+let cfgCache: { ativo: boolean; t: number } | null = null;
+export async function envioDosUsuariosAtivo(): Promise<boolean> {
+  if (cfgCache && Date.now() - cfgCache.t < 10_000) return cfgCache.ativo;
+  let ativo = false;
+  try { await garantirDocs(); const [rows]: any = await banco().query("SELECT data FROM docs WHERE col=? AND id=?", [COL_CFG, ID_CFG]); ativo = rows.length ? !!JSON.parse(rows[0].data).ativo : false; } catch { ativo = false; }      // na dúvida, desligada
+  cfgCache = { ativo, t: Date.now() }; return ativo;
+}
+/** Qualquer usuário logado pode LER se o pedido está ligado (o app só mostra a janela se estiver). */
+comparacoesRouter.get("/config", async (req: any, res) => {
+  try { if (!req.usuarioSessao) return void res.status(401).json({ erro: "login necessário" }); res.json({ ativo: await envioDosUsuariosAtivo() }); }
+  catch { res.json({ ativo: false }); }
+});
+/** Só o Super Admin liga/desliga. */
+comparacoesRouter.post("/config", async (req: any, res) => {
+  try {
+    const u = so(req); await garantirDocs();
+    const ativo = req.body?.ativo === true;
+    await banco().query("INSERT INTO docs (col,id,data,updated_at) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE data=VALUES(data), updated_at=VALUES(updated_at)", [COL_CFG, ID_CFG, JSON.stringify({ ativo, por: u.email, quando: Date.now() }), Date.now()]);
+    cfgCache = { ativo, t: Date.now() };
+    res.json({ ok: true, ativo });
+  } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : "não consegui gravar a chave" }); }
+});
+
 // ---- Envio pelo próprio usuário (assessor/juiz) ao marcar como lançado ou ao excluir a minuta: a minuta LANÇADA no Projudi (lida pela extensão) + a GERADA pelo sistema, para a calibragem do administrador ----
 const envios = new Map<string, { janela: number; n: number }>();
 const podeEnviar = (chave: string) => { const t = Date.now(), e = envios.get(chave); if (envios.size > 500) envios.clear(); if (!e || t - e.janela > 60_000) { envios.set(chave, { janela: t, n: 1 }); return true; } return ++e.n <= 20; };
 comparacoesRouter.post("/enviar", async (req: any, res) => {
   try {
     const u = req.usuarioSessao; if (!u) return void res.status(401).json({ erro: "login necessário" });
+    if (!(await envioDosUsuariosAtivo())) return void res.status(403).json({ erro: "o envio para a calibragem está desativado" });
     if (!podeEnviar(u.uid || u.email)) return void res.status(429).json({ erro: "muitos envios seguidos; espere um minuto" });
     const b = req.body || {};
     if (!curto(b.processo, 40)) return void res.status(400).json({ erro: "processo ausente" });

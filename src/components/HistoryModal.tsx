@@ -65,7 +65,7 @@ import { isInvalidPartyName, extractFromCoverPage } from "../utils/judicialMetad
 import { detectPromptCategory } from "../utils/promptCategoryHelper";
 import { ProcessTimelineModal } from "./ProcessTimelineModal";
 import { EditProcessUnitModal } from "./EditProcessUnitModal";
-import { pedirEnvioCalibragem, pedidoDeAto, jaEnviouCalibragem, type ModoCalibragem, type Desfecho } from "../utils/calibragemEnvio";
+import { pedirEnvioCalibragem, pedidoDeAto, jaEnviouCalibragem, envioDeCalibragemAtivo, type ModoCalibragem, type Desfecho } from "../utils/calibragemEnvio";
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -463,7 +463,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   // para o processo não aparecer ao mesmo tempo em "A lançar" e em "Lançados". O mesmo vale para desfazer.
   /** Oferece enviar o ato para a calibragem (janela do app). A lista traz só o resumo: a minuta completa é baixada agora. "cancelar" = o usuário desistiu da ação. */
   const perguntarCalibragem = async (ato: SavedAnalysis | undefined, modo: ModoCalibragem): Promise<Desfecho> => {
-    if (!ato || jaEnviouCalibragem(ato.id)) return "continuar";
+    if (!ato || jaEnviouCalibragem(ato.id) || !(await envioDeCalibragemAtivo())) return "continuar";      // chave desligada: nem baixa a minuta
     const completo = await abrirAtoCompleto(ato).catch(() => null);
     return pedirEnvioCalibragem(completo ? pedidoDeAto(completo as any, modo) : null);
   };

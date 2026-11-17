@@ -25,7 +25,7 @@ with sync_playwright() as p:
     b = p.chromium.launch(executable_path=glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome")[0], args=["--no-sandbox"]); erros = []
     ctx = b.new_context(viewport={"width": 1400, "height": 1000}, permissions=["clipboard-read", "clipboard-write"], accept_downloads=True); pg = ctx.new_page(); pg.on("pageerror", lambda e: erros.append(str(e)[:200]))
     L2 = dict(LINHA, id="5009999-1700000000001", processo="5009999-11.2026.8.09.0166")
-    posts = []; estado = {"linha": dict(LINHA), "vazio": True, "extra": []}
+    posts = []; estado = {"linha": dict(LINHA), "vazio": True, "extra": [], "chave": False}
     def rota(r):
         u, m = r.request.url, r.request.method
         if m == "POST": posts.append((u, r.request.post_data))
@@ -34,6 +34,9 @@ with sync_playwright() as p:
         if u.endswith("/textos"): return j({"processo": LINHA["processo"], "textoGerado": GERADO, "textoLancado": LANCADO})
         if u.endswith("/assinado"): estado["linha"]["assinado"] = {"aproveitamentoLancadaPct": 90, "aproveitamentoGeradaPct": 80, "dispositivoMudouDaLancada": True, "arquivo": "assinada.pdf"}; return j({"ok": True})
         if u.endswith("/resumo"): return j(RESUMO)
+        if u.endswith("/config"):
+            if m == "POST": estado["chave"] = json.loads(r.request.post_data or "{}").get("ativo") is True
+            return j({"ativo": estado["chave"], "ok": True})
         if u.endswith("/exportar"):
             ids = json.loads(r.request.post_data or "{}").get("ids", [])
             return j({"geradoEm": 1763377200000, "comparacoes": [dict(LINHA, textoLancado=LANCADO, textoGerado=GERADO)] if (not ids or LINHA["id"] in ids) else []})
@@ -48,6 +51,13 @@ with sync_playwright() as p:
     pg.route("**/api/comparacoes-minuta**", rota)
     pg.goto("http://127.0.0.1:5198/testes/gigantes/minutas.html"); pg.wait_for_function("window.pronto"); pg.wait_for_selector("[data-testid=minutas-vazio]", timeout=15000)
     ok("Buscar minuta lançada" in pg.inner_text("[data-testid=minutas-vazio]"), "sem dados: explica como começar")
+    ok(pg.inner_text("[data-testid=chave-envio-estado]") == "Desativada" and pg.get_attribute("[data-testid=chave-envio-botao]", "aria-checked") == "false", "a chave do envio começa DESATIVADA (mesmo sem comparações)")
+    pg.screenshot(path="/tmp/claude-0/work/teste/chave_desativada.png", clip={"x": 0, "y": 0, "width": 1100, "height": 330})
+    pg.click("[data-testid=chave-envio-botao]"); pg.wait_for_function("document.querySelector('[data-testid=chave-envio-estado]').textContent === 'Ativada'", timeout=5000)
+    pg.screenshot(path="/tmp/claude-0/work/teste/chave_ativada.png", clip={"x": 0, "y": 0, "width": 1100, "height": 330})
+    ok(estado["chave"] is True and "ATIVADA" in pg.inner_text("[data-testid=chave-envio]"), "clicar na chave ativa (e grava no servidor)")
+    pg.click("[data-testid=chave-envio-botao]"); pg.wait_for_function("document.querySelector('[data-testid=chave-envio-estado]').textContent === 'Desativada'", timeout=5000)
+    ok(estado["chave"] is False, "clicar de novo desativa")
     estado["vazio"] = False; pg.click("text=Atualizar"); pg.wait_for_selector("[data-testid=minutas-cartoes]", timeout=10000)
     t = pg.inner_text("[data-testid=painel-minutas-lancadas]")
     ok("82,5%" in t.replace(".", ",") or "82.5%" in t, "aproveitamento médio") ; ok("Sentença cível" in t and "5001234-56.2026.8.09.0166" in t, "tabela por prompt e lista de comparações")

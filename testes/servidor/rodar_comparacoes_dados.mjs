@@ -28,6 +28,13 @@ try {
   r = await chama("/api/comparacoes-minuta/limpar", "POST", {}); ok(r.s === 200 && r.j.vencidas === 1, "limpeza apaga 1");
   r = await chama("/api/comparacoes-minuta"); ok(r.j.comparacoes.length === 1 && r.j.comparacoes[0].processo === base.processo, "só a recente ficou");
   r = await chama("/api/comparacoes-minuta/resumo", "POST", {}); ok([200, 400, 503].includes(r.s) || r.s === 500, `resumo responde sem derrubar (${r.s} ${JSON.stringify(r.j).slice(0, 90)})`);
+  // chave geral: começa DESLIGADA; com ela desligada o envio dos usuários é recusado
+  r = await chama("/api/comparacoes-minuta/config"); ok(r.s === 200 && r.j.ativo === false, "a chave começa DESLIGADA");
+  const envDesl = { processo: "5888888-88.2026.8.09.0166", ato: "DESPACHO", analysisId: "ana-1", textoGerado: "Texto gerado pelo sistema com mais de cinquenta caracteres para passar na checagem.", textoLancado: "Texto lançado pelo assessor no Projudi. ".repeat(6) };
+  r = await chama("/api/comparacoes-minuta/enviar", "POST", envDesl, "gabinete_a"); ok(r.s === 403 && /desativado/.test(r.j.erro), `desligada: enviar recusado (${r.s})`);
+  r = await chama("/api/comparacoes-minuta"); ok(!r.j.comparacoes.some((x) => x.processo === envDesl.processo), "desligada: nada foi gravado");
+  r = await chama("/api/comparacoes-minuta/config", "POST", { ativo: true }); ok(r.s === 200 && r.j.ativo === true, "Super Admin liga a chave");
+  r = await chama("/api/comparacoes-minuta/config"); ok(r.j.ativo === true, "leitura mostra ligada");
   // envio pelo usuário (marcar como lançado / excluir)
   const env = { processo: "5999999-99.2026.8.09.0166", ato: "DESPACHO", promptTitulo: "Despacho padrão", motor: "gigante", analysisId: "ana-777", motivo: "excluir", aproveitamentoPct: 40, coberturaPct: 30, palavrasOriginal: 100, palavrasLancado: 80, mantidas: 40, removidas: 60, acrescentadas: 40, dispositivoMudou: false, mudancas: [], textoGerado: "Texto gerado pelo sistema com mais de cinquenta caracteres para passar na checagem mínima.", textoLancado: "Texto lançado pelo assessor no Projudi. ".repeat(6) };
   r = await chama("/api/comparacoes-minuta/enviar", "POST", { ...env, textoLancado: "curto" }, "gabinete_a"); ok(r.s === 400, "enviar: lançada curta é recusada");
@@ -39,6 +46,9 @@ try {
   ok(e1.length === 1 && e1[0].origem === "usuario" && e1[0].motivo === "excluir" && e1[0].por === "teste@tjgo.jus.br" && e1[0].motor === "gigante" && !("textoLancado" in e1[0]), "lista mostra origem, motivo, quem enviou e o motor (sem o texto)");
   r = await chama("/api/comparacoes-minuta/u-ana-777/textos"); ok(r.s === 200 && r.j.textoLancado.includes("assessor no Projudi") && r.j.textoGerado.includes("sistema"), "textos do envio ficam guardados para a calibragem");
   await chama("/api/comparacoes-minuta/apagar", "POST", { ids: ["u-ana-777"] });
+  r = await chama("/api/comparacoes-minuta/config", "POST", { ativo: false }); ok(r.s === 200 && r.j.ativo === false, "Super Admin desliga a chave");
+  r = await chama("/api/comparacoes-minuta/enviar", "POST", env, "gabinete_a"); ok(r.s === 403, "desligada de novo: enviar recusado");
+  r = await chama("/api/comparacoes-minuta/config", "POST", { ativo: true });
   // pacote do laboratório: devolve os textos inteiros (gerado e lançado)
   r = await chama("/api/comparacoes-minuta/exportar", "POST", {}); ok(r.s === 200 && r.j.comparacoes.length === 1 && r.j.comparacoes[0].textoLancado.includes("arquive-se") && r.j.comparacoes[0].textoGerado.includes("Trata-se"), "exportar: todas, com os textos inteiros");
   r = await chama("/api/comparacoes-minuta/exportar", "POST", { ids: ["nao-existe"] }); ok(r.s === 200 && r.j.comparacoes.length === 0, "exportar: id inexistente não devolve nada");

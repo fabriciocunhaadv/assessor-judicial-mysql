@@ -3,6 +3,7 @@ import { GitCompare, RefreshCw, Loader2, AlertTriangle, Sparkles, FileUp, Copy, 
 import { compararMinutas } from "../utils/compararMinutas";
 import { extractTextFromPdf } from "../utils/pdfExtractor";
 import { montarPacoteCalibragem } from "../utils/pacoteCalibragem";
+import { esquecerChaveCalibragem } from "../utils/calibragemEnvio";
 
 // Aba "Minutas lançadas" do Super Admin: padrões do que o juiz/assessor mantém, corta e acrescenta; comparação com o documento ASSINADO (PDF) e resumo por IA com sugestões de prompt (só sugere; nada é alterado sozinho).
 interface Grupo { nome: string; n: number; aproveitamentoPct: number; dispositivoAlteradoPct: number }
@@ -86,6 +87,16 @@ export function MinutasLancadasPanel() {
       setMsgPacote("Arquivo baixado. Anexe na conversa com o Claude.");
     } catch { setMsgPacote("Não consegui baixar o arquivo: use “Copiar”."); }
   };
+  // Chave geral: pedir ou não aos usuários o envio para a calibragem (começa DESLIGADA)
+  const [chaveAtiva, setChaveAtiva] = useState<boolean | null>(null), [gravandoChave, setGravandoChave] = useState(false), [erroChave, setErroChave] = useState("");
+  useEffect(() => { void api<{ ativo: boolean }>("/api/comparacoes-minuta/config").then((r) => setChaveAtiva(!!r.ativo)).catch(() => setChaveAtiva(false)); }, []);
+  const trocarChave = async () => {
+    if (gravandoChave || chaveAtiva === null) return;
+    setGravandoChave(true); setErroChave("");
+    try { const r = await api<{ ativo: boolean }>("/api/comparacoes-minuta/config", { ativo: !chaveAtiva }); setChaveAtiva(!!r.ativo); esquecerChaveCalibragem(); }
+    catch (e: any) { setErroChave(`Não consegui mudar a chave: ${e.message}`); }
+    setGravandoChave(false);
+  };
   const alternar = (id: string) => setMarcadas((m) => { const n = new Set(m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const apagar = async (modo: "marcadas" | "todas" | string) => {
     setApagando(true); setMsgApagar("");
@@ -110,6 +121,18 @@ export function MinutasLancadasPanel() {
         <button onClick={() => void carregar()} disabled={carregando} className="ml-auto inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-xs cursor-pointer disabled:opacity-50">{carregando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Atualizar</button>
       </div>
       <p className="text-[11px] text-slate-400">A minuta <strong>lançada no Projudi é a referência</strong> (o que vale). O Studio é medido por quanto chega perto dela: <em>cobertura</em> = quanto da lançada ele já tinha; <em>aproveitamento</em> = quanto do que ele escreveu sobrou. <strong>As comparações (com as minutas guardadas) são apagadas sozinhas depois de 30 dias.</strong></p>
+      <div className={`rounded-xl border p-3 flex flex-wrap items-center gap-3 ${chaveAtiva ? "border-emerald-600/60 bg-emerald-950/30" : "border-slate-700 bg-slate-900/60"}`} data-testid="chave-envio">
+        <div className="flex-1 min-w-[220px]">
+          <div className="text-sm font-black">Pedir aos usuários o envio para a calibragem</div>
+          <p className="text-[11px] text-slate-400 mt-0.5">{chaveAtiva ? "ATIVADA: ao marcar uma minuta como lançada ou ao excluí-la, o usuário vê a janela perguntando se a minuta ficou muito diferente e se quer enviá-la." : "DESATIVADA: os usuários não veem a janela de envio. Ative quando quiser começar a receber minutas para calibrar."}</p>
+          {erroChave && <p className="text-[11px] text-rose-300 mt-1" data-testid="chave-erro">{erroChave}</p>}
+        </div>
+        <button role="switch" aria-checked={!!chaveAtiva} aria-label="Pedir aos usuários o envio para a calibragem" onClick={() => void trocarChave()} disabled={chaveAtiva === null || gravandoChave} data-testid="chave-envio-botao"
+          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition cursor-pointer disabled:opacity-50 ${chaveAtiva ? "bg-emerald-500" : "bg-slate-600"}`}>
+          <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${chaveAtiva ? "translate-x-6" : "translate-x-1"}`} />
+        </button>
+        <span className={`text-xs font-black w-20 ${chaveAtiva ? "text-emerald-300" : "text-slate-400"}`} data-testid="chave-envio-estado">{chaveAtiva === null ? "…" : chaveAtiva ? "Ativada" : "Desativada"}</span>
+      </div>
       {erro && <div className="rounded-xl border border-rose-500/50 bg-rose-950/40 p-3 text-xs flex gap-2" data-testid="minutas-erro"><AlertTriangle className="w-4 h-4 shrink-0" />{erro}</div>}
       {pad && pad.total === 0 && <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 text-sm text-slate-300" data-testid="minutas-vazio">Ainda não há comparações. Na minuta pronta, use <strong>“Buscar minuta lançada”</strong> (precisa da extensão 3.0.6) depois que o assessor lançar o texto no Projudi.</div>}
       {pad && pad.total > 0 && (

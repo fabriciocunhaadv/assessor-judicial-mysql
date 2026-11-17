@@ -17,10 +17,11 @@ BRIDGE = """(cfg) => {
     window.__ler.push(d);
     const m = typeof window.__modoLer === 'function' ? window.__modoLer(d) : window.__modoLer;
     setTimeout(() => r(m === 'ok' ? { tipo: 'fim', ok: true, html: """ + json.dumps(LONGO) + """ } : m === 'curta' ? { tipo: 'fim', ok: true, html: '<p>modelo</p>' } : m === 'semeditor' ? { tipo: 'fim', ok: false, erro: 'a tela da pré-análise abriu, mas não achei o editor de texto' } : m === 'naolista' ? { tipo: 'fim', ok: false, erro: 'o processo não apareceu na lista de conclusos desta serventia (última lista lida: não analisadas, 6 linha(s))' } : { tipo: 'fim', ok: false, erro: 'a extensão não respondeu' }), 150); }); }"""
-def novo(b, ext=True, recursos="pdf,sv,modelos,minuta-lancada,minuta-serventia"):
+def novo(b, ext=True, recursos="pdf,sv,modelos,minuta-lancada,minuta-serventia", chave=True):
     ctx = b.new_context(viewport={"width": 1100, "height": 900}); pg = ctx.new_page(); pg.posts = []
     pg.add_init_script(f"({BRIDGE})({json.dumps({'ext': ext, 'recursos': recursos})})")
     def rota(r):
+        if r.request.url.endswith("/config"): pg.config_pedida = True; return r.fulfill(content_type="application/json", body=json.dumps({"ativo": chave}))
         if r.request.method == "POST": pg.posts.append(json.loads(r.request.post_data or "{}")); return r.fulfill(content_type="application/json", body='{"ok":true,"id":"u-ana-1"}')
         r.fulfill(content_type="application/json", body="{}")
     pg.route("**/api/comparacoes-minuta/**", rota)
@@ -80,5 +81,8 @@ with sync_playwright() as p:
     ok(not pg3.is_visible("[data-testid=seletor-serventia]"), "extensão antiga: sem seletor de serventia")
     pg4 = novo(b, recursos="pdf,sv,modelos,minuta-lancada"); pg4.evaluate("() => { window.pedir('lancado', 'x3'); }"); pg4.click("[data-testid=calibragem-enviar]"); pg4.wait_for_selector("[data-testid=calibragem-resultado]")
     ok("Atualize a extensão" in pg4.inner_text("[data-testid=calibragem-janela]") and not pg4.posts and not pg4.evaluate("window.__ler.length"), "extensão 3.0.6–3.0.9 (sem escolha de serventia): pede atualizar, não lê nem envia")
+    # chave geral DESLIGADA: a janela nem aparece e a ação do usuário segue
+    pg5 = novo(b, chave=False); pg5.evaluate("() => { window.pedir('lancado', 'off1'); }"); pg5.wait_for_function("window.__desfechos && window.__desfechos.length === 1", timeout=8000)
+    ok(pg5.evaluate("window.__desfechos[0]") == "continuar" and not pg5.is_visible("[data-testid=calibragem-janela]") and getattr(pg5, "config_pedida", False), "chave desligada: não pergunta nada e continua a ação")
     ok(not erros, f"sem erros na página {erros}")
 print("TUDO OK" if not falhas else f"{falhas} FALHA(S)"); raise SystemExit(1 if falhas else 0)
