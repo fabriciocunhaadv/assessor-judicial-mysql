@@ -18,14 +18,14 @@ def main():
                 sobra = pg.evaluate("document.documentElement.scrollWidth > window.innerWidth + 1")
                 assert not sobra, f"{nome}: rolagem lateral na página"
                 if w >= 768:
-                    n = pg.locator("[data-testid=abas-super-admin] button").count(); assert n == 12, n
+                    n = pg.locator("[data-testid=abas-super-admin] button").count(); assert n == 13, n
                     for t in ("aba-central", "aba-calibragem", "aba-saude", "aba-gabinetes", "aba-usuarios", "aba-snapshots", "aba-comunicado", "aba-migracao", "aba-tokens", "aba-monitor-erros", "aba-monitor-operacao", "aba-utilizacao"):
                         assert pg.locator(f"[data-testid={t}]").is_visible(), f"{nome}: {t} escondido"
                     pg.click("[data-testid=aba-calibragem]"); pg.wait_for_selector("[data-testid=painel-calibragem]")
                     pg.click("[data-testid=aba-central]"); pg.wait_for_selector("[data-testid=painel-central]")
                     assert pg.locator("[data-testid=aba-central]").get_attribute("aria-current") == "page"
                 else:
-                    assert pg.locator("#seletor-aba-super option").count() == 12
+                    assert pg.locator("#seletor-aba-super option").count() == 13
                     pg.select_option("#seletor-aba-super", "calibragem"); pg.wait_for_selector("[data-testid=painel-calibragem]")
                     pg.select_option("#seletor-aba-super", "central"); pg.wait_for_selector("[data-testid=painel-central]")
                 assert pg.locator("button:has-text('Modo de Atualização')").first.is_visible(), f"{nome}: botão Modo de Atualização escondido"
