@@ -1,14 +1,14 @@
 // Padrões e pedido de resumo por IA a partir das comparações guardadas (minuta gerada × lançada × assinada). Funções puras: não tocam no banco nem na rede.
 export interface DocComparacao {
   id?: string; processo: string; ato?: string; geradoEm: number; promptTitulo?: string; motor?: string;
-  aproveitamentoPct: number; dispositivoMudou: boolean; dispositivoAproveitamentoPct?: number | null;
+  aproveitamentoPct: number; coberturaPct?: number; dispositivoMudou: boolean; dispositivoAproveitamentoPct?: number | null;
   porSecao?: { secao: string; aproveitamentoPct: number; palavrasOriginais?: number }[];
   mudancas?: { tipo: string; secao: string; original?: string; lancado?: string }[];
   assinado?: { aproveitamentoGeradaPct?: number | null; aproveitamentoLancadaPct: number; dispositivoMudouDaLancada: boolean; mudancas?: { tipo: string; secao: string; original?: string; lancado?: string }[]; arquivo?: string; em?: number };
 }
 interface Grupo { nome: string; n: number; aproveitamentoPct: number; dispositivoAlteradoPct: number }
 export interface Padroes {
-  total: number; aproveitamentoMedioPct: number; dispositivoAlteradoPct: number;
+  total: number; aproveitamentoMedioPct: number; coberturaMediaPct: number; dispositivoAlteradoPct: number;
   porSecao: { secao: string; n: number; aproveitamentoPct: number }[];
   porPrompt: Grupo[]; porMotor: Grupo[]; porAto: Grupo[];
   maisCortados: { trecho: string; vezes: number; secao: string }[]; maisAcrescentados: { trecho: string; vezes: number; secao: string }[];
@@ -37,7 +37,7 @@ export function agregarPadroes(docs: DocComparacao[]): Padroes {
   const ass = docs.filter((d) => d.assinado);
   const gerada = ass.map((d) => d.assinado!.aproveitamentoGeradaPct).filter((v): v is number => typeof v === "number");
   return {
-    total: docs.length, aproveitamentoMedioPct: media(docs.map((d) => d.aproveitamentoPct)),
+    total: docs.length, aproveitamentoMedioPct: media(docs.map((d) => d.aproveitamentoPct)), coberturaMediaPct: media(docs.filter((d) => typeof d.coberturaPct === "number").map((d) => d.coberturaPct as number)),
     dispositivoAlteradoPct: docs.length ? Math.round((docs.filter((d) => d.dispositivoMudou).length / docs.length) * 100) : 0,
     porSecao: [...secoes.entries()].map(([secao, v]) => ({ secao, n: v.length, aproveitamentoPct: media(v) })),
     porPrompt: agrupar(docs, (d) => d.promptTitulo || ""), porMotor: agrupar(docs, (d) => d.motor || ""), porAto: agrupar(docs, (d) => d.ato || ""),
@@ -47,24 +47,31 @@ export function agregarPadroes(docs: DocComparacao[]): Padroes {
 }
 
 /** Pedido ao modelo: resumo dos padrões e sugestões de ajuste de prompt. Só leva números e trechos curtos (nunca o texto inteiro das minutas). */
-export function montarPromptResumo(docs: DocComparacao[], p: Padroes): string {
+export interface ReferenciaMinuta { processo: string; ato: string; cobertura: number | null; gerada: string; lancada: string }
+/** Pedido ao modelo. A minuta LANÇADA no Projudi é a REFERÊNCIA (o que o juiz/assessor quis); a do Studio é que deve se aproximar dela. */
+export function montarPromptResumo(docs: DocComparacao[], p: Padroes, referencias: ReferenciaMinuta[] = []): string {
   const exemplos: string[] = [];
   for (const d of docs.slice(0, 30)) {
-    for (const m of (d.mudancas || []).filter((x) => x.tipo !== "igual").slice(0, 3)) exemplos.push(`- [${m.tipo} · ${m.secao}] ${m.original ? `ERA: ${String(m.original).slice(0, 260)}` : ""}${m.lancado ? ` | FICOU: ${String(m.lancado).slice(0, 260)}` : ""}`);
-    for (const m of (d.assinado?.mudancas || []).slice(0, 2)) exemplos.push(`- [DEPOIS DE LANÇADA, NA ASSINATURA · ${m.secao}] ${m.original ? `ERA: ${String(m.original).slice(0, 260)}` : ""}${m.lancado ? ` | FICOU: ${String(m.lancado).slice(0, 260)}` : ""}`);
+    for (const m of (d.mudancas || []).filter((x) => x.tipo !== "igual").slice(0, 3)) exemplos.push(`- [${m.tipo} · ${m.secao}] ${m.original ? `STUDIO TINHA: ${String(m.original).slice(0, 260)}` : ""}${m.lancado ? ` | LANÇADA TEM: ${String(m.lancado).slice(0, 260)}` : ""}`);
+    for (const m of (d.assinado?.mudancas || []).slice(0, 2)) exemplos.push(`- [DEPOIS DE LANÇADA, NA ASSINATURA · ${m.secao}] ${m.original ? `LANÇADA TINHA: ${String(m.original).slice(0, 260)}` : ""}${m.lancado ? ` | ASSINADA TEM: ${String(m.lancado).slice(0, 260)}` : ""}`);
     if (exemplos.length > 120) break;
   }
-  return `Você ajuda a calibrar um sistema que gera minutas de decisões judiciais (sentença, decisão, despacho) para um magistrado. Cada comparação mostra o que o assessor/juiz MANTEVE, CORTOU ou ACRESCENTOU na minuta gerada antes de lançá-la no Projudi, e (quando há) o que mudou depois, até a versão assinada.
+  const refs = referencias.map((r, i) => `--- Caso ${i + 1} (${r.ato || "ato"}; a lançada já tinha ${r.cobertura ?? "?"}% de cobertura pela gerada)\nSTUDIO GEROU (início): ${r.gerada.replace(/\s+/g, " ")}\nLANÇADA NO PROJUDI — REFERÊNCIA (início): ${r.lancada.replace(/\s+/g, " ")}`).join("\n");
+  return `Você ajuda a calibrar um sistema (Studio) que gera, por IA, minutas de decisões judiciais (sentença, decisão, despacho) para um magistrado.
+REGRA CENTRAL: a minuta LANÇADA no Projudi é a versão CORRETA e de REFERÊNCIA (é a que o juiz/assessor quis e que vale). A minuta gerada pelo Studio é só uma tentativa: quando ela difere da lançada, o erro é do Studio. O objetivo é sugerir instruções para que o Studio passe a gerar algo cada vez mais parecido com o que é lançado. Nunca trate a lançada como "rejeição": ela é o padrão.
 
-DADOS AGREGADOS (${p.total} comparação(ões)):
-${JSON.stringify({ aproveitamentoMedioPct: p.aproveitamentoMedioPct, dispositivoAlteradoPct: p.dispositivoAlteradoPct, porSecao: p.porSecao, porPrompt: p.porPrompt, porMotor: p.porMotor, porAto: p.porAto, maisCortados: p.maisCortados, maisAcrescentados: p.maisAcrescentados, assinados: p.assinados })}
+MÉTRICAS (${p.total} comparação(ões)): "aproveitamento" = quanto do texto do Studio sobrou na lançada; "cobertura" = quanto da lançada (referência) o Studio já tinha acertado.
+${JSON.stringify({ coberturaMediaPct: p.coberturaMediaPct, aproveitamentoMedioPct: p.aproveitamentoMedioPct, dispositivoDiferentePct: p.dispositivoAlteradoPct, porSecao: p.porSecao, porPrompt: p.porPrompt, porMotor: p.porMotor, porAto: p.porAto, maisCortados: p.maisCortados, maisAcrescentados: p.maisAcrescentados, assinados: p.assinados })}
 
-EXEMPLOS DE MUDANÇAS (trechos curtos):
+CASOS COM MENOR COBERTURA (começo dos textos):
+${refs || "(sem casos)"}
+
+EXEMPLOS DE DIFERENÇAS (trechos curtos):
 ${exemplos.join("\n") || "(sem exemplos)"}
 
-TAREFA: escreva em português simples, sem inventar nada que não esteja nos dados. Responda SOMENTE um JSON (sem markdown):
-{"resumo":"3 a 6 frases: o que o magistrado costuma aceitar e o que costuma mudar","padroes":["padrão observado, com a seção e a frequência quando os dados mostrarem"],"sugestoes":[{"titulo":"curto","secao":"Relatório|Fundamentação|Dispositivo|Geral","instrucao":"texto PRONTO para colar no prompt/instruções do Studio, no imperativo, específico e curto","motivo":"qual padrão dos dados justifica","confianca":"alta|media|baixa"}]}
-Regras: se os dados forem poucos (menos de 5 comparações) diga isso no resumo e marque confianca "baixa". Não sugira mudar o resultado (dispositivo) do mérito; só a forma, a ordem, o nível de detalhe e a linguagem. No máximo 6 sugestões.`;
+TAREFA: em português simples, sem inventar nada que não esteja nos dados. Olhe sobretudo para ESTRUTURA e ESTILO da referência: tipo e extensão do ato (ex.: despacho curto em vez de relatório longo), ordem, nível de detalhe, citação de movimentações, linguagem. Responda SOMENTE um JSON (sem markdown):
+{"resumo":"3 a 6 frases: como é a minuta de referência do magistrado e no que o Studio mais se afasta dela","padroes":["padrão observado, com seção e frequência quando os dados mostrarem"],"sugestoes":[{"titulo":"curto","secao":"Relatório|Fundamentação|Dispositivo|Geral","instrucao":"texto PRONTO para colar no prompt do Studio, no imperativo, específico e curto","motivo":"qual diferença entre o Studio e a referência justifica","confianca":"alta|media|baixa"}]}
+Regras: com menos de 5 comparações diga isso e use confianca "baixa". Não crie regra de MÉRITO (quem ganha, valor, procedência) a partir de um caso isolado: só forma, tipo de ato, ordem, detalhe e linguagem. No máximo 6 sugestões.`;
 }
 export function lerRespostaResumo(txt: string): { resumo: string; padroes: string[]; sugestoes: { titulo: string; secao: string; instrucao: string; motivo: string; confianca: string }[] } {
   const limpo = String(txt || "").replace(/```json/gi, "").replace(/```/g, "").trim();

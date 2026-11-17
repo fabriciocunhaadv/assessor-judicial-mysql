@@ -4,7 +4,7 @@ import { buscarMinutaLancada, estadoDaExtensaoParaMinutaLancada } from "../utils
 import { compararMinutas, textoDeHtml, type ResultadoComp, type BlocoComp } from "../utils/compararMinutas";
 
 // Mostra o que mudou entre a minuta que o Studio gerou e a que ficou salva (lançada) na pré-análise do Projudi. Só Super Admin (o botão só aparece para ele; o servidor também confere).
-export function ComparacaoMinutaModal({ processo, textoGerado, cabecalho, ato, promptTitulo, aoFechar }: { processo: string; textoGerado: string; cabecalho?: string; ato: string; promptTitulo?: string; aoFechar: () => void }) {
+export function ComparacaoMinutaModal({ processo, textoGerado, cabecalho, ato, promptTitulo, motor, aoFechar }: { processo: string; textoGerado: string; cabecalho?: string; ato: string; promptTitulo?: string; motor?: string; aoFechar: () => void }) {
   const [fase, setFase] = useState<"lendo" | "pronto" | "erro">("lendo");
   const [andamento, setAndamento] = useState("Pedindo o texto à extensão…");
   const [erro, setErro] = useState(""), [tela, setTela] = useState("");
@@ -26,10 +26,10 @@ export function ComparacaoMinutaModal({ processo, textoGerado, cabecalho, ato, p
     setRes(c); setFase("pronto");
     try {      // guarda para a calibragem (só números, trechos curtos do que mudou e o texto lançado)
       const mudancas = c.blocos.filter((b) => b.tipo !== "igual").slice(0, 80).map((b) => ({ tipo: b.tipo, secao: b.secao, original: b.original, lancado: b.lancado }));
-      const resp = await fetch("/api/comparacoes-minuta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ processo, ato, promptTitulo, ...c, blocos: undefined, mudancas, textoLancado: texto, textoGerado }) });
+      const resp = await fetch("/api/comparacoes-minuta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ processo, ato, promptTitulo, motor, ...c, blocos: undefined, mudancas, textoLancado: texto, textoGerado }) });
       setGuardado(resp.ok ? "sim" : "nao");
     } catch { setGuardado("nao"); }
-  }, [processo, textoGerado, cabecalho, ato, promptTitulo]);
+  }, [processo, textoGerado, cabecalho, ato, promptTitulo, motor]);
 
   useEffect(() => { void rodar(); return () => ctl.current?.abort(); }, [rodar]);
 
@@ -60,8 +60,9 @@ export function ComparacaoMinutaModal({ processo, textoGerado, cabecalho, ato, p
           )}
           {fase === "pronto" && res && (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="comparacao-resumo">
-                <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3"><div className="text-[10px] uppercase text-slate-400 font-bold">Aproveitamento</div><div className={`text-2xl font-black ${cor(res.aproveitamentoPct)}`}>{res.aproveitamentoPct}%</div></div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2" data-testid="comparacao-resumo">
+                <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3"><div className="text-[10px] uppercase text-slate-400 font-bold">Aproveitamento</div><div className={`text-2xl font-black ${cor(res.aproveitamentoPct)}`}>{res.aproveitamentoPct}%</div><div className="text-[10px] text-slate-400">do Studio que ficou</div></div>
+                <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3"><div className="text-[10px] uppercase text-slate-400 font-bold">Cobertura</div><div className={`text-2xl font-black ${cor(res.coberturaPct)}`} data-testid="comparacao-cobertura">{res.coberturaPct}%</div><div className="text-[10px] text-slate-400">da lançada (referência) que o Studio já tinha</div></div>
                 <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3"><div className="text-[10px] uppercase text-slate-400 font-bold">Mantidas</div><div className="text-2xl font-black">{res.mantidas.toLocaleString("pt-BR")}</div><div className="text-[10px] text-slate-400">palavras</div></div>
                 <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3"><div className="text-[10px] uppercase text-slate-400 font-bold">Cortadas</div><div className="text-2xl font-black text-rose-300">{res.removidas.toLocaleString("pt-BR")}</div><div className="text-[10px] text-slate-400">palavras</div></div>
                 <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3"><div className="text-[10px] uppercase text-slate-400 font-bold">Acrescentadas</div><div className="text-2xl font-black text-emerald-300">{res.acrescentadas.toLocaleString("pt-BR")}</div><div className="text-[10px] text-slate-400">palavras</div></div>

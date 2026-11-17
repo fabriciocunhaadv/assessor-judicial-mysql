@@ -6,7 +6,7 @@ import { extractTextFromPdf } from "../utils/pdfExtractor";
 // Aba "Minutas lançadas" do Super Admin: padrões do que o juiz/assessor mantém, corta e acrescenta; comparação com o documento ASSINADO (PDF) e resumo por IA com sugestões de prompt (só sugere; nada é alterado sozinho).
 interface Grupo { nome: string; n: number; aproveitamentoPct: number; dispositivoAlteradoPct: number }
 interface Padroes {
-  total: number; aproveitamentoMedioPct: number; dispositivoAlteradoPct: number; porSecao: { secao: string; n: number; aproveitamentoPct: number }[];
+  total: number; aproveitamentoMedioPct: number; coberturaMediaPct: number; dispositivoAlteradoPct: number; porSecao: { secao: string; n: number; aproveitamentoPct: number }[];
   porPrompt: Grupo[]; porMotor: Grupo[]; porAto: Grupo[]; maisCortados: { trecho: string; vezes: number; secao: string }[]; maisAcrescentados: { trecho: string; vezes: number; secao: string }[];
   assinados: { n: number; aproveitamentoLancadaPct: number; aproveitamentoGeradaPct: number | null; dispositivoMudouPct: number };
 }
@@ -73,13 +73,15 @@ export function MinutasLancadasPanel() {
         <GitCompare className="w-5 h-5 text-sky-300" /><h2 className="font-black">Minutas lançadas — calibragem</h2>
         <button onClick={() => void carregar()} disabled={carregando} className="ml-auto inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-xs cursor-pointer disabled:opacity-50">{carregando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Atualizar</button>
       </div>
+      <p className="text-[11px] text-slate-400">A minuta <strong>lançada no Projudi é a referência</strong> (o que vale). O Studio é medido por quanto chega perto dela: <em>cobertura</em> = quanto da lançada ele já tinha; <em>aproveitamento</em> = quanto do que ele escreveu sobrou.</p>
       {erro && <div className="rounded-xl border border-rose-500/50 bg-rose-950/40 p-3 text-xs flex gap-2" data-testid="minutas-erro"><AlertTriangle className="w-4 h-4 shrink-0" />{erro}</div>}
       {pad && pad.total === 0 && <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 text-sm text-slate-300" data-testid="minutas-vazio">Ainda não há comparações. Na minuta pronta, use <strong>“Buscar minuta lançada”</strong> (precisa da extensão 3.0.6) depois que o assessor lançar o texto no Projudi.</div>}
       {pad && pad.total > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="minutas-cartoes">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2" data-testid="minutas-cartoes">
             {card("Comparações", pad.total)}
-            {card("Aproveitamento médio", <span className={cor(pad.aproveitamentoMedioPct)}>{pad.aproveitamentoMedioPct}%</span>, "gerada → lançada")}
+            {card("Cobertura da lançada", <span className={cor(pad.coberturaMediaPct || 0)}>{pad.coberturaMediaPct || 0}%</span>, "da referência que o Studio já tinha")}
+            {card("Aproveitamento médio", <span className={cor(pad.aproveitamentoMedioPct)}>{pad.aproveitamentoMedioPct}%</span>, "do Studio que ficou na lançada")}
             {card("Dispositivo alterado", <span className={pad.dispositivoAlteradoPct > 20 ? "text-amber-300" : ""}>{pad.dispositivoAlteradoPct}%</span>, "das minutas")}
             {card("Com documento assinado", pad.assinados.n, pad.assinados.n ? `manteve ${pad.assinados.aproveitamentoLancadaPct}% da lançada` : "anexe o PDF abaixo")}
           </div>

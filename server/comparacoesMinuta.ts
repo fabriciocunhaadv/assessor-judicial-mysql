@@ -17,7 +17,7 @@ comparacoesRouter.post("/", async (req: any, res) => {
     const processo = curto(b.processo, 40); if (!processo) return void res.status(400).json({ erro: "processo ausente" });
     const doc = {
       processo, ato: curto(b.ato, 30), geradoEm: Date.now(), por: curto(u.email, 190), promptTitulo: curto(b.promptTitulo, 120), motor: curto(b.motor, 30),
-      aproveitamentoPct: num(b.aproveitamentoPct), palavrasOriginal: num(b.palavrasOriginal), palavrasLancado: num(b.palavrasLancado), mantidas: num(b.mantidas), removidas: num(b.removidas), acrescentadas: num(b.acrescentadas),
+      aproveitamentoPct: num(b.aproveitamentoPct), coberturaPct: num(b.coberturaPct), palavrasOriginal: num(b.palavrasOriginal), palavrasLancado: num(b.palavrasLancado), mantidas: num(b.mantidas), removidas: num(b.removidas), acrescentadas: num(b.acrescentadas),
       dispositivoMudou: !!b.dispositivoMudou, dispositivoAproveitamentoPct: b.dispositivoAproveitamentoPct == null ? null : num(b.dispositivoAproveitamentoPct),
       porSecao: (Array.isArray(b.porSecao) ? b.porSecao : []).slice(0, 8).map((s: any) => ({ secao: curto(s?.secao, 30), palavrasOriginais: num(s?.palavrasOriginais), mantidas: num(s?.mantidas), aproveitamentoPct: num(s?.aproveitamentoPct) })),
       mudancas: (Array.isArray(b.mudancas) ? b.mudancas : []).slice(0, 80).map((m: any) => ({ tipo: curto(m?.tipo, 12), secao: curto(m?.secao, 30), original: curto(m?.original, 400), lancado: curto(m?.lancado, 400) })),
@@ -97,7 +97,11 @@ comparacoesRouter.post("/resumo", async (req: any, res) => {
     resumindo = true;
     try {
       const p = agregarPadroes(await lerDocs(u.tenant, 200));
-      const txt = await gerarIA(req, montarPromptResumo(docs, p));
+      const [rows]: any = await banco().query("SELECT data FROM docs WHERE col=? ORDER BY updated_at DESC LIMIT 60", [col(u.tenant)]);
+      const brutos = rows.map((r: any) => { try { return JSON.parse(r.data); } catch { return null; } }).filter((d: any) => d && d.textoLancado);
+      const referencias = brutos.sort((a: any, b: any) => (a.coberturaPct ?? a.aproveitamentoPct) - (b.coberturaPct ?? b.aproveitamentoPct)).slice(0, 5)
+        .map((d: any) => ({ processo: d.processo, ato: d.ato || "", cobertura: d.coberturaPct ?? null, gerada: String(d.textoGerado || "").slice(0, 500), lancada: String(d.textoLancado || "").slice(0, 900) }));
+      const txt = await gerarIA(req, montarPromptResumo(docs, p, referencias));
       res.json({ ok: true, base: docs.length, ...lerRespostaResumo(txt) });
     } finally { resumindo = false; }
   } catch (e: any) { res.status(e?.status || 500).json({ erro: e?.status ? e.message : `não consegui gerar o resumo: ${String(e?.message || e).slice(0, 200)}` }); }

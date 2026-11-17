@@ -138,7 +138,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
     let vivo = true;
     const ler = async () => {
       if (!currentAnalysisId) { if (vivo) { setLancado(null); setLancadoIds([]); } return; }
-      try { const lista = await getHistory(), ato = lista.find((i) => i.id === currentAnalysisId); if (!vivo) return; setLancado(ato?.lancadoProjudi || null); setLancadoIds(ato ? idsDoMesmoProcesso(lista, ato) : [currentAnalysisId]); } catch { /* sem lista: o botão ainda funciona pela minuta aberta */ }
+      try { const lista = await getHistory(), ato = lista.find((i) => i.id === currentAnalysisId); if (!vivo) return; setLancado(ato?.lancadoProjudi || null); setPromptDoAto(String(ato?.promptTitle || "")); setLancadoIds(ato ? idsDoMesmoProcesso(lista, ato) : [currentAnalysisId]); } catch { /* sem lista: o botão ainda funciona pela minuta aberta */ }
     };
     void ler(); window.addEventListener(HISTORICO_MUDOU, ler);
     return () => { vivo = false; window.removeEventListener(HISTORICO_MUDOU, ler); };
@@ -197,6 +197,7 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
   const topViewerRef = useRef<HTMLDivElement>(null);
   const tabContentRef = useRef<HTMLDivElement>(null);
   const [comparacaoAberta, setComparacaoAberta] = useState(false);      // Super Admin: minuta gerada × lançada no Projudi
+  const [promptDoAto, setPromptDoAto] = useState("");      // prompt que gerou este ato (do Histórico), para a calibragem por prompt
   const projudiTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleTriggerInjectParadigm = (selectedSnippet: string) => {
@@ -1753,7 +1754,8 @@ export const MinuteViewer: React.FC<MinuteViewerProps> = ({
             textoGerado={textoCompletoDaMinuta(minute)}
             cabecalho={String(minute.header || "")}
             ato={String((result as any)?.actType || minute.title || "").slice(0, 30)}
-            promptTitulo={String((result as any)?.promptTitle || "").slice(0, 120)}
+            promptTitulo={String(promptDoAto || (result as any)?.promptTitle || "").slice(0, 120)}
+            motor={String((result as any)?.motor || "")}
             aoFechar={() => setComparacaoAberta(false)}
           />
         )}

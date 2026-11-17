@@ -5,7 +5,7 @@ export interface ParteDiff { t: "=" | "-" | "+"; s: string }
 export interface BlocoComp { tipo: "igual" | "alterado" | "removido" | "adicionado"; secao: string; original?: string; lancado?: string; partes?: ParteDiff[] }
 export interface SecaoComp { secao: string; palavrasOriginais: number; mantidas: number; aproveitamentoPct: number }
 export interface ResultadoComp {
-  aproveitamentoPct: number; palavrasOriginal: number; palavrasLancado: number; mantidas: number; removidas: number; acrescentadas: number;
+  aproveitamentoPct: number; /** quanto da minuta LANÇADA (a de referência) já estava na gerada */ coberturaPct: number; palavrasOriginal: number; palavrasLancado: number; mantidas: number; removidas: number; acrescentadas: number;
   porSecao: SecaoComp[]; dispositivoMudou: boolean; dispositivoAproveitamentoPct: number | null; blocos: BlocoComp[];
 }
 
@@ -108,7 +108,7 @@ export function compararMinutas(original: string, lancado: string): ResultadoCom
   const disp = porSecao.find((s) => s.secao === "Dispositivo");
   const dispLanc = Q.filter((q) => q.secao === "Dispositivo").length;
   return {
-    aproveitamentoPct: pct(mantidas, palavrasOriginal), palavrasOriginal, palavrasLancado, mantidas, removidas, acrescentadas, porSecao,
+    aproveitamentoPct: pct(mantidas, palavrasOriginal), coberturaPct: pct(mantidas, palavrasLancado), palavrasOriginal, palavrasLancado, mantidas, removidas, acrescentadas, porSecao,
     dispositivoMudou: disp ? disp.aproveitamentoPct < 100 || dispLanc === 0 || blocos.some((b) => b.secao === "Dispositivo" && b.tipo === "adicionado") : false, dispositivoAproveitamentoPct: disp ? disp.aproveitamentoPct : null, blocos,
   };
 }
