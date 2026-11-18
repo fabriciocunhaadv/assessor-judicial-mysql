@@ -2,7 +2,7 @@
 // pergunta o que a pessoa quer fazer, mostra poucas escolhas grandes por vez e termina no botão que abre a função (o da fila abre a página da extensão numa aba nova).
 // O perfil (assessor ou magistrado) vem SÓ do cadastro do usuário. "Minimizar" vira uma pílula que reabre a conversa do começo; "Fechar" só volta amanhã ou pelo menu lateral.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { X, Minus, MessageCircle, Sparkles, ArrowLeft, Home, Send, Eraser } from "lucide-react";
+import { X, MessageCircle, ArrowLeft, Home, Send, Eraser } from "lucide-react";
 import { getApiHeaders } from "../utils/apiKeyManager";
 import { useAuth } from "../lib/AuthContext";
 import { URL_EXTENSAO_CHROME_STORE } from "../config/extensao";
@@ -48,6 +48,16 @@ const NOS: Record<string, No> = {
   teses: { id: "teses", icone: "📖", rotulo: "Teses, modelos e súmulas", resposta: "Cadastre as teses e os modelos de decisão do gabinete; depois aplique um modelo em qualquer minuta pronta.", botoes: [{ rotulo: "Abrir Teses & Modelos", acao: "teses" }] },
   conhecer: { id: "conhecer", icone: "🧭", rotulo: "Conhecer o sistema", resposta: "Quer conhecer melhor o sistema? Abra o manual completo ou o guia passo a passo do dia a dia.", botoes: [{ rotulo: "Abrir o manual", acao: "manual" }, { rotulo: "Guia do assessor", acao: "guia" }] },
 };
+
+// frase curta de cada opção (aparece nos cartões grandes da janela)
+const RESUMOS: Record<string, string> = {
+  fila: "Marque os processos e deixe a extensão trabalhar por você.", lupa_fila: "A Lupa confere várias minutas de uma vez.", lupa: "Auditar uma minuta do assessor contra os autos.",
+  avulso: "Anexe o PDF, escolha o prompt e gere a minuta.", historico: "Revisar, copiar e lançar no Projudi as minutas prontas.", audiencias: "Pauta, ata e sentença com o vídeo da audiência.",
+  mesa: "Prepare a audiência com a ata prévia.", sentenca_individual: "Um processo: anexe os autos e o vídeo.", sentenca_fila: "Várias audiências, em fila, pela extensão.",
+  outras: "Turbo, processo muito grande, teses e modelos.", turbo: "A minuta em uma etapa só, mais rápido.", grandes: "Autos extensos lidos em lotes, em segundo plano.",
+  teses: "Teses e modelos de decisão do gabinete.", conhecer: "Manual e guia passo a passo do dia a dia.",
+};
+const saudacaoDoHorario = () => { const h = new Date().getHours(); return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"; };
 
 const RAIZ: Record<Perfil, string[]> = {
   assessor: ["fila", "avulso", "historico", "audiencias", "outras"],
@@ -123,11 +133,23 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
 
   useEffect(() => { fimRef.current?.scrollIntoView?.({ block: "end" }); }, [log, atual, aviso, aberto, minimizado, pensando]);
 
+  useEffect(() => {
+    if (!aberto || minimizado) return;
+    const aoTecla = (e: KeyboardEvent) => { if (e.key === "Escape") fechar(); };
+    window.addEventListener("keydown", aoTecla);
+    return () => window.removeEventListener("keydown", aoTecla);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto, minimizado, uid]);
+
   const raiz = useMemo(() => RAIZ[perfil].map((id) => NOS[id]), [perfil]);
   const noAtual = atual ? NOS[atual] : null;
   const opcoesAgora = noAtual ? (noAtual.filhos || []).map((id) => NOS[id]) : raiz;
 
-  const fechar = () => { try { localStorage.setItem(chaveDia(uid), hojeLocal()); } catch { /* sem armazenamento: volta na próxima abertura */ } setAberto(false); };
+  const fechar = () => {
+    try { localStorage.setItem(chaveDia(uid), hojeLocal()); } catch { /* sem armazenamento: volta na próxima abertura */ }
+    setAberto(false);
+    try { window.dispatchEvent(new CustomEvent("assessor:assistente-fechado", { detail: { uid } })); } catch { /* sem eventos */ }      // o menu lateral marca o botão e, na 1ª vez, mostra a abinha "me chame aqui"
+  };
   const reabrir = () => { limpar(); setMinimizado(false); };      // a pílula leva ao começo da conversa
   const abrirNo = (id: string, rotuloVoce?: string) => { setAviso(null); setAtual(id); setLog((l) => [...l, ...(rotuloVoce === undefined ? [{ k: "voce" as const, t: `${NOS[id].icone} ${NOS[id].rotulo}` }] : []), { k: "bot", t: "", id }]); };
   const escolher = (id: string) => abrirNo(id);
@@ -188,18 +210,20 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
   );
 
   return (
-    <aside data-testid="assistente-boas-vindas" aria-label="Assistente do dia"
-      className="fixed right-3 bottom-14 max-md:bottom-16 z-[9000] w-[min(94vw,22rem)] max-h-[min(34rem,calc(100vh-8rem))] flex flex-col rounded-2xl bg-white text-slate-800 shadow-2xl border border-indigo-200 overflow-hidden">
-      <header className="flex items-center gap-2 px-3 py-2.5 bg-indigo-600 text-white shrink-0">
-        <Sparkles className="w-4 h-4 shrink-0" />
-        <div className="min-w-0 flex-1 text-sm font-extrabold leading-tight">Assistente do dia</div>
-        <button onClick={limpar} className="p-1 rounded hover:bg-white/20 cursor-pointer" title="Limpar a conversa" aria-label="Limpar conversa" data-testid="assistente-limpar"><Eraser className="w-4 h-4" /></button>
-        <button onClick={() => setMinimizado(true)} className="p-1 rounded hover:bg-white/20 cursor-pointer" title="Minimizar" aria-label="Minimizar" data-testid="assistente-minimizar"><Minus className="w-4 h-4" /></button>
-        <button onClick={fechar} className="p-1 rounded hover:bg-white/20 cursor-pointer" title="Fechar (volta amanhã)" aria-label="Fechar" data-testid="assistente-fechar"><X className="w-4 h-4" /></button>
+    <div data-testid="assistente-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) fechar(); }}
+      className="fixed inset-0 z-[9000] flex items-center justify-center p-3 bg-slate-950/70 backdrop-blur-[2px]">
+    <aside data-testid="assistente-boas-vindas" role="dialog" aria-modal="true" aria-label="O que fazer hoje"
+      className="relative w-[min(94vw,46rem)] max-h-[min(44rem,calc(100vh-1.5rem))] flex flex-col rounded-3xl bg-white text-slate-800 shadow-[0_30px_80px_rgba(0,0,0,0.45)] border border-indigo-100 overflow-hidden">
+      <header className="flex items-start gap-3 px-6 pt-5 pb-3 shrink-0">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-2xl max-sm:text-xl font-extrabold text-slate-900 leading-tight" data-testid="assistente-titulo">{saudacaoDoHorario()}{nome ? `, ${nome}` : ""}! 👋</h2>
+          <p className="text-[15px] text-slate-600 mt-0.5" data-testid="assistente-saudacao"><b>O que você quer fazer hoje?</b> Escolha uma opção e eu te levo até lá.</p>
+        </div>
+        <button onClick={limpar} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer" title="Limpar a conversa" aria-label="Limpar conversa" data-testid="assistente-limpar"><Eraser className="w-4 h-4" /></button>
+        <button onClick={fechar} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer" title="Fechar (volta amanhã; para abrir de novo use “O que fazer hoje?” no menu)" aria-label="Fechar" data-testid="assistente-fechar"><X className="w-5 h-5" /></button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
-        <Balao de="bot" testid="assistente-saudacao">{nome ? `Olá, ${nome}! ` : "Olá! "}<b>O que você quer fazer hoje?</b></Balao>
+      <div className="flex-1 overflow-y-auto px-6 py-3 space-y-2.5">
 
         {log.map((it, i) => {
           if (it.k === "voce") return <Balao key={i} de="voce">{it.t}</Balao>;
@@ -228,15 +252,17 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
         {pensando && <Balao de="bot" testid="assistente-pensando">Entendendo seu pedido…</Balao>}
 
         {opcoesAgora.length > 0 && (
-          <div className="grid grid-cols-1 gap-2 pt-0.5" data-testid="assistente-opcoes">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5" data-testid="assistente-opcoes">
             {opcoesAgora.map((n, i) => {
-              const principal = !noAtual && i === 0;
+              const principal = !noAtual && i === 0, ultimoImpar = i === opcoesAgora.length - 1 && opcoesAgora.length % 2 === 1;
               return (
                 <button key={n.id} onClick={() => escolher(n.id)} data-testid={`assistente-op-${n.id}`}
-                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left text-[13px] font-bold cursor-pointer transition ${principal ? "bg-indigo-50 border-indigo-400 text-indigo-900 hover:bg-indigo-100" : "bg-white border-slate-300 text-slate-800 hover:bg-slate-50"}`}>
-                  <span className="text-lg leading-none" aria-hidden>{n.icone}</span>
-                  <span className="flex-1">{n.rotulo}</span>
-                  {principal && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-600 text-white">PRINCIPAL</span>}
+                  className={`flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border-2 text-left cursor-pointer transition ${ultimoImpar ? "sm:col-span-2" : ""} ${principal ? "bg-indigo-50 border-indigo-500 ring-4 ring-indigo-100 hover:bg-indigo-100" : "bg-white border-slate-200 hover:border-indigo-300 hover:bg-slate-50"}`}>
+                  <span className={`shrink-0 w-12 h-12 rounded-xl grid place-items-center text-2xl ${principal ? "bg-indigo-100" : "bg-slate-100"}`} aria-hidden>{n.icone}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center gap-2"><span className="text-[16px] font-extrabold text-slate-900 leading-tight">{n.rotulo}</span>{principal && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-600 text-white">PRINCIPAL</span>}</span>
+                    {RESUMOS[n.id] && <span className="block text-[13px] text-slate-600 leading-snug mt-0.5">{RESUMOS[n.id]}</span>}
+                  </span>
                 </button>
               );
             })}
@@ -253,17 +279,19 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
         <div ref={fimRef} />
       </div>
 
-      <form onSubmit={(e) => { e.preventDefault(); void enviar(); }} className="px-3 py-2 border-t border-slate-200 flex items-center gap-2 shrink-0 bg-white">
+      <form onSubmit={(e) => { e.preventDefault(); void enviar(); }} className="px-6 py-3 border-t border-slate-200 flex items-center gap-2 shrink-0 bg-white">
         <input value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={300} placeholder="Ou escreva o que você precisa…" data-testid="assistente-campo"
           className="flex-1 min-w-0 px-3 py-2 rounded-full border border-slate-300 text-[13px] focus:outline-none focus:border-indigo-500" />
         <button type="submit" disabled={pensando || texto.trim().length < 3} data-testid="assistente-enviar" aria-label="Enviar" className="p-2 rounded-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white cursor-pointer"><Send className="w-4 h-4" /></button>
       </form>
 
-      <div className="px-3 py-1.5 border-t border-slate-100 text-[11px] shrink-0 bg-slate-50" data-testid="assistente-extensao">
+      <div className="px-6 py-2 border-t border-slate-100 text-[12px] shrink-0 bg-slate-50 flex items-center gap-3" data-testid="assistente-extensao">
         {versaoExt
           ? <span className="text-emerald-700">✔ Extensão instalada (versão {versaoExt})</span>
           : <span className="text-amber-800">⚠ Extensão não detectada. <a href={URL_EXTENSAO_CHROME_STORE} target="_blank" rel="noreferrer" className="underline font-bold" data-testid="assistente-instalar">Instalar</a></span>}
+        <span className="ml-auto text-slate-500 max-sm:hidden">Aparece na 1ª vez do dia. Para abrir de novo: “O que fazer hoje?” no menu.</span>
       </div>
     </aside>
+    </div>
   );
 };

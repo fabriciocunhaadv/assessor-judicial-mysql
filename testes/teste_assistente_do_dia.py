@@ -1,4 +1,4 @@
-"""Assistente do dia: aparece na 1ª entrada do dia (depois do tutorial), fica no canto direito, perfil assessor/magistrado, botões levam às funções, fechar guarda o dia.
+"""Assistente do dia: aparece na 1ª entrada do dia (depois do tutorial), é uma janela no CENTRO da tela com o fundo escuro (fecha pelo X, clicando fora ou com Esc), perfil assessor/magistrado, botões levam às funções, fechar guarda o dia.
 Rodar: /usr/bin/python3 testes/teste_assistente_do_dia.py"""
 import datetime, glob, os, subprocess, time, urllib.request
 from playwright.sync_api import sync_playwright
@@ -29,7 +29,9 @@ try:
         ok(pg.locator("[data-testid=assistente-instalar]").count() == 1, "sem a extensão: avisa e oferece instalar")
         ok(pg.locator("text=Como fazer").count() == 0 and pg.locator("[data-testid^=assistente-perfil-]").count() == 0, "sem 'Como fazer' e sem pergunta de perfil")
         caixa = pg.locator("[data-testid=assistente-boas-vindas]").bounding_box()
-        ok(caixa["x"] + caixa["width"] <= 1280 and caixa["x"] > 800 and caixa["y"] >= 100 and caixa["y"] + caixa["height"] <= 800, f"canto direito, dentro da tela ({caixa})")
+        ok(abs(caixa["x"] + caixa["width"] / 2 - 640) <= 4 and abs(caixa["y"] + caixa["height"] / 2 - 400) <= 70 and caixa["y"] >= 0 and caixa["y"] + caixa["height"] <= 800, f"janela no CENTRO da tela, dentro dela ({caixa})")
+        fundo = pg.locator("[data-testid=assistente-overlay]").evaluate("(e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), getComputedStyle(e).backgroundColor]; }")
+        ok(fundo[0] == 1280 and fundo[1] == 800 and "0.7" in fundo[2], f"o resto da tela fica escuro (fundo {fundo})")
         # 2) submenus
         pg.click("[data-testid=assistente-op-audiencias]")
         ids = pg.eval_on_selector_all("[data-testid^=assistente-op-]", "els => els.map(e => e.dataset.testid.replace('assistente-op-',''))")

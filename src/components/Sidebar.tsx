@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Home, ShieldCheck, UserCheck, Activity, History, Scale,
   Sparkles, BookOpen, ClipboardList, Calendar, Gavel, SlidersHorizontal,
@@ -34,7 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenCalendar, onOpenHearingWorkbench, onOpenSentencaAudiencia, onOpenPromptManager, onOpenChangePassword,
   tesesCount = 0, isJudge, isSuperAdmin
 }) => {
-  const { isJudge: authIsJudge, isSuperAdmin: authIsSuperAdmin } = useAuth();
+  const { isJudge: authIsJudge, isSuperAdmin: authIsSuperAdmin, user: authUser } = useAuth() as any;
   const effectiveIsSuperAdmin = isSuperAdmin ?? authIsSuperAdmin;
   const effectiveIsJudge = isJudge ?? authIsJudge;
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -45,6 +45,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
     return false;
   });
+
+  // “O que fazer hoje?”: depois que a pessoa fecha a janela do assistente, na PRIMEIRA vez aparece uma abinha ao lado deste botão ("é só me chamar aqui").
+  // Clicar fora (ou Esc) fecha a abinha; o botão continua marcado.
+  const botaoAssistente = useRef<HTMLButtonElement>(null);
+  const abinha = useRef<HTMLDivElement>(null);
+  const [dica, setDica] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const aoFechar = (e: Event) => {
+      const uid = String((e as CustomEvent)?.detail?.uid || authUser?.uid || "anon"), chave = `assessor_assistente_dica_${uid}`;
+      let jaViu = false; try { jaViu = localStorage.getItem(chave) === "1"; } catch { /* sem armazenamento */ }
+      if (jaViu) return;
+      const r = botaoAssistente.current?.getBoundingClientRect(); if (!r || r.width === 0) return;
+      try { localStorage.setItem(chave, "1"); } catch { /* mostra só desta vez */ }
+      setDica({ x: Math.round(r.right + 12), y: Math.round(r.top + r.height / 2) });
+    };
+    window.addEventListener("assessor:assistente-fechado", aoFechar);
+    return () => window.removeEventListener("assessor:assistente-fechado", aoFechar);
+  }, [authUser?.uid]);
+  useEffect(() => {
+    if (!dica) return;
+    const fora = (e: MouseEvent) => { if (abinha.current && abinha.current.contains(e.target as Node)) return; setDica(null); };
+    const tecla = (e: KeyboardEvent) => { if (e.key === "Escape") setDica(null); };
+    const t = setTimeout(() => document.addEventListener("mousedown", fora), 0);      // o clique que fechou a janela não pode fechar a abinha na hora
+    document.addEventListener("keydown", tecla);
+    return () => { clearTimeout(t); document.removeEventListener("mousedown", fora); document.removeEventListener("keydown", tecla); };
+  }, [dica]);
 
   const toggleSidebar = () => {
     setIsCollapsed(prev => {
@@ -109,14 +135,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           <button
-            onClick={() => window.dispatchEvent(new Event("assessor:abrir-assistente"))}
-            className={`flex items-center gap-2.5 px-3 h-10 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs transition cursor-pointer ${isCollapsed ? "justify-center" : ""}`}
-            title="O que fazer hoje?"
+            ref={botaoAssistente}
+            onClick={() => { setDica(null); window.dispatchEvent(new Event("assessor:abrir-assistente")); }}
+            className={`flex items-center gap-2.5 px-3 h-10 rounded-xl bg-gradient-to-r from-indigo-100 to-violet-50 dark:from-indigo-900/40 dark:to-violet-900/20 border-l-4 border-indigo-500 hover:from-indigo-200 hover:to-violet-100 dark:hover:from-indigo-900/60 text-indigo-900 dark:text-indigo-100 font-bold text-xs transition cursor-pointer ${isCollapsed ? "justify-center" : ""}`}
+            title="O que fazer hoje? (abre as opções do dia)"
             data-testid="btn-assistente-do-dia"
           >
-            <Compass className="w-4 h-4 text-indigo-500" />
-            {!isCollapsed && <span>O que fazer hoje?</span>}
+            <Compass className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
+            {!isCollapsed && <span className="flex-1 text-left">O que fazer hoje?</span>}
+            {!isCollapsed && <span className="w-2.5 h-2.5 rounded-full bg-violet-500 shadow-[0_0_0_4px_rgba(139,92,246,0.22)]" aria-hidden />}
           </button>
+          {dica && (
+            <div ref={abinha} data-testid="assistente-abinha" role="status" style={{ position: "fixed", left: dica.x, top: dica.y, transform: "translateY(-50%)" }}
+              className="z-[9100] w-64 rounded-xl bg-slate-900 text-white px-3.5 py-3 text-[13px] leading-snug shadow-2xl">
+              <span className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rotate-45 bg-slate-900" aria-hidden />
+              <b className="block text-[14px] mb-0.5">👋 Primeira vez por aqui?</b>
+              Se precisar, é só me chamar aqui. Eu te ajudo a escolher o que fazer.
+              <span className="block mt-1.5 text-[11px] text-slate-400">Clique fora para fechar este aviso.</span>
+            </div>
+          )}
 
           {onOpenPresentation && (
             <button
