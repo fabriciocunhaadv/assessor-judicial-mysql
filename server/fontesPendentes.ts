@@ -108,7 +108,15 @@ async function lerConfigBusca(): Promise<FonteDeBusca[]> {
   try { const l = rows[0] ? JSON.parse(rows[0].data) : null; if (Array.isArray(l?.fontes)) return l.fontes; } catch { /* usa o padrão */ }
   return FONTES_PADRAO;
 }
-export const hostPermitido = (url: string) => { try { const u = new URL(url); return u.protocol === "https:" && HOSTS_BUSCA.includes(u.hostname) && !u.username && !u.password; } catch { return false; } };
+/** Site de busca informado pelo Super Admin: qualquer endereço https público (a extensão pede a permissão ao Super Admin no Chrome, site por site). Recusa endereços internos (localhost, IP, redes locais) e com usuário/senha. */
+export const hostPermitido = (url: string) => {
+  try {
+    const u = new URL(url), h = u.hostname.toLowerCase();
+    if (u.protocol !== "https:" || u.username || u.password || (u.port && u.port !== "443")) return false;
+    if (!h.includes(".") || /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(":") || /(^|\.)(localhost|local|internal|lan|home|intranet)$/.test(h)) return false;
+    return h.length <= 190;
+  } catch { return false; }
+};
 
 fontesPendentesRouter.get("/", async (req, res) => { if (!soSuper(req, res)) return; try { const itens = (await lerTodos()).sort((a, b) => ORDEM[a.status] - ORDEM[b.status] || b.ocorrencias - a.ocorrencias || b.ultima - a.ultima); res.json({ itens, fontesBusca: await lerConfigBusca(), hostsPermitidos: HOSTS_BUSCA }); } catch { res.status(500).json({ erro: "não consegui ler a lista" }); } });
 /** Cadastro manual (o Super Admin informa uma fonte que quer ter na base). */
@@ -159,7 +167,7 @@ fontesPendentesRouter.put("/config-busca", async (req, res) => {
   if (!soSuper(req, res)) return;
   try {
     const lista = (Array.isArray(req.body?.fontes) ? req.body.fontes : []).slice(0, 20).map((f: any, i: number) => ({ id: txt(f.id, 40) || `fonte${i + 1}`, nome: txt(f.nome, 120) || txt(f.url, 60), esfera: f.esfera === "estadual" ? "estadual" : "municipal", ente: txt(f.ente, 80), url: txt(f.url, 400), ativa: f.ativa !== false }));
-    const ruim = lista.find((f: FonteDeBusca) => !hostPermitido(f.url)); if (ruim) return void res.status(400).json({ erro: `endereço não permitido (${ruim.url}). A extensão só abre estes sites: ${HOSTS_BUSCA.join(", ")}.` });
+    const ruim = lista.find((f: FonteDeBusca) => !hostPermitido(f.url)); if (ruim) return void res.status(400).json({ erro: `endereço não permitido (${ruim.url}). Use um endereço https público de site (sem usuário/senha, sem IP e sem endereço interno).` });
     await garantirDocs(); await banco().query("INSERT INTO docs (col,id,data,updated_at) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE data=VALUES(data), updated_at=VALUES(updated_at)", [COL_CFG, ID_CFG, JSON.stringify({ fontes: lista }), Date.now()]);
     res.json({ fontesBusca: lista });
   } catch { res.status(500).json({ erro: "não consegui gravar" }); }

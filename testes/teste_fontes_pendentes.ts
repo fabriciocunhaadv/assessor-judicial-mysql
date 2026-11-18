@@ -29,5 +29,6 @@ let f = fundirOcorrencia(null, c, "normal", 1000); f = fundirOcorrencia(f, c, "t
 assert.equal(f.ocorrencias, 3); assert.deepEqual(f.motores, { normal: 2, turbo: 1 }); assert.equal(f.primeira, 1000); assert.equal(f.ultima, 3000); assert.equal(f.status, "pendente");
 // só os sites que a extensão pode abrir
 assert.ok(hostPermitido("https://leisestaduais.com.br/go") && hostPermitido("https://acessoainformacao.montesclarosdegoias.go.leg.br/cidadao/legislacao/leis"));
-assert.ok(!hostPermitido("http://leisestaduais.com.br/go") && !hostPermitido("https://evil.com/x") && !hostPermitido("https://leisestaduais.com.br.evil.com/"));
+assert.ok(hostPermitido("https://leis.exemplo.gov.br/lista") && hostPermitido("https://legisla.casacivil.go.gov.br/"), "qualquer site https público é aceito");
+for (const ruim of ["http://leisestaduais.com.br/go", "https://localhost/x", "https://127.0.0.1/x", "https://192.168.0.5/", "https://servidor.local/x", "https://intranet/x", "https://u:p@leis.exemplo.gov.br/", "https://leis.exemplo.gov.br:8443/", "ftp://leis.exemplo.gov.br/", "https://[::1]/"]) assert.ok(!hostPermitido(ruim), ruim);
 console.log("OK fontes pendentes (núcleo)");

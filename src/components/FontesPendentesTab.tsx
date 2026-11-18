@@ -172,11 +172,11 @@ function FormEdicao({ it, aoSalvar, aoCancelar }: { it: FontePendente; aoSalvar:
   );
 }
 function EditorSites({ sites, hosts, aoSalvar, aoCancelar }: { sites: SiteBusca[]; hosts: string[]; aoSalvar: (l: SiteBusca[]) => void; aoCancelar: () => void }) {
-  const [l, setL] = useState<SiteBusca[]>(sites);
+  const [l, setL] = useState<SiteBusca[]>(sites), [aviso, setAviso] = useState("");
   const mudar = (i: number, p: Partial<SiteBusca>) => setL((x) => x.map((s, j) => (j === i ? { ...s, ...p } : s)));
   return (
     <div className="rounded-xl border border-[#c9b8ff] bg-[#f5f1ff] p-3 space-y-2" data-testid="editor-sites">
-      <p className="text-[11px] text-slate-600">Sites onde a extensão procura leis <strong>estaduais e municipais</strong> (a página de listagem das leis). Só endereços https destes sites, que a extensão pode abrir: {hosts.join(", ")}.</p>
+      <p className="text-[11px] text-slate-600">Sites onde a extensão procura <strong>leis e decretos estaduais e municipais</strong> (cole o endereço da <em>página de listagem</em> das leis ou decretos). Pode ser qualquer site https público. <strong>Na primeira busca, o Chrome vai pedir permissão para cada site novo: clique em “Permitir”</strong> (é só leitura, sem cookies). Sugestões que já funcionam: {hosts.join(", ")}.</p>
       {l.map((s, i) => (
         <div key={i} className="flex flex-wrap items-center gap-2">
           <input value={s.nome} onChange={(e) => mudar(i, { nome: e.target.value })} placeholder="Nome" className={`${campo} w-48`} />
@@ -189,9 +189,10 @@ function EditorSites({ sites, hosts, aoSalvar, aoCancelar }: { sites: SiteBusca[
       ))}
       <div className="flex gap-2">
         <button onClick={() => setL((x) => [...x, { id: `s${Date.now().toString(36)}`, nome: "", esfera: "municipal", ente: "", url: "https://", ativa: true }])} className={`${btn} bg-white border border-[#673de6] text-[#673de6]`}>+ Adicionar site</button>
-        <button onClick={() => aoSalvar(l)} className={`${btn} bg-[#673de6] text-white`}>Salvar</button>
+        <button onClick={() => { const ruim = l.find((x) => !/^https:\/\/[^\s/]+\.[^\s/]+/i.test(x.url.trim())); if (ruim) { setAviso(`O endereço “${ruim.url}” precisa começar com https:// e ser de um site (ex.: https://leis.exemplo.gov.br/lista).`); return; } setAviso(""); aoSalvar(l.map((x) => ({ ...x, url: x.url.trim() }))); }} className={`${btn} bg-[#673de6] text-white`} data-testid="salvar-sites">Salvar</button>
         <button onClick={aoCancelar} className={`${btn} bg-white border border-slate-300 text-slate-600`}>Cancelar</button>
       </div>
+      {aviso && <p className="rounded-md border border-amber-300 bg-amber-50 text-amber-900 p-1.5" data-testid="aviso-sites">{aviso}</p>}
     </div>
   );
 }
