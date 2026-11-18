@@ -257,3 +257,6 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 - Resultado dos testes de acesso (prints do usuário, 18/11): Planalto bloqueia o SERVIDOR mas abre no navegador; `leisestaduais.com.br` e `leis.org` bloqueiam servidor E navegador (Cloudflare) → inúteis para coleta automática; LexML abre no servidor (200) e dá 503 no navegador; goias.gov.br abre nos dois; TJGO bloqueia o servidor e abre no navegador; Senado 403 nos dois.
 - Pendente: ver se o servidor alcança `appasp.economia.go.gov.br` (linhas novas dos Testes de acesso); decretos estaduais e Provimentos (TJGO/CGJ) ainda sem fonte; LexML como segunda fonte (precisa da data da lei para montar a URN).
 - Teste: `testes/teste_coletor_estadual.ts`.
+
+## Sites de busca livres (Studio) — ver "4.0.6" no CONTINUIDADE da extensão
+- `hostPermitido` (server/fontesPendentes.ts) agora aceita qualquer https público; editor de sites mostra o aviso da permissão do Chrome e valida https:// antes de salvar.
