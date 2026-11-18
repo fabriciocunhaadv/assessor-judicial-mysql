@@ -361,7 +361,7 @@ const salvarNoHistoricoInterno = async (analysis: SavedAnalysis): Promise<{ ok: 
     try {
       await enviarHistoricoParaNuvem(analysis, 25000);
       // conferência: lê de volta o que acabou de gravar (gravação "ok" sem o ato existir era o pior caso: o assessor acredita que está salvo)
-      const conf = await conferirAtoNaNuvem(analysis.id);
+      const conf = await conferirAtoNaNuvem(analysis.id, (analysis as any).tenantId);
       if (!conf.existe) throw new Error("gravação não confirmada: o ato não foi encontrado na nuvem logo depois de gravar");
       if (conf.unitId && conf.unitId !== conf.unidadeAtiva) { try { toast(`O ato do processo ${analysis.processNumber || ""} foi gravado na unidade "${conf.unitId}", que não é a unidade ativa agora ("${conf.unidadeAtiva}"). Troque a unidade para vê-lo no Histórico.`, { duration: 15000, icon: "⚠️" }); } catch { /* sem toast */ } }
       pendentesHistorico.delete(analysis.id);

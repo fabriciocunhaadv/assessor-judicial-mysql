@@ -25,7 +25,7 @@ export interface ConfigGigante {
   promptText: string; promptTitle: string; promptId?: string; promptCategory?: string; promptScope?: string;
   actType: string; unitId?: string; unitName?: string;
   paradigmText?: string; paradigmTitle?: string; instrucao?: string; processNumber?: string;
-  userUid?: string; userName?: string; userEmail?: string;
+  userUid?: string; userName?: string; userEmail?: string; tenantId?: string;
   /** 'dossie': lê em lotes e para no dossiê (usado pela Lupa e pela Mesa); 'minuta' (padrão): redige a minuta e salva no Histórico */
   finalidade?: "minuta" | "dossie";
   /** esteira automática: as partes só geram dossiê e, ao fim da última, o sistema une tudo numa minuta única */
@@ -663,7 +663,7 @@ class Gerente {
     const numero = dosAutos ? (dosAutos as string).trim() : (data.minute?.processNumber && !/extrair|n[ãa]o informado/i.test(data.minute.processNumber)) ? data.minute.processNumber : (job.numeroProcesso || cfg.processNumber || "Sem Número");
     if (dosAutos && data.minute) data.minute.processNumber = numero;
     const analise: SavedAnalysis = {
-      id: analysisId, unitId: cfg.unitId || "montes_claros", promptTitle: cfg.promptTitle, promptId: cfg.promptId, promptCategory: cfg.promptCategory || "civel", promptScope: (cfg.promptScope as any) || "judicial",
+      id: analysisId, tenantId: cfg.tenantId, unitId: cfg.unitId || "montes_claros", promptTitle: cfg.promptTitle, promptId: cfg.promptId, promptCategory: cfg.promptCategory || "civel", promptScope: (cfg.promptScope as any) || "judicial",
       date: Date.now(), processNumber: numero,
       result: { ...data, ...(direto ? {} : { gigante: info }), alertaInjecao, ...(mapaExec ? { mapaProcesso: { ...mapaExec.mapa, bloco: mapaExec.bloco } } : {}), minute: data.minute ? { ...data.minute, judicialUnit: unidadeDosAutos || cfg.unitName || data.minute.judicialUnit, ...(job.capa?.author || job.capa?.defendant ? { parties: { ...(data.minute.parties || {}), ...(job.capa?.author ? { author: job.capa.author } : {}), ...(job.capa?.defendant ? { defendant: job.capa.defendant } : {}) } } : {}) } : data.minute },
       originalMinute: data.originalMinute || JSON.parse(JSON.stringify(data.minute)),

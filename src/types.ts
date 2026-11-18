@@ -325,6 +325,8 @@ export interface ProcessDossier {
 
 export interface SavedAnalysis {
   id: string;
+  /** Gabinete em que o ato foi INICIADO: é nele que o ato é gravado, mesmo que o super admin troque de gabinete enquanto o segundo plano termina. */
+  tenantId?: string;
   promptTitle: string;
   promptId?: string;
   promptCategory?: string;

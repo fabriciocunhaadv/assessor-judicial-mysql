@@ -227,3 +227,8 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 ## Aviso de gabinete/unidade diferente entre aparelhos (item 1 combinado)
 - Tabela `ultimo_local` (criada sozinha) + `GET/PUT /api/auth/ultimo-local`; `App.tsx` guarda o gabinete/unidade atuais e, ao abrir, avisa (toast de 30 s) se o último acesso em OUTRO aparelho foi em outro lugar. Não troca nada sozinho. Aparelho = `localStorage.assessor_aparelho_id`.
 - Busca do Histórico por TRECHO do nº do processo (20 dígitos = igualdade; menos = contém).
+
+## Gravação no gabinete certo (causa do ato 5097642) — commit local, aguardando "Pode publicar"
+- Causa: o ato do Gigante guardou a unidade do INÍCIO do job (Montes Claros, do gabinete do Dr. Rafael), mas o `PUT` usou o gabinete ATIVO NA HORA de gravar (`globalTenantId`, que o super admin tinha trocado) → ato no gabinete do Dr. José Cássio com unidade de outro gabinete.
+- Correção: `SavedAnalysis.tenantId` = gabinete em que o ato foi iniciado (gigante `cfg.tenantId`, análise normal, análise retomada via `AnalisePendente.tenantId`). `saveHistoryToDb` grava no `tenantId` do ato (header e campo `tenant`) e na unidade do ato; `conferirAtoNaNuvem(id, tenant)` confere no mesmo gabinete.
+- Layout: linha "Gabinete ativo: <nome>" abaixo da unidade (ProcessUnitSelector) e no cabeçalho.

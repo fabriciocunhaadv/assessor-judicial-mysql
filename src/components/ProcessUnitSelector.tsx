@@ -24,8 +24,10 @@ export const ProcessUnitSelector: React.FC<ProcessUnitSelectorProps> = ({
     allTenants, 
     allUnitsForSuperAdmin, 
     activeTenantId,
-    setSuperAdminActiveTenant 
+    setSuperAdminActiveTenant,
+    tenantName
   } = useAuth();
+  const gabineteAtivo = String(((allTenants || []) as any[]).find((t) => t.id === activeTenantId)?.name || tenantName || activeTenantId || "");
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -156,6 +158,7 @@ export const ProcessUnitSelector: React.FC<ProcessUnitSelectorProps> = ({
                 </>
               )}
             </div>
+            {gabineteAtivo && <div className="mt-1 text-[11px] text-slate-500" data-testid="gabinete-ativo-linha">Gabinete ativo: <b className="text-slate-700">{gabineteAtivo}</b></div>}
           </div>
         </div>
 

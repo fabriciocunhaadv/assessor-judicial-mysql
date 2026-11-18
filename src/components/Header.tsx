@@ -124,7 +124,8 @@ export const Header: React.FC<HeaderProps> = ({
     activeTenantId,
     allTenants,
     allUnitsForSuperAdmin,
-    setSuperAdminActiveTenant
+    setSuperAdminActiveTenant,
+    tenantName
   } = useAuth();
   const currentUid = userProfile?.uid;
   const extStatus = useExtensaoStatus();
@@ -613,6 +614,7 @@ export const Header: React.FC<HeaderProps> = ({
                   ))}
                 </select>
               )}
+              {(() => { const g = String(((allTenants || []) as any[]).find((t: any) => t.id === activeTenantId)?.name || tenantName || ""); return g ? <span className="text-[10px] text-slate-400 whitespace-nowrap" data-testid="header-gabinete-ativo">Gabinete ativo: <b className="text-slate-200">{g}</b></span> : null; })()}
 
               {/* Informações do Usuário Conectado */}
               <div 

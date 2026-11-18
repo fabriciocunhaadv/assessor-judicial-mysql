@@ -5,7 +5,7 @@ import { apagarRequisicao } from "./reenvioPendente";
 
 export interface AnalisePendente {
   progId: string; tipo: "analise" | "etapa2"; iniciadoEm: number; uid?: string;
-  promptTitle?: string; promptId?: string; promptCategory?: string; promptScope?: string; unitId?: string; unitName?: string; processNumber?: string; contexto?: string;
+  promptTitle?: string; promptId?: string; promptCategory?: string; promptScope?: string; unitId?: string; unitName?: string; tenantId?: string; processNumber?: string; contexto?: string;
 }
 const CHAVE = "assessor_analise_pendente";
 const VALIDADE_MS = 90 * 60_000;      // o servidor guarda o resultado por 1 hora

@@ -1048,7 +1048,7 @@ export default function App() {
     return {
       promptText: activePrompt?.promptText || "", promptTitle: activePrompt?.title || "", promptId: activePrompt?.id, promptCategory: activePrompt?.category, promptScope: activePrompt?.scope,
       actType: selectedActType !== "auto" ? selectedActType : (activePrompt?.actTypeHint || "auto"),
-      unitId: activeUnit?.id, unitName: activeUnit?.name,
+      unitId: activeUnit?.id, unitName: activeUnit?.name, tenantId: activeTenantId,
       paradigmText: isParadigmEnabled ? (par?.fullText || customParadigmText || "") : "", paradigmTitle: isParadigmEnabled ? (par?.title || "Minuta Paradigma") : "",
       processNumber: (numeroEntradaRef.current ?? processNumber) || extractedMetadata?.processNumber || "",
       userUid: user?.uid, userName: user?.displayName || user?.email?.split("@")[0] || "Assessor", userEmail: user?.email || "",
@@ -1368,7 +1368,7 @@ export default function App() {
       const novoProg = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `p-${Date.now()}`);
       setProgId(novoProg);
       pendenteAtualRef.current = novoProg; conexaoPerdidaRef.current = false;
-      salvarPendente({ progId: novoProg, tipo: "analise", iniciadoEm: Date.now(), uid: user?.uid, promptTitle: activePrompt.title, promptId: activePrompt.id, promptCategory: activePrompt.category, promptScope: activePrompt.scope, unitId: activeUnit?.id, unitName: activeUnit?.name, processNumber, contexto: effectiveText ? "" : `[PDFs anexados: ${effectivePdfFiles.map((p) => p.name).join(", ")}]` });
+      salvarPendente({ progId: novoProg, tenantId: activeTenantId, tipo: "analise", iniciadoEm: Date.now(), uid: user?.uid, promptTitle: activePrompt.title, promptId: activePrompt.id, promptCategory: activePrompt.category, promptScope: activePrompt.scope, unitId: activeUnit?.id, unitName: activeUnit?.name, processNumber, contexto: effectiveText ? "" : `[PDFs anexados: ${effectivePdfFiles.map((p) => p.name).join(", ")}]` });
       await guardarRequisicao(novoProg, "/api/generate-minute", requestPayload);
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
@@ -1573,6 +1573,7 @@ export default function App() {
 
       const analysisToSave: SavedAnalysis = {
         id: newAnalysisId,
+        tenantId: activeTenantId,
         unitId: activeUnit?.id || "montes_claros",
         promptTitle: activePrompt.title,
         promptId: activePrompt.id,
@@ -1806,7 +1807,7 @@ export default function App() {
           const id = (data as any).analysisId || crypto.randomUUID();
           setCurrentAnalysisId(id); setCurrentChatMessages([]);
           const gravado = await saveToHistory({
-            id, unitId: pend.unitId || "montes_claros", promptTitle: pend.promptTitle || "Análise recuperada", promptId: pend.promptId, promptCategory: (pend.promptCategory as any) || "civel", promptScope: (pend.promptScope as any) || "judicial",
+            id, tenantId: pend.tenantId, unitId: pend.unitId || "montes_claros", promptTitle: pend.promptTitle || "Análise recuperada", promptId: pend.promptId, promptCategory: (pend.promptCategory as any) || "civel", promptScope: (pend.promptScope as any) || "judicial",
             date: Date.now(), processNumber: num,
             result: { ...data, minute: data.minute ? { ...data.minute, judicialUnit: pend.unitName || data.minute.judicialUnit } : data.minute },
             originalMinute: data.originalMinute || primeira, processTextContext: pend.contexto || "", createdBy: user?.uid || "anonymous",

@@ -478,23 +478,24 @@ export const saveHistoryToDb = async (analysis: SavedAnalysis): Promise<void> =>
   if (!auth.currentUser) return;
   if (ehLeve(analysis)) throw new Error("ato em versão resumida (lista) não pode ser gravado por cima do ato completo");
   const user = auth.currentUser;
+  const tenantAlvo = (analysis as any).tenantId || globalTenantId;      // o gabinete onde o ato foi iniciado (não o que está ativo agora)
   const dataToSave: any = cleanForFirestore({
     ...analysis,
-    tenant: globalTenantId,
+    tenant: tenantAlvo,
     unitId: analysis.unitId || getActiveUnitId(),
     createdBy: analysis.createdBy || user.uid,
     creatorName: analysis.creatorName || user.displayName || user.email?.split('@')[0] || 'Assessor',
     creatorEmail: analysis.creatorEmail || user.email || '',
   });
   // o servidor preserva a marca "lançado no Projudi" quando o ato é salvo de novo sem ela
-  await chamarHistorico(globalTenantId, 'PUT', `/${encodeURIComponent(analysis.id)}`, dataToSave, { unit: getActiveUnitId() });
+  await chamarHistorico(tenantAlvo, 'PUT', `/${encodeURIComponent(analysis.id)}`, dataToSave, { unit: analysis.unitId || getActiveUnitId() });
 };
 
 /** Confere, depois de gravar, se o ato está mesmo na nuvem (e em qual unidade). Serve para nunca dar um ato por salvo sem estar. */
-export const conferirAtoNaNuvem = async (id: string): Promise<{ existe: boolean; unitId?: string; unidadeAtiva: string }> => {
+export const conferirAtoNaNuvem = async (id: string, tenant?: string): Promise<{ existe: boolean; unitId?: string; unidadeAtiva: string }> => {
   const unidadeAtiva = getActiveUnitId();
   try {
-    const m = await chamarHistorico<{ existe: boolean; unitId?: string }>(globalTenantId, 'GET', `/${encodeURIComponent(id)}/meta`);
+    const m = await chamarHistorico<{ existe: boolean; unitId?: string }>(tenant || globalTenantId, 'GET', `/${encodeURIComponent(id)}/meta`);
     return m.existe ? { existe: true, unitId: m.unitId || "montes_claros", unidadeAtiva } : { existe: false, unidadeAtiva };
   } catch { return { existe: true, unidadeAtiva }; }      // sem leitura (rede/permissão): não acusa falha sem prova
 };
