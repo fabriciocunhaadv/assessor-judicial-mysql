@@ -27,6 +27,8 @@ try {
   ok(g.erros503 >= 2, `os modelos fortes ficaram fora do ar (${g.erros503} 503)`);
   ok(por("roteiro") === 1 && por("topico") === 3 && por("relatorio") === 1 && por("dispositivo") === 1, "montou por seções: 1 roteiro, 3 tópicos, 1 relatório, 1 dispositivo");
   ok(g.lista.filter((x) => x.etapa).every((x) => !/^gemini-3\.(6|8)-flash$/.test(x.modelo)), "as seções saíram pelo modelo leve (os fortes seguiam fora do ar)");
+  { const ro = g.lista.find((x) => x.etapa === "roteiro"), outras = g.lista.filter((x) => x.etapa && x.etapa !== "roteiro"); console.log("instruções (car.): roteiro", ro?.sis, "| seções", outras.map((x) => x.sis).join(","));
+    ok(ro && outras.length >= 5 && outras.every((x) => x.sis < ro.sis * 0.5 || x.sis < 12000), "as chamadas de seção levam instruções ENXUTAS (só o roteiro leva o pedido completo)"); }
   ok(String(m.fundamentacao).length > 3000 && m.fundamentacao.split("\n\n").length >= 3, `fundamentação grande (${String(m.fundamentacao).length} caracteres, 3 partes)`);
   ok(/É o relatório\. DECIDO\./.test(m.relatorio || "") && /P\.R\.I\.C\./.test(m.dispositivo || ""), "relatório e dispositivo vieram das chamadas próprias");
   ok(Array.isArray(j.avisoProfundidade) && /por seções/.test(j.avisoProfundidade[0]) && /menos refinada/.test(j.avisoProfundidade[0]), "a resposta traz o aviso de contingência por seções");

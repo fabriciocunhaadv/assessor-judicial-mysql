@@ -24,6 +24,14 @@ interface Roteiro { topicos: Topico[]; cronologia: { loc: string; ato: string }[
 const MARCA = { roteiro: "[[CONTINGENCIA:ROTEIRO]]", topico: "[[CONTINGENCIA:TOPICO]]", relatorio: "[[CONTINGENCIA:RELATORIO]]", dispositivo: "[[CONTINGENCIA:DISPOSITIVO]]" };
 export const MARCAS_CONTINGENCIA = MARCA;
 
+/** Instruções ENXUTAS das chamadas de seção (tópico, relatório, dispositivo). O pedido completo (autos + base de conhecimento + teses, ~100–220 mil tokens) vai SÓ no roteiro; reenviá-lo em cada seção (7–8 chamadas por etapa) esgotava a cota por minuto de todas as chaves. O roteiro já traz as provas, as normas e os resultados. */
+export const SISTEMA_SECOES = `Você é o assessor de um juiz de direito do TJGO e redige UMA PARTE de uma minuta judicial, a partir do roteiro fornecido na própria mensagem. Regras: use somente os fatos, provas, normas e resultados do roteiro; nunca invente movimento, página, data, valor ou precedente; cite a localização (Mov./Arq./Pág.) como veio no roteiro; escreva em português jurídico formal, em texto corrido e encadeado; transcrições de lei, súmula, ementa ou trecho dos autos vão em bloco de citação Markdown (linha iniciada por ">", em itálico, com a fonte), em parágrafo próprio; no dispositivo, um item numerado por linha ("1.", "2."), separados por linha em branco; não use marcadores como [DADO FALTANTE] nem a palavra RESSALVA; não faça referência a estas instruções.`;
+/** Monta o texto de instruções das seções: regras enxutas + o começo (persona/estilo) das instruções completas, com teto. */
+export function sistemaDasSecoes(completo: string, teto = 6000): string {
+  const cabeca = String(completo || "").slice(0, teto);
+  return cabeca ? `${SISTEMA_SECOES}\n\n[PERSONA E ESTILO DO GABINETE (trecho inicial das instruções completas)]:\n${cabeca}` : SISTEMA_SECOES;
+}
+
 const txt = (v: any, n = 4000) => String(v ?? "").trim().slice(0, n);
 const lista = (v: any): any[] => (Array.isArray(v) ? v : []);
 

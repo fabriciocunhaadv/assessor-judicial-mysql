@@ -322,3 +322,8 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 ## Base de Conhecimento só com o que tem a ver com o caso (itens 1 e 2 autorizados em 18/11)
 - `server/baseRelevante.ts` `selecionarBase`: docs curtos (≤12k car., até 50k no total) entram inteiros; docs longos são cortados em trechos de ~3k e só entram os que combinam com termos dos autos/prompt, em ordem original; teto 150k car. (`BASE_CONHECIMENTO_TETO_CHARS`). Base ≤ teto vai inteira. Usado em `server.ts` (montagem de `knowledgeBaseText` da `/api/generate-minute`). Log: "[Base de Conhecimento] N doc(s) -> enviados Xk … | fora: …". Teste: `testes/teste_base_relevante.ts`.
 - Item 2 (leis): já era busca por artigo (`consultarLegislacao`, máx. 8–10 artigos) — mantido, sem mudança. Item 3 (teses do gabinete com teto) NÃO feito, aguardando autorização.
+
+## Contingência por seções: chamadas de seção com instruções ENXUTAS (18/11, a pedido; aguardando "Pode publicar")
+- Causa da lentidão desde 17/11: cada chamada de seção (7–8 por etapa) reenviava as instruções completas (autos+base+teses, ~100–224k tokens) ⇒ ~0,8–1,8 milhão de tokens por etapa, acima do TPM das 6 chaves (429 em série, "[Cota] aguardando 65s").
+- `server/contingenciaSecoes.ts`: `SISTEMA_SECOES` + `sistemaDasSecoes(completo, 6000)`; `server.ts` usa instruções completas só no ROTEIRO e as enxutas (~7k car.) em tópico/relatório/dispositivo. Teste: `rodar_contingencia_secoes.mjs` mede (roteiro 56k car. × seções ~7k no fake).
+- Juntas: expansão = 1 tentativa sem espera, base de conhecimento filtrada (99f590c). Ofícios/Boletins na base são administrativos: sugerir desativar.

@@ -38,7 +38,7 @@ import { filterInnocuousCertificates, cleanJudicialPdfText } from './src/utils/j
 import { deduplicateJudicialPdfFiles, deduplicateTextBlocks } from './src/utils/documentDeduplicator';
 import { extractFromCoverPage } from './src/utils/judicialMetadataExtractor';
 import { gerarComAutosGrandes, reduzirPorRelevancia } from './src/utils/autosGrandes';
-import { expandirPorSecoes } from './server/contingenciaSecoes';
+import { expandirPorSecoes, sistemaDasSecoes } from './server/contingenciaSecoes';
 import { selecionarBase } from './server/baseRelevante';
 import { detectarInjecao, instrucaoDefesaInjecao } from './src/utils/promptInjection';
 import { descreverCorte, textoDoCorte, CorteArquivo } from './src/utils/corteAutos';
@@ -3943,7 +3943,7 @@ async function contingenciaPorSecoes(a: { partes: any[]; sistema: string; minuta
                     customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],      // se um modelo forte voltar no meio, ele assume; senão o leve segue seção a seção
                     timeoutMs: etapa === "roteiro" ? a.timeoutMs : Math.min(a.timeoutMs, 120000), maxCycles: 2, cycleDelayMs: 4000,
                     contents: [{ role: "user", parts: etapa === "roteiro" ? [...a.partes, { text: instrucao }] : [{ text: instrucao }] }],
-                    config: { systemInstruction: a.sistema, temperature: json ? 0.2 : 0.35, maxOutputTokens: 16384, ...(json ? { responseMimeType: "application/json" } : {}) },
+                    config: { systemInstruction: etapa === "roteiro" ? a.sistema : sistemaDasSecoes(a.sistema), temperature: json ? 0.2 : 0.35, maxOutputTokens: 16384, ...(json ? { responseMimeType: "application/json" } : {}) },
                 });
                 return String(resp?.text || "");
             },
