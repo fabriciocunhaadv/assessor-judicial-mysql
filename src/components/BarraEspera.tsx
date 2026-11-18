@@ -19,3 +19,18 @@ export function BarraEspera({ ate, total, rotulo = "Esperando o Google liberar u
     </div>
   );
 }
+
+/** Barra que diminui em ciclos (sem prazo exato conhecido): na fila, lendo trecho, pausa de cota. Mostra que o sistema segue verificando/andando e quanto falta para a próxima verificação. */
+export function BarraCiclo({ cicloSeg, rotulo }: { cicloSeg: number; rotulo: string }) {
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 250); return () => clearInterval(t); }, []);
+  const total = cicloSeg * 1000, resta = total - (agora % total), pct = (resta / total) * 100, seg = Math.ceil(resta / 1000);
+  return (
+    <div className="w-full space-y-1" data-testid="barra-ciclo" role="progressbar" aria-valuemin={0} aria-valuemax={cicloSeg} aria-valuenow={seg} aria-label={rotulo}>
+      <div className="flex items-center justify-between text-[10px] font-semibold text-sky-800">
+        <span>{rotulo}</span><span className="font-mono">{mmss(seg)}</span>
+      </div>
+      <div className="h-1.5 bg-sky-100 rounded-full overflow-hidden"><div className="h-full bg-sky-500" style={{ width: `${pct}%`, transition: "width 0.3s linear" }} /></div>
+    </div>
+  );
+}

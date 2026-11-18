@@ -293,3 +293,6 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 - Queixa: citações de lei/precedente sem bloco e dispositivo num parágrafo só. Causa: o modelo deixou de obedecer; a tela só arrumava quando já havia numeração.
 - `src/utils/organizarTextoDaMinuta.ts`: `dispositivoEmItens` (abertura + 1 item numerado por comando, só se ≥3 comandos e sem itens prévios) e `citacoesEmBloco` (art./§ após ":" e aspas longas ≥80 car. viram `> *...*`). Só tela/exportação; não altera o gravado.
 - `server.ts`: prompts reforçam bloco `>` obrigatório e um item numerado por linha. Teste: `testes/teste_organizar_citacao_dispositivo.ts`. Pendente de "Pode publicar".
+
+## Barrinha sempre andando nos cartões do gigante
+- `BarraCiclo` (`BarraEspera.tsx`) em `GigantesPanel.tsx`: quando o cartão está ativo e NÃO há espera exata do servidor, mostra barra que diminui em ciclos: fila (30 s), "Aguardando/cota/resfriamento" (20 s), lendo trecho (60 s). Quando há espera real, continua a `BarraEspera` âmbar. Pendente de "Pode publicar".
