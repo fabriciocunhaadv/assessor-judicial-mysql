@@ -324,6 +324,7 @@ const SITES: { id: string; grupo: string; nome: string; url: string }[] = [
   { id: "tjgo-site", grupo: "TJGO", nome: "TJGO • Portal", url: "https://www.tjgo.jus.br/" },
   { id: "tjgo-transp", grupo: "TJGO", nome: "TJGO • Jurisprudência (transparência)", url: "https://transparencia.tjgo.jus.br/jurisprudencia" },
   { id: "tjgo-sumulas", grupo: "TJGO", nome: "TJGO • Súmulas", url: "https://www.tjgo.jus.br/sumulas" },
+  { id: "portal-leg-cpc", grupo: "Planalto", nome: "Portal da Legislação (novo) • CPC (Lei 13.105/2015)", url: "https://portaldalegislacao.presidencia.gov.br/ccivil_03/_ato2015-2018/2015/lei/l13105.htm" },
   { id: "planalto-cpc", grupo: "Planalto", nome: "Planalto • CPC (Lei 13.105/2015)", url: LEIS.find((l) => l.id === "cpc")!.url },
   { id: "planalto-cdc", grupo: "Planalto", nome: "Planalto • CDC (Lei 8.078/1990)", url: LEIS.find((l) => l.id === "cdc")!.url },
   // outras fontes de legislação, só para saber quais o servidor da Hostinger alcança (se o Planalto bloquear, uma delas pode servir de reserva ou cobrir leis estaduais e municipais)
@@ -331,6 +332,8 @@ const SITES: { id: string; grupo: string; nome: string; url: string }[] = [
   { id: "normas-leg", grupo: "Outras fontes de legislação", nome: "Normas.leg.br • busca", url: "https://normas.leg.br/busca?q=8987" },
   { id: "camara-leg", grupo: "Outras fontes de legislação", nome: "Câmara dos Deputados • Legislação", url: "https://www2.camara.leg.br/legislacao" },
   { id: "senado-leg", grupo: "Outras fontes de legislação", nome: "Senado • Legislação", url: "https://legis.senado.leg.br/" },
+  { id: "economia-go-lei", grupo: "Leis estaduais de Goiás", nome: "Economia GO • Lei 17.039/2010", url: "https://appasp.economia.go.gov.br/legislacao/arquivos/Leis/L_17039.htm" },
+  { id: "economia-go-lc", grupo: "Leis estaduais de Goiás", nome: "Economia GO • Lei Complementar 104", url: "https://appasp.economia.go.gov.br/legislacao/arquivos/Leis_Complementares/LC_0104.htm" },
   { id: "casacivil-go", grupo: "Outras fontes de legislação", nome: "Casa Civil de Goiás", url: "https://goias.gov.br/casacivil/" },
   { id: "leis-municipais", grupo: "Outras fontes de legislação", nome: "Leis municipais (leis.org)", url: "https://leis.org/municipais" },
   { id: "leisestaduais", grupo: "Outras fontes de legislação", nome: "Leis estaduais (leisestaduais.com.br)", url: "https://leisestaduais.com.br/" },

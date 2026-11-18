@@ -1,10 +1,11 @@
 // FONTES PENDENTES: o que os autos (e as minutas) citam e o Studio ainda NÃO tem na base: leis federais/estaduais/municipais, Constituições, tratados, súmulas e temas.
 // Todo motor (análise normal, Turbo, Lupa, Gigantes, Mesa) alimenta a mesma lista por um único middleware; o Super Admin vê, edita (CRUD), manda a extensão buscar ou envia o arquivo.
 // Só guarda IDENTIFICADORES (tipo, número, ano, ente) e contagens: nenhum trecho do processo, nome de parte ou CPF.
+import { coletarLeiGoias, elegivelGoias } from "./coletorEstadual";
 import express from "express";
 import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
-import { LEIS } from "./fontesOficiais";
+import { LEIS, baixar } from "./fontesOficiais";
 import { listarOutrasLeis, leiDoCatalogo, salvarArquivoComoLei } from "./outrasLeis";
 import { listarPrecedentes } from "./precedentesDb";
 import { CORE_BINDING_PRECEDENTS } from "../src/utils/bindingPrecedents";
@@ -124,6 +125,35 @@ fontesPendentesRouter.post("/", async (req, res) => {
     if (b.nota) f.nota = txt(b.nota, 300); if (b.link) f.link = txt(b.link, 500);
     await gravar(f); res.json({ item: f });
   } catch { res.status(500).json({ erro: "não consegui gravar" }); }
+});
+/** Coletor de leis estaduais de Goiás (servidor): quais pendentes ele sabe buscar, e a busca em lotes pequenos (o painel chama de novo até acabar). */
+fontesPendentesRouter.get("/coletar-estaduais/elegiveis", async (req, res) => {
+  if (!soSuper(req, res)) return;
+  try { res.json({ itens: (await lerTodos()).filter((f) => f.status === "pendente" && elegivelGoias(f)).sort((a, b) => b.ocorrencias - a.ocorrencias).map((f) => ({ id: f.id, rotulo: f.rotulo })) }); }
+  catch { res.status(500).json({ erro: "não consegui listar" }); }
+});
+fontesPendentesRouter.post("/coletar-estaduais", async (req, res) => {
+  if (!soSuper(req, res)) return;
+  try {
+    const ids: string[] = (Array.isArray(req.body?.ids) ? req.body.ids : []).map((x: any) => String(x)).slice(0, 10), resultados: { id: string; rotulo: string; ok: boolean; detalhe: string }[] = [];
+    for (const id of ids) {
+      const f = await lerUm(id); if (!f) { resultados.push({ id, rotulo: id, ok: false, detalhe: "fonte não encontrada" }); continue; }
+      const registrar = async (resultado: string, status?: StatusFonte) => { f.tentativas = [...f.tentativas, { em: Date.now(), via: "servidor-go", resultado: resultado.slice(0, 200) }].slice(-10); if (status) f.status = status; await gravar(f); };
+      if (!elegivelGoias(f)) { resultados.push({ id, rotulo: f.rotulo, ok: false, detalhe: "não é lei ordinária/complementar de Goiás com número e ano" }); continue; }
+      const r = await coletarLeiGoias(f, async (url) => { const x = await baixar(url, 20000); return { status: x.status, buf: x.buf, contentType: x.contentType, finalUrl: x.finalUrl }; });
+      if (!r.ok || !r.buf) { await registrar(`Economia GO: ${r.detalhes.join(" | ")}`); resultados.push({ id, rotulo: f.rotulo, ok: false, detalhe: r.detalhes.join(" | ") }); }
+      else {
+        try {
+          const g = await salvarArquivoComoLei({ esfera: "estadual", ente: "Goiás", tipo: f.tipo, numero: f.numero, ano: f.ano, titulo: f.rotulo }, r.buf, "");
+          f.esfera = "estadual"; f.ente = "Goiás"; esquecerBase();
+          await registrar(`incluída em Outras leis (${g.lei?.artigos ?? "?"} artigos) — site da Economia de Goiás`, "incluida");
+          resultados.push({ id, rotulo: f.rotulo, ok: true, detalhe: `${g.lei?.artigos ?? "?"} artigos` });
+        } catch (e: any) { await registrar(`achei a página mas não consegui gravar: ${String(e?.message || e).slice(0, 120)}`); resultados.push({ id, rotulo: f.rotulo, ok: false, detalhe: `achei a página mas não consegui gravar: ${String(e?.message || e).slice(0, 120)}` }); }
+      }
+      await new Promise((ok) => setTimeout(ok, 400));      // pausa entre os pedidos: não sobrecarrega o site
+    }
+    res.json({ resultados });
+  } catch { res.status(500).json({ erro: "falha ao coletar" }); }
 });
 fontesPendentesRouter.put("/config-busca", async (req, res) => {
   if (!soSuper(req, res)) return;

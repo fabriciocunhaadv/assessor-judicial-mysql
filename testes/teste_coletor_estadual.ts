@@ -1,0 +1,22 @@
+// Coletor de leis estaduais de Goiás: endereços, conferência do cabeçalho (número e ano) e uso da página certa. Sem rede: o download é simulado.
+import { candidatosEstaduais, conferirLeiGoias, coletarLeiGoias, elegivelGoias } from "../server/coletorEstadual";
+let falhas = 0; const ok = (c: boolean, m: string) => { if (!c) falhas++; console.log((c ? "ok: " : "FALHOU: ") + m); };
+const pagina = (cab: string) => `<html><body><p>${cab}</p>${Array.from({ length: 12 }, (_, i) => `<p>Art. ${i + 1}º Texto do artigo ${i + 1}.</p>`).join("")}</body></html>`;
+ok(candidatosEstaduais({ tipo: "lei", numero: "17.039", ano: 2010 })[0] === "https://appasp.economia.go.gov.br/legislacao/arquivos/Leis/L_17039.htm", "lei ordinária: endereço da Economia pelo número");
+ok(candidatosEstaduais({ tipo: "lei complementar", numero: "104", ano: 2013 })[0].endsWith("Leis_Complementares/LC_0104.htm"), "lei complementar: número com zeros até 4 dígitos");
+ok(elegivelGoias({ tipo: "lei", numero: "17039", ano: 2010, esfera: "indefinida" }) && elegivelGoias({ tipo: "lei", numero: "14376", ano: 2002, esfera: "estadual", ente: "Goiás" }), "elegível: lei de Goiás (estadual ou ainda a confirmar)");
+ok(!elegivelGoias({ tipo: "lei", numero: "1", ano: 2000, esfera: "estadual", ente: "Minas Gerais" }) && !elegivelGoias({ tipo: "decreto", numero: "9", ano: 2020, esfera: "estadual", ente: "Goiás" }) && !elegivelGoias({ tipo: "lei", numero: "5", ano: 0, esfera: "estadual", ente: "Goiás" }), "não elegível: outro estado, decreto, sem ano");
+const lin = (h: string) => [h, ...Array.from({ length: 12 }, (_, i) => `Art. ${i + 1}º Texto.`)];
+ok(conferirLeiGoias(lin("LEI Nº 17.039, DE 22 DE JUNHO DE 2010"), { tipo: "lei", numero: "17039", ano: 2010 }).ok, "cabeçalho certo (número e ano) é aceito");
+ok(/não da/.test(conferirLeiGoias(lin("LEI Nº 17.040, DE 22 DE JUNHO DE 2010"), { tipo: "lei", numero: "17039", ano: 2010 }).motivo || ""), "número diferente é recusado");
+ok(/de 2011/.test(conferirLeiGoias(lin("LEI Nº 17.039, DE 22 DE JUNHO DE 2011"), { tipo: "lei", numero: "17039", ano: 2010 }).motivo || ""), "ano diferente é recusado");
+ok(conferirLeiGoias(lin("LEI COMPLEMENTAR Nº 104, DE 24 DE JANEIRO DE 2013"), { tipo: "lei complementar", numero: "104", ano: 2013 }).ok, "lei complementar: cabeçalho aceito");
+ok(!conferirLeiGoias(["Acesso Negado", "Request blocked"], { tipo: "lei", numero: "1", ano: 2000 }).ok, "página de bloqueio é recusada");
+const chamadas: string[] = [];
+const r1 = await coletarLeiGoias({ tipo: "lei", numero: "17039", ano: 2010 }, async (u) => { chamadas.push(u); return u.includes("/Leis/") ? { status: 404, buf: Buffer.from("x"), contentType: "text/html" } : { status: 200, buf: Buffer.from(pagina("LEI Nº 17.039, DE 22 DE JUNHO DE 2010")), contentType: "text/html; charset=windows-1252" }; });
+ok(r1.ok && !!r1.buf && chamadas.length === 2, "tenta o próximo endereço quando o primeiro dá 404 e acha a lei");
+const r2 = await coletarLeiGoias({ tipo: "lei", numero: "17039", ano: 2010 }, async () => ({ status: 200, buf: Buffer.from(pagina("LEI Nº 99.999, DE 1 DE JANEIRO DE 2010")), contentType: "text/html" }));
+ok(!r2.ok && r2.detalhes.length === 2 && /não da/.test(r2.detalhes[0]), "página de outra lei não é aceita e o motivo fica registrado");
+const r3 = await coletarLeiGoias({ tipo: "lei", numero: "17039", ano: 2010 }, async () => { throw new Error("ENOTFOUND"); });
+ok(!r3.ok && /ENOTFOUND/.test(r3.detalhes[0]), "erro de rede vira detalhe, sem derrubar");
+console.log(falhas ? `FALHAS: ${falhas}` : "\nTUDO OK"); process.exit(falhas ? 1 : 0);

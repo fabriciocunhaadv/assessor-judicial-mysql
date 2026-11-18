@@ -16,6 +16,7 @@ const FONTE_OFICIAL: Record<string, string> = { STF: "https://portal.stf.jus.br/
 export function FontesPendentesTab({ aoMudarContagem }: { aoMudarContagem?: (pendentes: number) => void }) {
   const [itens, setItens] = useState<FontePendente[] | null>(null), [sites, setSites] = useState<SiteBusca[]>([]), [hosts, setHosts] = useState<string[]>([]);
   const [filtro, setFiltro] = useState<"pendente" | "incluida" | "ignorada" | "todas">("pendente"), [erro, setErro] = useState(""), [msgs, setMsgs] = useState<Record<string, string>>({});
+  const [coletaGo, setColetaGo] = useState<{ rodando: boolean; total: number; feitas: number; ok: number; falhas: { rotulo: string; detalhe: string }[] } | null>(null);
   const [busca, setBusca] = useState<{ pedidoId: string; total: number; feitas: number } | null>(null), [editando, setEditando] = useState<string | null>(null), [novo, setNovo] = useState(false), [editSites, setEditSites] = useState(false);
   const arquivo = useRef<HTMLInputElement>(null), alvo = useRef<string | null>(null), buscaRef = useRef(busca); buscaRef.current = busca;
   const chamar = useCallback(async (caminho: string, opcoes: RequestInit = {}) => {
@@ -60,6 +61,22 @@ export function FontesPendentesTab({ aoMudarContagem }: { aoMudarContagem?: (pen
   const cont = useMemo(() => { const l = itens || []; return { pendente: l.filter((i) => i.status === "pendente").length, incluida: l.filter((i) => i.status === "incluida").length, ignorada: l.filter((i) => i.status === "ignorada").length, buscaveis: l.filter((i) => i.status === "pendente" && buscavel(i)).length }; }, [itens]);
   const mudarStatus = async (it: FontePendente, status: FontePendente["status"]) => { try { trocar((await chamar(`/${encodeURIComponent(it.id)}`, { method: "PUT", body: JSON.stringify({ status }) })).item); void carregar(); } catch (e: any) { setErro(e.message); } };
   const excluir = async (it: FontePendente) => { if (!window.confirm(`Excluir “${it.rotulo}” da lista?`)) return; try { await chamar(`/${encodeURIComponent(it.id)}`, { method: "DELETE" }); void carregar(); } catch (e: any) { setErro(e.message); } };
+  // Coletor de leis estaduais de Goiás pelo SERVIDOR (site da Secretaria da Economia de Goiás): lotes pequenos até acabar
+  const coletarGoias = async () => {
+    setErro(""); setColetaGo({ rodando: true, total: 0, feitas: 0, ok: 0, falhas: [] });
+    try {
+      const el = await chamar("/coletar-estaduais/elegiveis"), ids: string[] = (el.itens || []).map((i: any) => i.id);
+      setColetaGo({ rodando: true, total: ids.length, feitas: 0, ok: 0, falhas: [] });
+      let feitas = 0, ok = 0; const falhas: { rotulo: string; detalhe: string }[] = [];
+      for (let i = 0; i < ids.length; i += 8) {
+        const j = await chamar("/coletar-estaduais", { method: "POST", body: JSON.stringify({ ids: ids.slice(i, i + 8) }) });
+        for (const r of j.resultados || []) { feitas++; if (r.ok) ok++; else falhas.push({ rotulo: r.rotulo, detalhe: r.detalhe }); }
+        setColetaGo({ rodando: true, total: ids.length, feitas, ok, falhas: [...falhas] });
+      }
+      setColetaGo({ rodando: false, total: ids.length, feitas, ok, falhas });
+    } catch (e: any) { setErro(e.message); setColetaGo((c) => (c ? { ...c, rodando: false } : c)); }
+    finally { void carregar(); }
+  };
   const escolherArquivo = (id: string) => { alvo.current = id; arquivo.current?.click(); };
   const aoEscolher = async (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; e.target.value = ""; const id = alvo.current; if (!f || !id) return; await incluir(id, f.name, new Uint8Array(await f.arrayBuffer()), f.type, "manual"); };
 
@@ -73,9 +90,17 @@ export function FontesPendentesTab({ aoMudarContagem }: { aoMudarContagem?: (pen
         ))}
         <span className="flex-1" />
         <button disabled={!extensaoPronta || !!busca || cont.buscaveis === 0} onClick={() => itens && buscarPelaExtensao(itens)} data-testid="buscar-todas-pendentes" className={`${btn} bg-[#673de6] text-white`} title={extensaoPronta ? "A extensão procura no seu navegador todas as leis pendentes e entrega ao Studio" : `Precisa da extensão Conclusões Projudi 1.0.90 ou mais nova${versaoDaExtensao() ? ` (a sua é a ${versaoDaExtensao()})` : " instalada neste navegador"}`}>Buscar todas pela extensão ({cont.buscaveis})</button>
+        <button disabled={!!coletaGo?.rodando} onClick={coletarGoias} data-testid="coletar-goias" className={`${btn} bg-white border border-emerald-600 text-emerald-700`} title="O servidor procura no site da Secretaria da Economia de Goiás o texto das leis estaduais (ordinárias e complementares) que os autos citam e ainda não estão na base">{coletaGo?.rodando ? "Buscando leis de Goiás…" : "Buscar leis estaduais de Goiás (servidor)"}</button>
         <button onClick={() => setNovo((v) => !v)} className={`${btn} bg-white border border-[#673de6] text-[#673de6]`} data-testid="adicionar-fonte">+ Adicionar fonte</button>
         <button onClick={() => setEditSites((v) => !v)} className={`${btn} bg-white border border-slate-300 text-slate-600`} data-testid="editar-sites">Sites de busca ({sites.filter((s) => s.ativa).length})</button>
       </div>
+      {coletaGo && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-900 p-2 space-y-1" data-testid="resultado-coleta-goias">
+          <p className="font-bold">Leis estaduais de Goiás (servidor): {coletaGo.feitas} de {coletaGo.total} procuradas · {coletaGo.ok} incluída(s) · {coletaGo.falhas.length} sem resultado{coletaGo.rodando ? "…" : "."}</p>
+          {!coletaGo.rodando && coletaGo.total === 0 && <p>Nenhuma lei estadual de Goiás pendente (com número e ano) para buscar.</p>}
+          {coletaGo.falhas.length > 0 && <details><summary className="cursor-pointer">Ver as que não foram achadas ({coletaGo.falhas.length})</summary><ul className="mt-1 space-y-0.5 max-h-48 overflow-auto">{coletaGo.falhas.map((f, i) => <li key={i}><b>{f.rotulo}</b>: {f.detalhe}</li>)}</ul></details>}
+        </div>
+      )}
       {erro && <p className="rounded-lg border border-red-200 bg-red-50 text-red-800 p-2">{erro}</p>}
       {busca && <p className="text-[#673de6] font-bold" data-testid="progresso-fontes">Buscando pela extensão: {busca.feitas} de {busca.total} resolvidas… Acompanhe na aba aberta pela extensão (na primeira vez ela pede a permissão de acesso aos sites).</p>}
       {novo && <FormFonte aoSalvar={async (d) => { try { await chamar("", { method: "POST", body: JSON.stringify(d) }); setNovo(false); void carregar(); } catch (e: any) { setErro(e.message); } }} aoCancelar={() => setNovo(false)} />}
