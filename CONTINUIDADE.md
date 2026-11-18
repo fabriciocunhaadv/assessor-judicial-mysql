@@ -296,3 +296,6 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 
 ## Barrinha sempre andando nos cartões do gigante
 - `BarraCiclo` (`BarraEspera.tsx`) em `GigantesPanel.tsx`: quando o cartão está ativo e NÃO há espera exata do servidor, mostra barra que diminui em ciclos: fila (30 s), "Aguardando/cota/resfriamento" (20 s), lendo trecho (60 s). Quando há espera real, continua a `BarraEspera` âmbar. Pendente de "Pode publicar".
+
+## Gigante: voltar a prosseguir (sem espera/adiamento) — pedido do usuário
+- `gerente.ts`: leitura dos lotes passa `podeAdiar:false, esperaMs:0` (modelo leve lê o trecho com a ficha estruturada se o completo estiver ocupado); o código de adiamento fica dormente. `chamar`: 5 tentativas, pausas 10/15/20/30 s (era 9 tentativas até 60 s). A qualidade da minuta final segue protegida pela contingência por seções (`server/contingenciaSecoes.ts`) e pela espera de 30 s nas etapas 1/2. Pendente de "Pode publicar".

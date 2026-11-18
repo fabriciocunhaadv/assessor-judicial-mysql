@@ -276,7 +276,7 @@ class Gerente {
 
   private async chamar(id: string, rota: string, corpo: any): Promise<any> {
     let ultimoErro: any;
-    for (let t = 0; t < 9; t++) {
+    for (let t = 0; t < 5; t++) {
       if (this.sinais.has(id)) throw new Error("__parar__");
       try {
         const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 14 * 60000);
@@ -304,9 +304,9 @@ class Gerente {
         ultimoErro = e;
         if (this.sinais.has(id)) throw new Error("__parar__");      // a chamada foi derrubada de propósito (Pausar/Cancelar)
         if (e?.message === "__parar__" || e?.codigo) throw e;      // erro com código (autos grandes demais para a chave gratuita): quem chamou decide, sem repetir
-        if (!/incompleta|503|indispon|429|cota|quota|rate|Failed to fetch|Network|aborted|timeout/i.test(String(e?.message || e)) || t === 8) throw e;
-        const PAUSA_MS = [15, 15, 20, 20, 30, 30, 45, 60][t] * 1000;      // a cota renova aos poucos: tenta de novo cedo (a recusa por cota é rápida e não gasta nada), em vez de esperar 70 s às cegas
-        const j = this.jobs.get(id); if (j) { j.etapa = `Aguardando a cota da IA renovar (tentativa ${t + 2}/9)…`; j.espera = { ate: Date.now() + PAUSA_MS, total: PAUSA_MS }; this.avisar(); }      // a barra do painel diminui durante esta pausa também
+        if (!/incompleta|503|indispon|429|cota|quota|rate|Failed to fetch|Network|aborted|timeout/i.test(String(e?.message || e)) || t === 4) throw e;
+        const PAUSA_MS = [10, 15, 20, 30][t] * 1000;      // a cota renova aos poucos: tenta de novo cedo (a recusa por cota é rápida e não gasta nada), em vez de esperar 70 s às cegas
+        const j = this.jobs.get(id); if (j) { j.etapa = `Aguardando a cota da IA renovar (tentativa ${t + 2}/5)…`; j.espera = { ate: Date.now() + PAUSA_MS, total: PAUSA_MS }; this.avisar(); }      // a barra do painel diminui durante esta pausa também
         await dorme(PAUSA_MS);
         { const jj = this.jobs.get(id); if (jj?.espera) { jj.espera = undefined; this.avisar(); } }
       }
@@ -384,7 +384,7 @@ class Gerente {
         if (job.fichas[`n0:${lote.i}`]) continue;
         await this.aguardarVez(id); if (this.sinais.has(id)) break;
         job.etapa = `Lendo o lote ${lote.i + 1} de ${job.lotes.length} (${lote.rotulo})…`; await this.gravar(job);
-        try { await lerLote(lote, { podeAdiar: true, esperaMs: Date.now() - ultimoAdiamento < 60000 ? 0 : 25000 }); }      // acabou de adiar um: não gasta outra espera, só tenta e segue
+        try { await lerLote(lote, { podeAdiar: false, esperaMs: 0 }); }      // SEGUE: sem espera nem adiamento; se o modelo completo estiver ocupado, o leve lê o trecho com a ficha estruturada (a minuta final é que usa a contingência por seções)
         catch (e: any) {
           if (e?.codigo !== "FORTE_OCUPADO") throw e;
           adiados.push(lote); ultimoAdiamento = Date.now();
