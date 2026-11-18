@@ -285,3 +285,6 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 - Os códigos que o usuário passou (86608 etc.) estavam ERRADOS (86608 = Lei 10.158/1987); a Lei 11.651/1991 é o código 87838. `LINKS_CONHECIDOS` ficou vazio.
 - `coletorEstadual.ts`: ordem link → Economia (lei/LC) → Legisla (busca por número/ano, tipo certo primeiro, PDF lido com pdfjs e conferido pelo cabeçalho). Agora também decreto e emenda constitucional ESTADUAIS (só quando a esfera já é estadual de Goiás).
 - Testes: `teste_coletor_estadual.ts`, `teste_conhecimento_fontes.ts`.
+
+## Minuta final (etapas 1 e 2): espera pelo modelo completo 60 s → 30 s (pedido do usuário)
+- `server.ts`: `esperaProfundoMs` das etapas 1 e 2 de `/api/generate-minute` passou de 60000 para 30000. Depois do prazo a esteira ainda TENTA os modelos completos (mesmo em resfriamento) antes de aceitar o leve. Expansão da minuta resumida continua 30/20/20 s.
