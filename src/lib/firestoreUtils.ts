@@ -450,11 +450,11 @@ export const buscarAtosDoUsuario = async (uid: string, origem: string = 'hist_me
 };
 
 /** Resumos dos atos de alguns processos (pelo número). Serve para a memória do assistente e o agrupamento em dossiê: só os atos desses processos, não a lista inteira. */
-export const buscarAtosDosProcessos = async (numeros: string[], origem: string = 'dossie_por_processo'): Promise<SavedAnalysis[]> => {
+export const buscarAtosDosProcessos = async (numeros: string[], origem: string = 'dossie_por_processo', todasUnidades: boolean = false): Promise<SavedAnalysis[]> => {
   const limpos = Array.from(new Set(numeros.map((n) => digitosDoProcesso(n)).filter((n) => n.length >= 7))).slice(0, 10);
   if (!auth.currentUser || limpos.length === 0) return [];
   try {
-    const r = await chamarHistorico<{ itens: SavedAnalysis[] }>(globalTenantId, 'GET', '', undefined, { unit: getActiveUnitId(), numeros: limpos.join(','), limite: INDICE_LIMITE });
+    const r = await chamarHistorico<{ itens: SavedAnalysis[] }>(globalTenantId, 'GET', '', undefined, { unit: todasUnidades ? '*' : getActiveUnitId(), numeros: limpos.join(','), limite: INDICE_LIMITE });
     medirLeitura(origem, r.itens.map((x) => ({ data: () => x })) as any);
     return r.itens;
   } catch (e) { console.warn('[Histórico] não consegui buscar os atos do processo:', e); return []; }

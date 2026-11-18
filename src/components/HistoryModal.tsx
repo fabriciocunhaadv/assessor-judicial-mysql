@@ -161,6 +161,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const [historyBase, setHistory] = useState<SavedAnalysis[]>([]);
   // atos achados direto no banco quando a busca por número de processo não os encontra na lista (ex.: marca de exclusão antiga neste navegador)
   const [recuperados, setRecuperados] = useState<SavedAnalysis[]>([]);
+  const [emOutraUnidade, setEmOutraUnidade] = useState<{ processo: string; unitId: string; vara: string; autor: string; quando: number }[] | null>(null);
   const history = React.useMemo(() => {
     if (!recuperados.length) return historyBase;
     const ids = new Set(historyBase.map((x) => x?.id));
@@ -252,11 +253,18 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const digitos = searchTerm.replace(/\D/g, "");
-    if (digitos.length < 7) return;
+    if (digitos.length < 7) { setEmOutraUnidade(null); return; }
     const t = setTimeout(async () => {
       try {
+        setEmOutraUnidade(null);
         const achados = await buscarAtosDosProcessos([searchTerm]);
-        if (!achados.length) return;
+        if (!achados.length) {
+          // nada nesta unidade: confere se o processo está gravado em OUTRA unidade do gabinete e avisa onde
+          const outras = await buscarAtosDosProcessos([searchTerm], "dossie_por_processo", true);
+          const fora = outras.filter((a) => a?.id && (a.unitId || "montes_claros") !== (activeUnit?.id || "montes_claros"));
+          setEmOutraUnidade(fora.length ? fora.map((a: any) => ({ processo: a.processNumber || a.result?.minute?.processNumber || "", unitId: a.unitId || "montes_claros", vara: a.result?.minute?.judicialUnit || "", autor: a.creatorName || "", quando: a.date || 0 })) : []);
+          return;
+        }
         const ja = new Set(historyBase.map((x) => x?.id));
         const faltando = achados.filter((a) => a?.id && !ja.has(a.id) && !isCorruptedHistoryItem(a));
         if (!faltando.length) return;
@@ -778,6 +786,18 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                         : estadoIndice.fase === "falhou" ? `Não consegui preparar a lista leve (${estadoIndice.erro || "erro"}). Usando a leitura completa; se continuar vazio, clique em atualizar.` : "Nenhum processo salvo no histórico")
                     : "Nenhum resultado para os filtros atuais"}
                 </p>
+                {emOutraUnidade && emOutraUnidade.length > 0 && (
+                  <div data-testid="aviso-outra-unidade" className="mt-3 max-w-md mx-auto text-left text-xs bg-amber-50 border border-amber-300 text-amber-900 rounded-lg p-3">
+                    <b>Achei este processo, mas em outra unidade.</b> Você está na unidade “{activeUnit?.name || activeUnit?.id}”, e o ato está gravado em:
+                    <ul className="mt-1 list-disc pl-4">{emOutraUnidade.map((o, i) => <li key={i}>{o.processo} — unidade “{o.unitId}”{o.vara ? ` (${o.vara})` : ""}{o.autor ? `, de ${o.autor}` : ""}{o.quando ? `, em ${new Date(o.quando).toLocaleString("pt-BR")}` : ""}</li>)}</ul>
+                    <span className="block mt-1">Troque a unidade ativa no menu do topo para ver o ato no Histórico.</span>
+                  </div>
+                )}
+                {emOutraUnidade && emOutraUnidade.length === 0 && searchTerm.replace(/\D/g, "").length >= 7 && (
+                  <div data-testid="aviso-nao-gravado" className="mt-3 max-w-md mx-auto text-left text-xs bg-slate-50 border border-slate-300 text-slate-700 rounded-lg p-3">
+                    Este processo <b>não está gravado em nenhuma unidade deste gabinete</b>. Se você gerou a minuta e ela não aparece, ela pode não ter chegado ao banco: confira o aviso vermelho que aparece ao gerar e use “Abrir o Histórico” no painel de Gigantes.
+                  </div>
+                )}
                 <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
                   {history.length === 0
                     ? "Quando você elaborar minutas para um processo, o sistema criará o dossiê unificado automaticamente aqui."

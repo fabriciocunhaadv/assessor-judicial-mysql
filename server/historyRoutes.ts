@@ -141,7 +141,8 @@ historyRouter.get("/", rota(async (req, res, u) => {
   const limite = Math.max(1, Math.min(Number(req.query.limite) || LISTA_PADRAO, completo ? COMPLETO_MAXIMO : LISTA_MAXIMA));
   const antes = Number(req.query.antes) || 0;
   const tabela = completo ? "history" : "history_index";
-  const onde = ["tenant=?", "unit_id=?"], args: any[] = [u.tenant, unit];
+  const onde = ["tenant=?"], args: any[] = [u.tenant];
+  if (unit !== "*") { onde.push("unit_id=?"); args.push(unit); }      // "*" = todas as unidades do gabinete (usado só para dizer onde um processo está gravado)
   { const c = condicaoAutor(criador, String(req.query.email || ""), u); if (c) { onde.push(c.sql); args.push(...c.args); } }
   if (numeros.length) { onde.push(`numero_limpo IN (${numeros.map(() => "?").join(",")})`); args.push(...numeros); }
   if (antes) { onde.push("date<?"); args.push(antes); }
