@@ -50,6 +50,8 @@ import {
   isCorruptedHistoryItem,
   marcarLancadoProjudi,
   assinarHistorico,
+  buscarAtosDosProcessos,
+  liberarMarcasDeExclusao,
   type OpcoesListaHistorico,
   abrirAtoCompleto,
   getHistoryCompleto,
@@ -156,7 +158,14 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const verBanco = ehDonoDoSistema(perfilAuth);      // selo e faixa de origem do banco: só o dono do sistema
   // só administrador, juiz e super admin podem ver as minutas do gabinete inteiro; os demais veem só as próprias
   const podeVerGabinete = Boolean(isAdmin || isJudge || isSuperAdmin);
-  const [history, setHistory] = useState<SavedAnalysis[]>([]);
+  const [historyBase, setHistory] = useState<SavedAnalysis[]>([]);
+  // atos achados direto no banco quando a busca por número de processo não os encontra na lista (ex.: marca de exclusão antiga neste navegador)
+  const [recuperados, setRecuperados] = useState<SavedAnalysis[]>([]);
+  const history = React.useMemo(() => {
+    if (!recuperados.length) return historyBase;
+    const ids = new Set(historyBase.map((x) => x?.id));
+    return [...historyBase, ...recuperados.filter((x) => !ids.has(x.id))].sort((a, b) => (b.date || 0) - (a.date || 0));
+  }, [historyBase, recuperados]);
   const [searchTerm, setSearchTerm] = useState("");
   const [actFilter, setActFilter] = useState<"todos" | "sentenca" | "decisao" | "despacho">("todos");
   const [categoryFilter, setCategoryFilter] = useState<"todos" | "civel" | "fazenda" | "criminal" | "familia" | "infancia" | "outros">("todos");
@@ -238,6 +247,25 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
       : { limite: limiteGabinete };
     return assinarHistorico((lista) => { setHistory(lista); setIsLoading(false); }, opcoes);
   }, [isOpen, activeUnit?.id, scopeFilter, usuarioFiltro, limiteGabinete, currentUid]);
+
+  // Busca por número de processo que não acha nada na lista: pergunta direto ao banco e recupera o ato (e tira a marca de exclusão local que o escondia)
+  useEffect(() => {
+    if (!isOpen) return;
+    const digitos = searchTerm.replace(/\D/g, "");
+    if (digitos.length < 7) return;
+    const t = setTimeout(async () => {
+      try {
+        const achados = await buscarAtosDosProcessos([searchTerm]);
+        if (!achados.length) return;
+        const ja = new Set(historyBase.map((x) => x?.id));
+        const faltando = achados.filter((a) => a?.id && !ja.has(a.id) && !isCorruptedHistoryItem(a));
+        if (!faltando.length) return;
+        liberarMarcasDeExclusao(faltando.map((a) => a.id));
+        setRecuperados((prev) => [...prev.filter((x) => !faltando.some((f) => f.id === x.id)), ...faltando]);
+      } catch { /* sem rede: a lista normal continua valendo */ }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [searchTerm, historyBase, isOpen]);
 
   // guarda os autores já vistos no Gabinete, para o seletor de usuário continuar completo depois de escolher um deles
   useEffect(() => {

@@ -9,6 +9,7 @@ export async function chamarHistorico<T = any>(tenant: string, metodo: string, c
   const qs = Object.entries(consulta).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
   const r = await fetch(`/api/db/history${caminho}${qs ? '?' + qs : ''}`, {
     method: metodo,
+    cache: 'no-store',      // nunca usar lista guardada pelo navegador: o Histórico tem de ser o do banco
     headers: { Authorization: `Bearer ${await user.getIdToken()}`, 'X-Tenant-Id': tenant, ...(corpo !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: corpo !== undefined ? JSON.stringify(corpo) : undefined,
   });

@@ -33,6 +33,11 @@ const addTombstone = (id: string) => {
   } catch {}
 };
 
+/** Libera atos que o banco ainda tem mas que este navegador escondia por uma marca de exclusão antiga. Devolve quantas marcas foram removidas. */
+export const liberarMarcasDeExclusao = (ids: string[]): number => {
+  let n = 0; for (const id of ids) { if (getTombstones().has(id)) { removeTombstone(id); n++; } } return n;
+};
+
 const removeTombstone = (id: string) => {
   try {
     const set = getTombstones();
