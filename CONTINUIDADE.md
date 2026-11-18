@@ -314,3 +314,7 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 ## Quota das chaves: expansão voltou a 1 tentativa (18/11, hipótese do usuário confirmada pelo código)
 - Antes de 17/11 (commit 4738dd5^) a expansão do portão de profundidade tentava 1 vez, sem esperar modelo forte. 4738dd5/9a6f2e0 puseram 3 tentativas (cada uma reenvia os AUTOS INTEIROS, 286k–423k tokens no log) + contingência por seções (roteiro também reenvia os autos) => até 4 envios dos autos por etapa × 2 etapas, queimando o TPM das 6 chaves (429, "[Cota] aguardando 65s").
 - `server.ts`: `expandirMinutaResumida` = 1 tentativa, `esperaProfundoMs` 0. A contingência (seções pequenas, só o roteiro leva os autos) continua como rede de segurança. Pendente de "Pode publicar".
+
+## Causa provável da lentidão (log 13:36–13:44): parte fixa do pedido ≈ 224k tokens
+- Log: "parte fixa do pedido (~224k tokens: instruções, teses, base de conhecimento)" ⇒ quase todo o limite de 250k/min por chave; cada chamada da etapa 1 sofre 429 e "[Cota] aguardando 65s". `server.ts` (~l.5215) concatena TODOS os docs ativos da base de conhecimento (vêm do navegador, `knowledgeDb`) SEM limite (o Turbo corta em 200k car.).
+- Adicionado log "[Tamanho do pedido]" (base de conhecimento, teses, paradigma) logo após montar `stage1SystemInstruction`. Próximo passo: ler esse log e decidir (limitar/priorizar docs da base, ou o usuário desativar docs grandes). Pendente de "Pode publicar".

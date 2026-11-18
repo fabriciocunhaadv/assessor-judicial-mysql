@@ -5558,6 +5558,7 @@ if (liveGroundingPrecedents) {
 if (knowledgeBaseText) {
     stage1SystemInstruction += `\n\n[BASE DE CONHECIMENTO DO GABINETE]:\n${knowledgeBaseText}\n`;
 }
+try { console.log(`[Assessor Judicial - Tamanho do pedido] instruções da etapa 1 ≈ ${Math.round(stage1SystemInstruction.length / 3.3 / 1000)}k tokens (${stage1SystemInstruction.length} car.): base de conhecimento ${knowledgeBaseText.length} car. (${Array.isArray(knowledgePdfs) ? knowledgePdfs.length : 0} doc(s)), teses do gabinete ${typeof cabinetTesesText === "string" ? cabinetTesesText.length : 0} car., paradigma ${String(paradigmModelText || "").length} car.`); } catch { /* só diagnóstico */ }
 
 let stage2SystemInstruction = SYSTEM_INSTRUCTION_FABRICIO + `
 
