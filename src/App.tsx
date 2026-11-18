@@ -69,6 +69,7 @@ import { HearingWorkbenchModal } from "./components/HearingWorkbenchModal";
 import { LateralAgentDrawer } from "./components/LateralAgentDrawer";
 import { TurboModuleModal } from "./components/TurboModuleModal";
 import { Toaster, toast } from 'react-hot-toast';
+import { chamarAuth } from "./lib/sessao";
 import { extractTextFromPdf } from "./utils/pdfExtractor";
 import { getApiHeaders, checkUserAiAccess, checkResponseForRotatedKey } from "./utils/apiKeyManager";
 import {
@@ -398,6 +399,28 @@ export default function App() {
   const [selectedActType, setSelectedActType] = useState<"auto" | "sentenca" | "decisao" | "despacho" | "embargos">("auto");
 
   useEffect(() => { try { document.documentElement.dataset.historicoSuporte = "1"; } catch { /* sem dataset */ } }, []);
+  // Aviso (não muda nada sozinho): se o último acesso em OUTRO aparelho foi em outro gabinete/unidade, avisa ao abrir; depois guarda o lugar atual.
+  const avisouLocal = useRef(false);
+  useEffect(() => {
+    if (!user?.uid || !activeUnit?.id || !activeTenantId) return;
+    let vivo = true;
+    (async () => {
+      try {
+        let aparelho = ""; try { aparelho = localStorage.getItem("assessor_aparelho_id") || ""; if (!aparelho) { aparelho = (globalThis.crypto?.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2)).slice(0, 48); localStorage.setItem("assessor_aparelho_id", aparelho); } } catch { aparelho = "sem-armazenamento"; }
+        if (!avisouLocal.current) {
+          avisouLocal.current = true;
+          const ult: any = await chamarAuth("GET", "/ultimo-local");
+          if (vivo && ult?.aparelho && ult.aparelho !== aparelho && (ult.unit !== activeUnit.id || ult.tenant !== activeTenantId)) {
+            const quando = ult.em ? new Date(ult.em).toLocaleString("pt-BR") : "";
+            toast(`No seu último acesso${quando ? ` (${quando})`: ""}, em outro aparelho, você estava no gabinete “${ult.tenantNome || ult.tenant}”, unidade “${ult.unitNome || ult.unit}”. Aqui está em “${tenantName || activeTenantId}”, unidade “${activeUnit.name || activeUnit.id}”. Se quiser ver os mesmos atos, troque no seletor do topo.`, { duration: 30000, icon: "🏛️" });
+          }
+        }
+        await chamarAuth("PUT", "/ultimo-local", { aparelho, tenant: activeTenantId, tenantNome: tenantName || "", unit: activeUnit.id, unitNome: activeUnit.name || "" });
+      } catch { /* o aviso nunca atrapalha o uso */ }
+    })();
+    return () => { vivo = false; };
+  }, [user?.uid, activeUnit?.id, activeTenantId]);
+
   // Perfil de quem está logado, para a extensão (página "Inicie aqui") decidir se mostra a Lupa do Magistrado: só aparece para magistrado. Sem login, o atributo some.
   useEffect(() => {
     try { const d = document.documentElement.dataset; if (user?.uid) d.assessorPerfil = isSuperAdmin ? "superadmin" : isJudge ? "magistrado" : "assessor"; else delete d.assessorPerfil; } catch { /* sem dataset */ }

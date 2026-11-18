@@ -145,7 +145,10 @@ historyRouter.get("/", rota(async (req, res, u) => {
   const onde: string[] = todosGabinetes ? ["1=1"] : ["tenant=?"], args: any[] = todosGabinetes ? [] : [u.tenant];
   if (unit !== "*") { onde.push("unit_id=?"); args.push(unit); }      // "*" = todas as unidades do gabinete (usado só para dizer onde um processo está gravado)
   { const c = condicaoAutor(criador, String(req.query.email || ""), u); if (c) { onde.push(c.sql); args.push(...c.args); } }
-  if (numeros.length) { onde.push(`numero_limpo IN (${numeros.map(() => "?").join(",")})`); args.push(...numeros); }
+  if (numeros.length) {      // número completo (20 dígitos) = igualdade; trecho do número (ex.: só "5097642") = contém
+    onde.push("(" + numeros.map((n) => (n.length >= 20 ? "numero_limpo=?" : "numero_limpo LIKE ?")).join(" OR ") + ")");
+    args.push(...numeros.map((n) => (n.length >= 20 ? n : `%${n}%`)));
+  }
   if (antes) { onde.push("date<?"); args.push(antes); }
   const [rows] = await banco().query<any[]>(`SELECT id, tenant, data FROM ${tabela} WHERE ${onde.join(" AND ")} ORDER BY date DESC LIMIT ?`, [...args, limite + 1]);
   const itens = rows.slice(0, limite).map((r) => ({ ...JSON.parse(r.data), id: r.id, ...(todosGabinetes ? { gabineteDoAto: r.tenant } : {}) }));

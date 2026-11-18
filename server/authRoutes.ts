@@ -167,6 +167,26 @@ authRouter.patch("/me", rota(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/** Último lugar (gabinete/unidade) em que o usuário trabalhou e em qual aparelho: serve só para AVISAR quando outro aparelho está em outro lugar. Não muda nada sozinho. */
+let ultimoLocalPronto: Promise<void> | null = null;
+const garantirUltimoLocal = () => (ultimoLocalPronto ||= (async () => {
+  await banco().query(`CREATE TABLE IF NOT EXISTS ultimo_local (user_id CHAR(36) NOT NULL PRIMARY KEY, aparelho VARCHAR(64) NOT NULL, tenant VARCHAR(64) NOT NULL DEFAULT '', tenant_nome VARCHAR(190) NOT NULL DEFAULT '', unit VARCHAR(64) NOT NULL DEFAULT '', unit_nome VARCHAR(190) NOT NULL DEFAULT '', em BIGINT NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+})());
+authRouter.get("/ultimo-local", rota(async (req, res) => {
+  const u = await autenticarSessao(req); await garantirUltimoLocal();
+  const [rows] = await banco().query<any[]>("SELECT aparelho, tenant, tenant_nome, unit, unit_nome, em FROM ultimo_local WHERE user_id=?", [u.uid]);
+  res.json(rows.length ? { aparelho: rows[0].aparelho, tenant: rows[0].tenant, tenantNome: rows[0].tenant_nome, unit: rows[0].unit, unitNome: rows[0].unit_nome, em: Number(rows[0].em) } : {});
+}));
+authRouter.put("/ultimo-local", rota(async (req, res) => {
+  const u = await autenticarSessao(req); await garantirUltimoLocal();
+  const t = (v: any, n: number) => String(v ?? "").slice(0, n), b = req.body || {};
+  if (!t(b.aparelho, 64)) throw erro(400, "aparelho não informado");
+  await banco().query(`INSERT INTO ultimo_local (user_id, aparelho, tenant, tenant_nome, unit, unit_nome, em) VALUES (?,?,?,?,?,?,?)
+    ON DUPLICATE KEY UPDATE aparelho=VALUES(aparelho), tenant=VALUES(tenant), tenant_nome=VALUES(tenant_nome), unit=VALUES(unit), unit_nome=VALUES(unit_nome), em=VALUES(em)`,
+    [u.uid, t(b.aparelho, 64), t(b.tenant, 64), t(b.tenantNome, 190), t(b.unit, 64), t(b.unitNome, 190), Date.now()]);
+  res.json({ ok: true });
+}));
+
 /** Liberar acesso por e-mail (super admin em qualquer gabinete; administrador só no próprio): cria o usuário já aprovado com a senha inicial padrão, que precisa ser trocada no primeiro acesso. */
 authRouter.post("/convidar", rota(async (req, res) => {
   const adm = await autenticarSessao(req);
