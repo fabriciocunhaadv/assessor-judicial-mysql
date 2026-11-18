@@ -74,7 +74,7 @@ function citacoesEmBloco(t: string): string {
     if (m && /^[^"“]*$/.test(m[2].slice(0, 6)) && m[1].length > 30) return `${m[1].trim()}\n\n> *${m[2].trim().replace(/^\*+|\*+$/g, "")}*`;
     // 2) transcrição entre aspas longa (80+ caracteres) após dois-pontos
     m = b.match(/^([\s\S]*?:\s)(["“][^"”\n]{80,}["”])([.;]?[\s\S]*)$/);
-    if (m && m[1].length > 20) { const resto = m[3].trim(); return `${m[1].trim()}\n\n> *${m[2]}*${resto && resto !== "." ? "\n\n" + resto : ""}`; }
+    if (m && m[1].length >= 12) { const resto = m[3].trim(); return `${m[1].trim()}\n\n> *${m[2]}*${resto && resto !== "." ? "\n\n" + resto : ""}`; }
     return b;
   }).join("\n\n");
 }
