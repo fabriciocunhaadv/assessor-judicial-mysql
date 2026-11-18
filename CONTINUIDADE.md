@@ -306,3 +306,7 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 
 ## Não insistir no modelo que recusou (classificação de autos grandes) — pedido do usuário
 - `src/utils/autosGrandes.ts` `chamar`: a fila inclui os modelos leves desde a 1ª tentativa (antes só na 4ª, após ~3 min de pausas de 62 s); a pausa de 62 s só vale para erro de COTA (429); em 503 espera 4 s. Resfriamento por modelo (`resfriarModelo`, 45 s dobrando até 10 min) NÃO foi alterado: serve justamente para pular o modelo que recusou. Modelo leve entrega minuta robusta pela contingência por seções (já existente). Pendente de "Pode publicar".
+
+## Volta a "ir para frente" (18/11, pedido do usuário após log de 13h)
+- `server.ts`: `esperaProfundoMs` das etapas 1 e 2 = 0 (sem esperar modelo completo; log mostrava "aguardando 30s … em vez de cair no modelo leve" e "[Cota] … aguardando 65s"). `testes/servidor/rodar_espera_profundo.mjs` agora exige NÃO esperar (a expansão do "portão de profundidade" ainda tenta 30/20/20 s e vai para a contingência por seções).
+- `autosGrandes.ts`: `sobra < 0` não lança mais AUTOS_ESSENCIAIS_ACIMA_DO_LIMITE; segue só com o dossiê e loga a parte fixa do pedido. PISTA ABERTA: o log mostra pedidos estimados em 286k–423k tokens e "cabem -37k": a parte fixa (teses/base de conhecimento/legislação/mapa) está enorme e queima a cota por minuto (429). Investigar o que compõe `fixo` (ver novo log "parte fixa do pedido"). Pendente de "Pode publicar".

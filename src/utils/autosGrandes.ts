@@ -200,7 +200,10 @@ export async function gerarComAutosGrandes(gerar: (o: any) => Promise<any>, opts
             }
             const dossie = `[DOSSIÊ FÁTICO-PROBATÓRIO DOS AUTOS INTEGRAIS: os autos (~${Math.round(principal.length / CPT / 1000)} mil tokens) excedem o limite de entrada da API gratuita. Foram lidos integralmente em ${memos.length} partes e extraídos fielmente abaixo, com localização (Mov./Arq./Pág.) e transcrição literal dos trechos decisivos. Use SOMENTE o que consta aqui e nos trechos integrais.]\n\n${memos.join("\n\n")}\n\n`;
             let sobra = permitido - dossie.length - 4000;
-            if (sobra < 0) { const er: any = new Error(`Os autos têm cerca de ${Math.round(principal.length / CPT / 1000)} mil tokens e o dossiê gerado ainda não cabe no limite gratuito. Use uma chave com faturamento ativa.`); er.codigo = "AUTOS_ESSENCIAIS_ACIMA_DO_LIMITE"; throw er; }
+if (sobra < 0) {      // antes: parava o processo aqui. Agora SEGUE só com o dossiê (sem trechos integrais) e deixa a esteira tentar (modelos leves/cota); se a API recusar de verdade, os códigos de "autos grandes" já mandam para a leitura em lotes.
+                log(`[Autos Grandes] Aviso: a parte fixa do pedido (~${Math.round(fixo / 1000)}k tokens: instruções, teses, base de conhecimento) já ocupa quase todo o limite; seguindo só com o dossiê, sem trechos integrais.`);
+                sobra = 0;
+            }
             const decisivas: string[] = [];
             for (const u of uteis) { if (/DECIS[ÃA]O|DESPACHO|SENTEN[ÇC]A|JULGO|DEFIRO|INDEFIRO|DETERMINO|HOMOLOGO/i.test(u.out) && u.out.length <= sobra) { decisivas.push(u.out); sobra -= u.out.length; } }
             corpoFinal = dossie + (decisivas.length ? `[TRECHOS INTEGRAIS DE DECISÕES, DESPACHOS E SENTENÇAS (transcrição literal, ${decisivas.length} página(s))]\n` + decisivas.join("") : "");
