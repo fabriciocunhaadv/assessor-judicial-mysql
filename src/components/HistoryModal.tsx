@@ -154,6 +154,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
 }) => {
   const { allowedUnits, isAdmin, isJudge, isSuperAdmin, activeUnit, userProfile: perfilAuth, activeTenantId, allTenants, allUnitsForSuperAdmin } = useAuth() as any;
   // Super Admin: unidades dos OUTROS gabinetes (cada gabinete tem as suas); mover para uma delas leva o processo para aquele gabinete
+  const gabineteAtivoNome = React.useMemo(() => String(((allTenants || []) as any[]).find((t) => t.id === activeTenantId)?.name || activeTenantId || ""), [allTenants, activeTenantId]);
   const outrosGabinetes = React.useMemo(() => !isSuperAdmin ? [] : ((allTenants || []) as any[]).filter((t) => t.id !== activeTenantId).map((t) => ({ id: t.id as string, name: t.name as string, units: ((allUnitsForSuperAdmin || []) as any[]).filter((u) => u.tenantId === t.id) })).filter((g) => g.units.length > 0), [isSuperAdmin, allTenants, allUnitsForSuperAdmin, activeTenantId]);
   const verBanco = ehDonoDoSistema(perfilAuth);      // selo e faixa de origem do banco: só o dono do sistema
   // só administrador, juiz e super admin podem ver as minutas do gabinete inteiro; os demais veem só as próprias
@@ -161,7 +162,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const [historyBase, setHistory] = useState<SavedAnalysis[]>([]);
   // atos achados direto no banco quando a busca por número de processo não os encontra na lista (ex.: marca de exclusão antiga neste navegador)
   const [recuperados, setRecuperados] = useState<SavedAnalysis[]>([]);
-  const [emOutraUnidade, setEmOutraUnidade] = useState<{ processo: string; unitId: string; vara: string; autor: string; quando: number }[] | null>(null);
+  const [emOutraUnidade, setEmOutraUnidade] = useState<{ processo: string; unitId: string; vara: string; autor: string; quando: number; gabinete?: string }[] | null>(null);
   const history = React.useMemo(() => {
     if (!recuperados.length) return historyBase;
     const ids = new Set(historyBase.map((x) => x?.id));
@@ -262,7 +263,11 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
           // nada nesta unidade: confere se o processo está gravado em OUTRA unidade do gabinete e avisa onde
           const outras = await buscarAtosDosProcessos([searchTerm], "dossie_por_processo", true);
           const fora = outras.filter((a) => a?.id && (a.unitId || "montes_claros") !== (activeUnit?.id || "montes_claros"));
-          setEmOutraUnidade(fora.length ? fora.map((a: any) => ({ processo: a.processNumber || a.result?.minute?.processNumber || "", unitId: a.unitId || "montes_claros", vara: a.result?.minute?.judicialUnit || "", autor: a.creatorName || "", quando: a.date || 0 })) : []);
+          // super admin: se nem nas outras unidades deste gabinete, procura nos outros gabinetes
+          let deOutroGabinete: any[] = [];
+          if (!fora.length && isSuperAdmin) deOutroGabinete = (await buscarAtosDosProcessos([searchTerm], "dossie_por_processo", true, true)).filter((a: any) => a?.id && a.gabineteDoAto && a.gabineteDoAto !== activeTenantId);
+          const lista = [...fora, ...deOutroGabinete];
+          setEmOutraUnidade(lista.length ? lista.map((a: any) => ({ processo: a.processNumber || a.result?.minute?.processNumber || "", unitId: a.unitId || "montes_claros", vara: a.result?.minute?.judicialUnit || "", autor: a.creatorName || "", quando: a.date || 0, gabinete: a.gabineteDoAto && a.gabineteDoAto !== activeTenantId ? a.gabineteDoAto : undefined })) : []);
           return;
         }
         const ja = new Set(historyBase.map((x) => x?.id));
@@ -747,6 +752,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
           )}
         </div>
 
+        <div className="mx-3 mt-2 text-[11px] text-slate-600 flex flex-wrap gap-x-3" data-testid="historico-gabinete-ativo"><span>🏛️ Gabinete ativo: <b>{gabineteAtivoNome || "—"}</b></span><span>📍 Unidade: <b>{activeUnit?.name || activeUnit?.id || "—"}</b></span></div>
         <BancoOrigem tabela="history" descricao="As minutas e dossiês desta lista são lidos desse banco e tudo o que você salva, marca como lançado ou exclui é gravado nele." />
         <AvisoRetencao />
 
@@ -788,9 +794,9 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                 </p>
                 {emOutraUnidade && emOutraUnidade.length > 0 && (
                   <div data-testid="aviso-outra-unidade" className="mt-3 max-w-md mx-auto text-left text-xs bg-amber-50 border border-amber-300 text-amber-900 rounded-lg p-3">
-                    <b>Achei este processo, mas em outra unidade.</b> Você está na unidade “{activeUnit?.name || activeUnit?.id}”, e o ato está gravado em:
-                    <ul className="mt-1 list-disc pl-4">{emOutraUnidade.map((o, i) => <li key={i}>{o.processo} — unidade “{o.unitId}”{o.vara ? ` (${o.vara})` : ""}{o.autor ? `, de ${o.autor}` : ""}{o.quando ? `, em ${new Date(o.quando).toLocaleString("pt-BR")}` : ""}</li>)}</ul>
-                    <span className="block mt-1">Troque a unidade ativa no menu do topo para ver o ato no Histórico.</span>
+                    <b>Achei este processo, mas em outro lugar.</b> Você está no gabinete “{gabineteAtivoNome}”, unidade “{activeUnit?.name || activeUnit?.id}”, e o ato está gravado em:
+                    <ul className="mt-1 list-disc pl-4">{emOutraUnidade.map((o, i) => <li key={i}>{o.processo} — {o.gabinete ? <>gabinete “{o.gabinete}”, </> : null}unidade “{o.unitId}”{o.vara ? ` (${o.vara})` : ""}{o.autor ? `, de ${o.autor}` : ""}{o.quando ? `, em ${new Date(o.quando).toLocaleString("pt-BR")}` : ""}</li>)}</ul>
+                    <span className="block mt-1">Troque o gabinete/unidade ativo no menu do topo para ver o ato no Histórico.</span>
                   </div>
                 )}
                 {emOutraUnidade && emOutraUnidade.length === 0 && searchTerm.replace(/\D/g, "").length >= 7 && (

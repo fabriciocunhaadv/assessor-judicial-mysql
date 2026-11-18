@@ -400,8 +400,8 @@ export default function App() {
   useEffect(() => { try { document.documentElement.dataset.historicoSuporte = "1"; } catch { /* sem dataset */ } }, []);
   // Perfil de quem está logado, para a extensão (página "Inicie aqui") decidir se mostra a Lupa do Magistrado: só aparece para magistrado. Sem login, o atributo some.
   useEffect(() => {
-    try { const d = document.documentElement.dataset; if (user?.uid) d.assessorPerfil = isJudge ? "magistrado" : "assessor"; else delete d.assessorPerfil; } catch { /* sem dataset */ }
-  }, [user?.uid, isJudge]);
+    try { const d = document.documentElement.dataset; if (user?.uid) d.assessorPerfil = isSuperAdmin ? "superadmin" : isJudge ? "magistrado" : "assessor"; else delete d.assessorPerfil; } catch { /* sem dataset */ }
+  }, [user?.uid, isJudge, isSuperAdmin]);
 
   useEffect(() => {
     try {
