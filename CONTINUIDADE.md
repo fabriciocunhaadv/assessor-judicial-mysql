@@ -318,3 +318,7 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 ## Causa provável da lentidão (log 13:36–13:44): parte fixa do pedido ≈ 224k tokens
 - Log: "parte fixa do pedido (~224k tokens: instruções, teses, base de conhecimento)" ⇒ quase todo o limite de 250k/min por chave; cada chamada da etapa 1 sofre 429 e "[Cota] aguardando 65s". `server.ts` (~l.5215) concatena TODOS os docs ativos da base de conhecimento (vêm do navegador, `knowledgeDb`) SEM limite (o Turbo corta em 200k car.).
 - Adicionado log "[Tamanho do pedido]" (base de conhecimento, teses, paradigma) logo após montar `stage1SystemInstruction`. Próximo passo: ler esse log e decidir (limitar/priorizar docs da base, ou o usuário desativar docs grandes). Pendente de "Pode publicar".
+
+## Base de Conhecimento só com o que tem a ver com o caso (itens 1 e 2 autorizados em 18/11)
+- `server/baseRelevante.ts` `selecionarBase`: docs curtos (≤12k car., até 50k no total) entram inteiros; docs longos são cortados em trechos de ~3k e só entram os que combinam com termos dos autos/prompt, em ordem original; teto 150k car. (`BASE_CONHECIMENTO_TETO_CHARS`). Base ≤ teto vai inteira. Usado em `server.ts` (montagem de `knowledgeBaseText` da `/api/generate-minute`). Log: "[Base de Conhecimento] N doc(s) -> enviados Xk … | fora: …". Teste: `testes/teste_base_relevante.ts`.
+- Item 2 (leis): já era busca por artigo (`consultarLegislacao`, máx. 8–10 artigos) — mantido, sem mudança. Item 3 (teses do gabinete com teto) NÃO feito, aguardando autorização.

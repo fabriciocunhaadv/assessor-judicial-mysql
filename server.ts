@@ -39,6 +39,7 @@ import { deduplicateJudicialPdfFiles, deduplicateTextBlocks } from './src/utils/
 import { extractFromCoverPage } from './src/utils/judicialMetadataExtractor';
 import { gerarComAutosGrandes, reduzirPorRelevancia } from './src/utils/autosGrandes';
 import { expandirPorSecoes } from './server/contingenciaSecoes';
+import { selecionarBase } from './server/baseRelevante';
 import { detectarInjecao, instrucaoDefesaInjecao } from './src/utils/promptInjection';
 import { descreverCorte, textoDoCorte, CorteArquivo } from './src/utils/corteAutos';
 import { montarCobertura } from './server/coberturaLeitura';
@@ -5212,11 +5213,12 @@ const contentsParts=[];let textoCortadoNoLimite=false;
 let totalDuplicatesFound = 0;
 let totalCharsSaved = 0;
 
-if(knowledgePdfs&&Array.isArray(knowledgePdfs)&&knowledgePdfs.length>0){for(const kPdf of knowledgePdfs){if(kPdf.extractedText&&typeof kPdf.extractedText==="string"&&kPdf.extractedText.trim().length>0){knowledgeBaseText+=`
-
-[=== BASE DE CONHECIMENTO INTERNA: ${kPdf.name} ===]
-${kPdf.extractedText}
-`}}}
+if(knowledgePdfs&&Array.isArray(knowledgePdfs)&&knowledgePdfs.length>0){
+  // só o que tem a ver com o caso (busca local por termos dos autos e do prompt), com teto de tamanho: antes ia a base inteira em todo pedido e estourava a cota por minuto das chaves
+  const selB=selecionarBase(knowledgePdfs,[typeof safeProcessText==="string"?safeProcessText:"",typeof customPromptText==="string"?customPromptText:"",typeof specificInstructions==="string"?specificInstructions:""],Number(process.env.BASE_CONHECIMENTO_TETO_CHARS)||150000);
+  knowledgeBaseText=selB.texto;
+  try{console.log(`[Assessor Judicial - Base de Conhecimento] ${knowledgePdfs.length} doc(s) (${Math.round(selB.totalOriginal/1000)}k car.) -> enviados ${Math.round(selB.totalEnviado/1000)}k car.: ${selB.enviados.map((e)=>e.nome.slice(0,40)+(e.parcial?" (trechos)":"")).join("; ")||"nenhum"}${selB.omitidos.length?` | fora: ${selB.omitidos.length} doc(s) sem relação com o caso`:""}`)}catch{}
+}
 
 let targetPdfFiles = pdfFiles || [];
 if(pdfFiles&&Array.isArray(pdfFiles)&&pdfFiles.length>0){
