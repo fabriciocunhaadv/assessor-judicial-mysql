@@ -299,3 +299,7 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 
 ## Gigante: voltar a prosseguir (sem espera/adiamento) — pedido do usuário
 - `gerente.ts`: leitura dos lotes passa `podeAdiar:false, esperaMs:0` (modelo leve lê o trecho com a ficha estruturada se o completo estiver ocupado); o código de adiamento fica dormente. `chamar`: 5 tentativas, pausas 10/15/20/30 s (era 9 tentativas até 60 s). A qualidade da minuta final segue protegida pela contingência por seções (`server/contingenciaSecoes.ts`) e pela espera de 30 s nas etapas 1/2. Pendente de "Pode publicar".
+
+## Gigante parado 1 h (18/11, diagnóstico pelo log do servidor)
+- Log: Google devolvendo 503 em gemini-3.8/3.6-flash (resfriamento 600 s) e 429 nas 6 chaves; "Autos Grandes: classificação" com tentativas 1/2 repetidas (pausa 62 s). Causa = Google instável, não os ajustes. A tela do usuário ainda mostrava "tentativa 2/9" = bundle antigo (precisa Ctrl+Shift+R).
+- `GigantesPanel`: fora da fila, a régua cíclica foi trocada por `TempoNaEtapa` (há quanto tempo na mesma etapa; avisa após 10 min). Na fila continua a régua de 30 s. Pendente de "Pode publicar".

@@ -34,3 +34,16 @@ export function BarraCiclo({ cicloSeg, rotulo }: { cicloSeg: number; rotulo: str
     </div>
   );
 }
+
+/** Há quanto tempo o processo está NA MESMA etapa (zera quando a etapa muda). Honesto: não finge progresso; avisa quando passa de 10 min. */
+export function TempoNaEtapa({ chave }: { chave: string }) {
+  const [ini, setIni] = useState(() => Date.now()); const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => { setIni(Date.now()); }, [chave]);
+  useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 1000); return () => clearInterval(t); }, []);
+  const seg = Math.max(0, Math.floor((agora - ini) / 1000)), longo = seg >= 600;
+  return (
+    <div className={`text-[10px] font-semibold ${longo ? "text-red-700" : "text-slate-500"}`} data-testid="tempo-na-etapa">
+      Nesta etapa há {mmss(seg)}{longo ? " — o Google está instável (503/cota). Se preferir, Pause e retome mais tarde." : ""}
+    </div>
+  );
+}
