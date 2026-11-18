@@ -17,7 +17,7 @@ try {
   const longo = (m) => "texto ".repeat(900) + m;
   const carimbo = (g, arq, nome, k, t) => `[Página ${g} de 4]\nMovimentacao 24 : Contestação / \nArquivo ${arq}: ${nome} - Pag.${k}/${t}\n`;
   const autos = carimbo(1, 1, "00_contestacao.pdf", 1, 1) + "contestação\n" + carimbo(2, 10, "09_ficha_cadastral_sign.pdf", 1, 2) + "ficha cadastral do cartão\n" + carimbo(3, 10, "09_ficha_cadastral_sign.pdf", 2, 2) + "ficha\n";
-  const r = await post({ message: "refaça a fundamentação", currentMinute: { title: "DECISÃO", header: "JUIZADO ESPECIAL CÍVEL", judicialUnit: "Juizado Especial Cível", processNumber: "1", parties: { author: "A", defendant: "B" }, relatorio: longo("FIM-DO-RELATORIO-LONGO"), fundamentacao: "fund", dispositivo: "disp" }, customPromptText: longo("FIM-DO-PROMPT-LONGO"), cabinetTesesText: longo("FIM-DAS-TESES-LONGAS"), isTesesEnabled: true, promptTitle: "Outros Área Judicial - Juizado Especial Cível", originalProcessText: autos });
+  const r = await post({ message: "refaça o relatório e a fundamentação", currentMinute: { title: "DECISÃO", header: "JUIZADO ESPECIAL CÍVEL", judicialUnit: "Juizado Especial Cível", processNumber: "1", parties: { author: "A", defendant: "B" }, relatorio: longo("FIM-DO-RELATORIO-LONGO"), fundamentacao: "fund", dispositivo: "disp" }, customPromptText: longo("FIM-DO-PROMPT-LONGO"), cabinetTesesText: longo("FIM-DAS-TESES-LONGAS"), isTesesEnabled: true, promptTitle: "Outros Área Judicial - Juizado Especial Cível", originalProcessText: autos });
   ok(r.status === 200 && r.j.hasMinuteUpdate, "o chat responde com a minuta atualizada");
   const c = await (await fetch("http://127.0.0.1:8994/__chat")).json(); console.log(JSON.stringify(c));
   ok(c.relCompleto, "o relatório chega inteiro à IA (sem corte de 1.500 caracteres)");
@@ -34,6 +34,8 @@ try {
   const blob = await post({ message: "altere [[BLOB]]", currentMinute: base });
   ok(blob.j.hasMinuteUpdate && blob.j.updatedMinute.title === "DECISÃO" && /Relatório novo/.test(blob.j.updatedMinute.relatorio) && /Fundamentação nova/.test(blob.j.updatedMinute.fundamentacao) && /INDEFIRO/.test(blob.j.updatedMinute.dispositivo), "minuta inteira no título: o servidor separa nas três partes e o título fica curto");
   ok(/I - RELATÓRIO\n\nRelatório novo/.test(blob.j.updatedMinute.fullFormattedText) && /III - DISPOSITIVO/.test(blob.j.updatedMinute.fullFormattedText), "o texto completo é montado com as partes certas (formatação preservada)");
+  const esc = await post({ message: "altere só o relatório [[BLOB]]", currentMinute: base });
+  ok(esc.j.hasMinuteUpdate && /Relatório novo/.test(esc.j.updatedMinute.relatorio) && esc.j.updatedMinute.fundamentacao === "f" && esc.j.updatedMinute.dispositivo === "d" && esc.j.updatedMinute.title === "DECISÃO" && /Alterei somente relatório/.test(esc.j.reply), "pedido só do relatório: fundamentação, dispositivo e título ficam exatamente como estavam, mesmo que a IA mexa neles");
   const igual = await post({ message: "altere [[IGUAL]]", currentMinute: base });
   ok(!igual.j.hasMinuteUpdate && !igual.j.updatedMinute && /NÃO foi alterado/.test(igual.j.reply), "IA diz que alterou mas o texto é o mesmo: avisa que nada mudou (sem criar versão falsa)");
 } finally { for (const p of filhos) { try { process.kill(-p.pid, 9); } catch {} } }

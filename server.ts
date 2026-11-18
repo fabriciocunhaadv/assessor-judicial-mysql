@@ -1,4 +1,5 @@
 
+import { escopoDoPedido, blocoDeEscopo, aplicarEscopo, textoDoEscopo, type SecaoMinuta } from "./src/utils/escopoEdicao";
 import { normalizarMinutaDoChat } from './src/utils/normalizarMinutaChat';
 import express from 'express';
 import path from 'path';
@@ -1046,6 +1047,7 @@ app.post("/api/chat-agaia", async (req, res) => {
         
         // RESUMO EXECUTIVO: consome ~85% menos tokens que despejar dezenas de milhares de caracteres dos autos
         const processExecutiveSummary = executiveSummary || (originalProcessText ? String(originalProcessText).substring(0, 60000) : 'Autos do processo judicial');
+        const escopoEdicao = escopoDoPedido(String(message || ""));      // pedido de UMA parte só (ex.: "edite só o relatório"): só ela pode mudar
 
         const systemPrompt = `Você é o Assessor Especialista de Gabinete do Magistrado, responsável pelo refinamento técnico, correções e redação de minutas judiciais oficiais.
 Sua redação deve ser culta, formal, profunda e tecnicamente impecável, em estrita conformidade com o CPC, as leis vigentes e a jurisprudência aplicável.
@@ -1064,7 +1066,7 @@ ${currentMinute?.fundamentacao || 'Não informada'}
 ${currentMinute?.dispositivo || 'Não informado'}
 ${blocoCadernoDeTesesTurbo(cabinetTesesText || "", isTesesEnabled !== false)}
 ${customPromptText ? `\n# PROMPT DO GABINETE PARA ESTA MATÉRIA (estilo e regras próprias; siga-o):\n${String(customPromptText).slice(0, 60000)}\n` : ""}
-
+${escopoEdicao ? blocoDeEscopo(escopoEdicao) : ""}
 # DIRETRIZES MANDATÓRIAS DE RIGOR E EXAUSTIVIDADE JURÍDICA:
 1. PROIBIÇÃO ABSOLUTA DE RESPOSTAS SUCINTAS OU DE UM PARÁGRAFO:
    - Se o usuário solicitar alteração do ato judicial (ex.: converter sentença em decisão interlocutória/liminar, apreciar pedido de tutela de urgência, reescrever fundamentação, acolher preliminar ou sanear o feito), você DEVE redigir uma FUNDAMENTAÇÃO EXAUSTIVA, DENSA E PROFUNDA.
@@ -1169,6 +1171,19 @@ ${REGRA_ESTRUTURA_POR_ATO}${REGRA_DISPOSITIVO_CARTORIO}${REGRAS_MECANICA_JUDICIA
             if (norm.semMudanca && data.hasMinuteUpdate !== false) {
                 data.hasMinuteUpdate = false; data.updatedMinute = undefined;
                 data.reply = `${data.reply}\n\n⚠ A IA respondeu fora do formato e o texto da minuta NÃO foi alterado. Nada foi mudado; peça de novo (pode reformular o pedido).`;
+            }
+        }
+        // ESCOPO: o que o pedido não mandou mudar volta exatamente como estava (a IA às vezes reescreve a minuta toda mesmo com a ordem no prompt)
+        if (escopoEdicao && data.updatedMinute && typeof data.updatedMinute === 'object') {
+            const ap = aplicarEscopo(currentMinute, data.updatedMinute, escopoEdicao);
+            data.updatedMinute = ap.minuta;
+            if (ap.restauradas.length) console.warn(`[chat-agaia] escopo "${textoDoEscopo(escopoEdicao)}": a IA mexeu também em ${ap.restauradas.join(", ")}; restaurado ao original`);
+            const mudou = escopoEdicao.some((sec: SecaoMinuta) => String(data.updatedMinute[sec] ?? "") !== String(currentMinute?.[sec] ?? ""));
+            if (!mudou && data.hasMinuteUpdate !== false) {
+                data.hasMinuteUpdate = false; data.updatedMinute = undefined;
+                data.reply = `${data.reply}\n\n⚠ A IA não alterou ${textoDoEscopo(escopoEdicao)} (o que você pediu). Nada foi mudado na minuta: tente de novo ou reformule o pedido.`;
+            } else if (mudou) {
+                data.reply = `${data.reply}\n\n✔ Alterei somente ${textoDoEscopo(escopoEdicao)}; o restante da minuta ficou exatamente como estava.`;
             }
         }
         let finalUpdatedMinute = undefined;

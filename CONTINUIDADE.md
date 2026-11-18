@@ -260,3 +260,8 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 
 ## Sites de busca livres (Studio) — ver "4.0.6" no CONTINUIDADE da extensão
 - `hostPermitido` (server/fontesPendentes.ts) agora aceita qualquer https público; editor de sites mostra o aviso da permissão do Chrome e valida https:// antes de salvar.
+
+## Edição pelo chat: só a parte pedida muda (commit local, aguardando "Pode publicar")
+- Queixa: "editar só o relatório" reescrevia fundamentação e dispositivo (ficava "sentencinha xoxa"). Causa: o prompt do `/api/chat-agaia` manda devolver as 3 partes e tem regras de exaustividade que levavam a IA a reescrever tudo.
+- `src/utils/escopoEdicao.ts`: `escopoDoPedido(msg)` (só relatório / fundamentação / dispositivo; "considerando o relatório" é referência; conversão de ato e "toda a minuta" = global), `blocoDeEscopo` (ordem no prompt, inclui "sem tópicos → prosa") e `aplicarEscopo` (garantia no servidor: o que não foi pedido volta idêntico, inclusive o título). A resposta diz "Alterei somente o relatório…"; se a IA não mexeu no que foi pedido, avisa e não cria versão.
+- Testes: `testes/teste_escopo_edicao.ts`, `testes/servidor/rodar_chat.mjs` (caso novo + mensagem do teste antigo ajustada).
