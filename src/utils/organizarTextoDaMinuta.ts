@@ -42,6 +42,43 @@ function itensEmLinhas(t: string): string {
   return t.replace(/\n{3,}/g, "\n\n");
 }
 
+
+const COMANDO = new RegExp(`^(?:\\*\\*)?(?:ACOLHO|REJEITO|JULGO|DETERMINO|INDEFIRO|DEFIRO|CONDENO|HOMOLOGO|DECLARO|EXTINGO|CONCEDO|NEGO|DECRETO|ARBITRO|FIXO|Intime-se|Intimem-se|Intimar-se|Expeça-se|Expeçam-se|Cumpra-se|Publique-se|Registre-se|Oficie-se|Cite-se|Anote-se|Proceda-se|Providencie-se|Encaminhe-se|Remeta-se|Dê-se|Certifique-se|Cumpridas|Cumprida|Decorrido|Decorridos|Transitad[oa]|Após|Sem prejuízo|Custas|Honorários|Sem custas|Defiro|Indefiro|Determino|Condeno|Julgo|Homologo|Declaro|Extingo|Concedo|Rejeito|Acolho)\\b`);
+
+/** Dispositivo corrido (sem numeração): a primeira frase ("Ante o exposto...") fica como abertura e cada comando vira um item numerado. */
+function dispositivoEmItens(t: string): string {
+  if (/(^|\n)\s*(?:\d{1,2}[.)]|[-*•])\s+\S/.test(t)) return t; // já tem itens
+  const blocos = t.split(/\n[ \t]*\n/);
+  const idx = blocos.findIndex((b) => b.length > 250 && !b.includes("\n") && !/^\s*(?:TPU|Classe|Movimento)\b/i.test(b));
+  if (idx < 0) return t;
+  const fs = frases(blocos[idx].trim());
+  const comandos = fs.filter((f, i) => i > 0 && COMANDO.test(f.trim())).length;
+  if (comandos < 3) return t;
+  const abertura: string[] = []; const itens: string[] = [];
+  fs.forEach((f, i) => {
+    if (i === 0) { abertura.push(f); return; }
+    if (COMANDO.test(f.trim()) || !itens.length) itens.push(f); else itens[itens.length - 1] += " " + f;
+  });
+  // a abertura "Ante o exposto, ACOLHO..." já traz o primeiro comando: fica como parágrafo; os demais viram itens
+  const lista = itens.map((f, i) => `${i + 1}. ${f.replace(/^\*\*|\*\*$/g, "")}`).join("\n\n");
+  blocos[idx] = abertura.join(" ") + "\n\n" + lista;
+  return blocos.join("\n\n");
+}
+
+/** Trecho de lei/precedente transcrito sem ">" (ex.: `dispõe o art. 55: Art. 55. A sentença...` ou entre aspas longas) -> bloco de citação. */
+function citacoesEmBloco(t: string): string {
+  return t.split(/\n[ \t]*\n/).map((b) => {
+    if (/^\s*(?:>|#|\d{1,2}\.|[-*•])/.test(b)) return b;
+    // 1) texto legal transcrito após dois-pontos: "...: Art. 55. A sentença ..."
+    let m = b.match(/^([\s\S]*?[:,]\s)((?:Art\.|Artigo|§|Parágrafo único)[^\n]{40,}?)$/);
+    if (m && /^[^"“]*$/.test(m[2].slice(0, 6)) && m[1].length > 30) return `${m[1].trim()}\n\n> *${m[2].trim().replace(/^\*+|\*+$/g, "")}*`;
+    // 2) transcrição entre aspas longa (80+ caracteres) após dois-pontos
+    m = b.match(/^([\s\S]*?:\s)(["“][^"”\n]{80,}["”])([.;]?[\s\S]*)$/);
+    if (m && m[1].length > 20) { const resto = m[3].trim(); return `${m[1].trim()}\n\n> *${m[2]}*${resto && resto !== "." ? "\n\n" + resto : ""}`; }
+    return b;
+  }).join("\n\n");
+}
+
 export function organizarTextoDaMinuta(texto: string, secao: SecaoDaMinuta): string {
   if (typeof texto !== "string" || !texto.trim()) return texto;
   try {
@@ -50,6 +87,7 @@ export function organizarTextoDaMinuta(texto: string, secao: SecaoDaMinuta): str
     t = t.replace(/([^\n#])[ \t]+(#{2,4}[ \t]+\S)/g, "$1\n\n$2").replace(/([^\n])[ \t]+(>[ \t]*[*"“])/g, "$1\n\n$2");
     if (secao === "dispositivo") {
       t = itensEmLinhas(t);
+      t = dispositivoEmItens(t);
       t = t.replace(/([^\n])[ \t]+((?:\*\*)?Determina[çc][õo]es\s+(?:à|a)s?\s+(?:escrivania|partes)[^:\n]{0,30}:(?:\*\*)?)/gi, "$1\n\n$2")
            .replace(/(^|\n\n)(Determina[çc][õo]es\s+(?:à|a)s?\s+(?:escrivania|partes)[^:\n]{0,30}:)(?!\*)/gi, "$1**$2**");
     } else {
@@ -59,6 +97,7 @@ export function organizarTextoDaMinuta(texto: string, secao: SecaoDaMinuta): str
       const blocos = t.split(/\n[ \t]*\n/).map((b) => (b.length > 900 && !/^\s*(?:[-*•>#]|\d{1,2}\.)/.test(b) && !b.includes("\n") ? emParagrafos(b) : b));
       t = blocos.join("\n\n");
     }
+    if (secao !== "dispositivo") t = citacoesEmBloco(t);
     // citação com vários trechos na mesma linha ("> Art. 321. ... > Parágrafo único. ...") -> cada trecho em uma linha da citação
     t = t.split(/\n[ \t]*\n/).map((b) => (/^\s*>/.test(b) ? b.replace(/[ \t]+>[ \t]+(?=\S)/g, "  \n> ") : b)).join("\n\n");
     return t.replace(/\n{3,}/g, "\n\n");

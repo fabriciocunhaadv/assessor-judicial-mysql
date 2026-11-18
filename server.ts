@@ -1504,7 +1504,7 @@ ${PRONTIDAO_DO_ATO}
      * Use *itálico* obrigatoriamente para expressões forenses e brocardos em latim (*fumus boni iuris*, *periculum in mora*, *in albis*, *preclusão pro judicato*, *quantum debeatur*, *vis-à-vis*, *inaudita altera parte*, *ex vi*, *ad argumentandum tantum*), termos técnicos e locuções especializadas.
    - CITAÇÃO PRECISA DE ARTIGOS DE LEI, CÓDIGOS E SÚMULAS VINCULANTES:
      * Cite de forma expressa, detalhada e tecnicamente precisa os artigos de lei pertinentes (CPC, Código Civil, Constituição Federal, CDC, leis especiais) e os enunciados de súmulas ou temas dos tribunais superiores (STF, STJ e TJGO).
-     * CITAÇÃO DESTACADA EM BLOCO MARKDOWN (>): Quando a literalidade do dispositivo legal ou da súmula for o fundamento central da deliberação, destaque-a em bloco de citação Markdown entre aspas e em itálico:
+     * CITAÇÃO DESTACADA EM BLOCO MARKDOWN (>) — OBRIGATÓRIO: todo artigo de lei, súmula, ementa, precedente ou trecho dos autos transcrito literalmente vai em bloco próprio iniciado por '>' (em itálico, com a fonte), em parágrafo separado; nunca no meio do parágrafo. Quando a literalidade do dispositivo legal ou da súmula for o fundamento central da deliberação, destaque-a em bloco de citação Markdown entre aspas e em itálico:
        > *"Art. 300, do CPC: A tutela de urgência será concedida quando houver elementos que evidenciem a probabilidade do direito e o perigo de dano ou o risco ao resultado útil do processo."*
 
 7. III - DISPOSITIVO OPERACIONAL:
@@ -1540,7 +1540,7 @@ Retorne ESTRITAMENTE um objeto JSON válido no formato abaixo, analisando primei
   "judicialUnit": "${comarcaVara || "Vara Única"}",
   "relatorio": "Texto completo do relatório em parágrafos bem espaçados narrando a gênese, decisões anteriores e a inércia/atos subsequentes, com indicação obrigatória de movimento, arquivo e página de cada ato: ex: (mov. 1, arq. 1, p. 12)...",
   "fundamentacao": "Texto completo da fundamentação substancial e aprofundada (nunca simples), escrita em texto corrido e encadeado; subtítulos (###) só quando essenciais (Preliminares, Mérito ou questão específica), SEM numeração e SEM rótulos de estrutura de análise, em múltiplos parágrafos, justificando a decisão com as provas do PDF e citando obrigatoriamente movimento, arquivo e página: ex: (mov. 18, arq. 'Certidão', p. 1), negritos, termos latinos em itálico e citação de artigos de lei/súmulas em blocos '>...",
-  "dispositivo": "Texto completo do dispositivo em itens numerados com comandos executáveis da próxima decisão..."
+  "dispositivo": "Texto completo do dispositivo: uma frase de abertura (Ante o exposto...) e, depois, UM ITEM NUMERADO POR LINHA (1. ..., 2. ...), separados por linha em branco (\\n\\n), com comandos executáveis da próxima decisão..."
 }
 
 ATENÇÃO MÁXIMA AO HISTÓRICO, PROVAS E CITAÇÃO DE FONTES: O processo não pode retroceder (arts. 505 e 507 do CPC). O ato deve dar sequência exata aos comandos e decisões pretéritas proferidas no feito. Extraia do PDF todas as informações necessárias para justificar o pronunciamento judicial e coloque SEMPRE o movimento, arquivo e página de onde cada informação, prova ou decisão foi extraída: ex: (mov. 1, p. 5), (mov. 18, arq. Certidão, p. 2). A fundamentação deve ser substantiva e não simplória. Formate com parágrafos bem espaçados, negrito, itálico e citação de artigos.`;

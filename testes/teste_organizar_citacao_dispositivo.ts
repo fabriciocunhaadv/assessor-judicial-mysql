@@ -1,0 +1,15 @@
+import assert from "node:assert";
+import { organizarTextoDaMinuta as o } from "../src/utils/organizarTextoDaMinuta";
+const d = "Ante o exposto, ACOLHO a impugnação. DETERMINO a expedição de RPV, nos termos do art. 535, § 3º, do CPC. INDEFIRO a multa diária, ante a comprovação da implantação do abono de permanência em folha. Intime-se a parte exequente para que junte aos autos as guias correspondentes. Cumpridas as determinações, intimem-se as partes. Após, arquivem-se os autos.\n\nTPU: Julgamento.";
+const r = o(d, "dispositivo");
+assert.ok(/\n\n1\. /.test(r) && /\n\n4\. /.test(r), "itens numerados");
+assert.ok(r.includes("\n\nTPU: Julgamento."));
+const ja = "1. Acolho.\n\n2. Indefiro.";
+assert.strictEqual(o(ja, "dispositivo"), ja);
+const f = "Conforme o art. 55 da Lei 9.099/95, que dispõe: Art. 55. A sentença de primeiro grau não condenará o vencido em custas e honorários de advogado, ressalvados os casos de litigância de má-fé.";
+assert.ok(o(f, "fundamentacao").includes("\n\n> *Art. 55."), "citação de lei em bloco");
+const q = "Segundo a certidão: \"a implantação do abono de permanência a partir de maio de 2026 foi comprovada nos autos pelo setor\" e nada mais.";
+assert.ok(o(q, "relatorio").includes("> *\"a implantação"), "aspas longas em bloco");
+const ok = "> *Art. 1º Texto.*\n\nParágrafo comum.";
+assert.strictEqual(o(ok, "fundamentacao"), ok);
+console.log("ok");

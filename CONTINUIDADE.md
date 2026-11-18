@@ -288,3 +288,8 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 
 ## Minuta final (etapas 1 e 2): espera pelo modelo completo 60 s → 30 s (pedido do usuário)
 - `server.ts`: `esperaProfundoMs` das etapas 1 e 2 de `/api/generate-minute` passou de 60000 para 30000. Depois do prazo a esteira ainda TENTA os modelos completos (mesmo em resfriamento) antes de aceitar o leve. Expansão da minuta resumida continua 30/20/20 s.
+
+## Formatação da minuta na tela (citações e itens do dispositivo)
+- Queixa: citações de lei/precedente sem bloco e dispositivo num parágrafo só. Causa: o modelo deixou de obedecer; a tela só arrumava quando já havia numeração.
+- `src/utils/organizarTextoDaMinuta.ts`: `dispositivoEmItens` (abertura + 1 item numerado por comando, só se ≥3 comandos e sem itens prévios) e `citacoesEmBloco` (art./§ após ":" e aspas longas ≥80 car. viram `> *...*`). Só tela/exportação; não altera o gravado.
+- `server.ts`: prompts reforçam bloco `>` obrigatório e um item numerado por linha. Teste: `testes/teste_organizar_citacao_dispositivo.ts`. Pendente de "Pode publicar".
