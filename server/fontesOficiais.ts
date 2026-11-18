@@ -19,7 +19,7 @@ const P = "https://www.planalto.gov.br/ccivil_03/";
 export const LEIS: LeiConfig[] = [
   L("cf88", "Constituição Federal de 1988", "CF/88", P + "constituicao/constituicao.htm", /\bCF(?:\/|\s*-\s*)?(?:19)?88\b/i, /\bCRFB\b/, /Constitui[çc][ãa]o Federal/i, /\bCF\b/),
   L("cpc", "Código de Processo Civil (Lei 13.105/2015)", "CPC", P + "_ato2015-2018/2015/lei/l13105.htm", /\bCPC(?!\s*\/?\s*(?:de\s*)?(?:19)?73)\b/, /C[óo]digo de Processo Civil(?!\s+de\s+1973)/i, /Lei\s*(?:n[º°o.]*\s*)?13\.?105\s*\/\s*(?:20)?15/i),
-  L("cc", "Código Civil (Lei 10.406/2002)", "CC", P + "2002/l10406compilada.htm", /\bCC\b(?!\/?\s*(?:de\s*)?1916)/, /C[óo]digo Civil(?!\s+de\s+1916)/i, /Lei\s*(?:n[º°o.]*\s*)?10\.?406\s*\/\s*(?:20)?02/i),
+  L("cc", "Código Civil (Lei 10.406/2002)", "CC", P + "leis/2002/l10406compilada.htm", /\bCC\b(?!\/?\s*(?:de\s*)?1916)/, /C[óo]digo Civil(?!\s+de\s+1916)/i, /Lei\s*(?:n[º°o.]*\s*)?10\.?406\s*\/\s*(?:20)?02/i),
   L("cdc", "Código de Defesa do Consumidor (Lei 8.078/1990)", "CDC", P + "leis/l8078compilado.htm", /\bCDC\b/, /C[óo]digo de Defesa do Consumidor/i, /Lei\s*(?:n[º°o.]*\s*)?8\.?078\s*\/\s*(?:19)?90/i),
   L("l9099", "Lei dos Juizados Especiais (Lei 9.099/1995)", "Lei 9.099/95", P + "leis/l9099.htm", /Lei\s*(?:n[º°o.]*\s*)?9\.?099\s*\/\s*(?:19)?95/i, /\bLJE\b/),
   L("l12153", "Juizados da Fazenda Pública (Lei 12.153/2009)", "Lei 12.153/09", P + "_ato2007-2010/2009/lei/l12153.htm", /Lei\s*(?:n[º°o.]*\s*)?12\.?153\s*\/\s*(?:20)?09/i),
@@ -181,18 +181,30 @@ async function anotarErro(cfg: LeiConfig, e: any): Promise<ResumoLei> {
   // falha não apaga a versão anterior; só anota o erro no resumo
   const [rows] = await banco().query<any[]>("SELECT data FROM docs WHERE col=? AND id=?", [COL_RESUMO, cfg.id]).catch(() => [[]] as any);
   const anterior = (rows as any[])[0] ? JSON.parse((rows as any[])[0].data) : {};
-  const resumo = { id: cfg.id, nome: cfg.nome, url: cfg.url, ...anterior, erro: String(e?.name === "AbortError" ? "tempo esgotado" : e?.message || e).slice(0, 220) };
+  const resumo = { id: cfg.id, nome: cfg.nome, url: cfg.url, ...anterior, erro: String(e?.name === "AbortError" ? "tempo esgotado" : e?.message || e).slice(0, 520) };
   await salvarDoc(COL_RESUMO, cfg.id, resumo);
   return resumo;
 }
 export async function importarLei(id: string): Promise<ResumoLei> {
   const cfg = LEIS.find((l) => l.id === id);
   if (!cfg) throw Object.assign(new Error("lei desconhecida"), { status: 404 });
-  try {
-    const r = await baixar(cfg.url);
-    if (r.status !== 200) throw new Error(`o Planalto respondeu ${r.status}`);
-    return await processarHtmlLei(cfg, decodificar(r.buf, r.contentType));
-  } catch (e: any) { return anotarErro(cfg, e); }
+  // Novo Portal da Legislação primeiro; se a página não vier ou não tiver os artigos, o Planalto. O erro final diz o que cada um respondeu.
+  const notas: string[] = [];
+  const alvos = enderecosDaLei(cfg.url);
+  for (const alvo of alvos) {
+    const portal = ehPortalNovo(alvo), nome = portal ? "Portal novo" : "Planalto";
+    try {
+      const r = await baixarUm(alvo, portal ? 15000 : 30000, 25_000_000);
+      if (r.status !== 200) { if (portal) registrarPortalNovo(r.status >= 500 ? "falha" : "naoachou"); notas.push(`${nome}: HTTP ${r.status}`); continue; }
+      const resumo = await processarHtmlLei(cfg, decodificar(r.buf, r.contentType));
+      if (portal) registrarPortalNovo("ok");
+      return resumo;
+    } catch (e: any) {
+      if (portal) registrarPortalNovo(/HTTP|fetch|abort|network|ENOTFOUND|ECONN|timeout/i.test(String(e?.message || e)) ? "falha" : "naoachou");
+      notas.push(`${nome}: ${String(e?.name === "AbortError" ? "tempo esgotado" : e?.message || e).slice(0, 220)}`);
+    }
+  }
+  return anotarErro(cfg, new Error(notas.join(" | ")));
 }
 /** Descobre qual lei é pelo nome do arquivo salvo (ex.: l13105.htm) ou pelo começo do texto. */
 export function descobrirLei(nomeArquivo: string, texto: string): LeiConfig | null {

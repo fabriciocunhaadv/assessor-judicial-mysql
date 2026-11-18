@@ -243,3 +243,9 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 - Usado em `legislacaoPlanalto.ts` (`baixarLinhas`) e `server/fontesOficiais.ts` (`baixar`: cai no Planalto se vier não-200, <2 KB ou HTML sem "Art. N"). Host liberado em `HOSTS_BUSCA`. Env: `PORTAL_LEGISLACAO_BASE` ("off" desliga); com `PLANALTO_BASE` de teste o portal novo fica desligado.
 - NÃO consegui abrir o portal daqui (rede da sessão bloqueia o domínio no WebFetch/curl): o formato real das páginas do portal novo não foi conferido ao vivo. Se o formato diferir, a conferência de "poucas linhas"/"sem Art." faz o Planalto responder. Conferir nos logs do servidor (`[Legislação] ... localizada em`) depois de publicar.
 - Teste: `testes/servidor/rodar_portal_legislacao.mjs`.
+
+## Código Civil na Central de fontes (404) — corrigido
+- `server/fontesOficiais.ts`: URL do CC estava sem `leis/` (`2002/l10406compilada.htm` → `leis/2002/l10406compilada.htm`). Era a causa do "HTTP 404" na extensão e em "Atualizar pelo site".
+
+## LEMBRETE PARA A PRÓXIMA ATUALIZAÇÃO DA EXTENSÃO (pedido do usuário: não atualizar a extensão só por isso)
+- Fontes pendentes (≈1287) falham porque: `leisestaduais.com.br/go` dá HTTP 403 (bloqueia automação), listagem da Câmara de Montes Claros "sem o ato", e atos como Provimentos/Resoluções CNJ/leis estaduais GO não têm site permitido. Na próxima versão da extensão: (1) tela de atualizar leis e `urlsFederais` tentarem o Novo Portal (`portaldalegislacao.presidencia.gov.br/ccivil_03/...`) antes do Planalto — adicionar o host a `optional_host_permissions`, `ORIGENS_PLANALTO`/`PREFIXO`, `HOSTS_TESTE`; (2) corrigir nomes de arquivo do Planalto em `urlsFederais` (`l6404compilada.htm`, números com ponto como `l10.931.htm`, `_ato2004-2006/…`); (3) incluir fontes para CNJ (atos.cnj.jus.br), Casa Civil de Goiás (legisla.casacivil.go.gov.br) e TJGO (provimentos); (4) tirar/trocar `leisestaduais.com.br` dos sites de busca.

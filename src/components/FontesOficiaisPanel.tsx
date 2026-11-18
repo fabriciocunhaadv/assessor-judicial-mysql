@@ -287,7 +287,7 @@ export const FontesOficiaisPanel: React.FC = () => {
                         <div className="min-w-[190px] text-[11px]">
                           {pronta(l) ? <span className="text-emerald-700">✅ {l.total} artigos · {l.revogados} revogados · {l.vetados} vetados<br /><span className="text-slate-400">atualizada em {new Date(l.baixadoEm!).toLocaleDateString("pt-BR")}</span></span> : <span className="inline-block rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">⏳ pendente</span>}
                           {l.erro && (bloqueioDoPlanalto(l)
-                            ? <span className="mt-1 block rounded-md bg-amber-50 border border-amber-200 text-amber-800 px-2 py-1 text-[10.5px] leading-snug" data-testid="aviso-bloqueio-planalto">{pronta(l) ? "A cópia acima continua em uso. " : ""}O Planalto bloqueou a atualização automática pelo site. {pronta(l) ? "Reenvie o arquivo se a lei mudou." : "Envie o arquivo salvo no seu navegador."}</span>
+                            ? <span className="mt-1 block rounded-md bg-amber-50 border border-amber-200 text-amber-800 px-2 py-1 text-[10.5px] leading-snug" data-testid="aviso-bloqueio-planalto">{pronta(l) ? "A cópia acima continua em uso. " : ""}O site oficial não deixou o servidor atualizar a lei automaticamente. {pronta(l) ? "Reenvie o arquivo se a lei mudou." : "Envie o arquivo salvo no seu navegador."} <span className="block opacity-80">Detalhe: {l.erro}</span></span>
                             : <span className="mt-1 block rounded-md bg-red-50 border border-red-200 text-red-800 px-2 py-1 text-[10.5px] leading-snug">Falha: {l.erro}</span>)}
                         </div>
                         <div className="flex items-center gap-1.5">
