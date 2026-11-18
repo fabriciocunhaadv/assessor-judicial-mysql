@@ -55,6 +55,13 @@ try:
         pg.evaluate("document.documentElement.dataset.assessorExtensaoId = 'abcdefghijklmnopabcdefghijklmnop'; window.__cliques = []")
         pg.click("[data-testid=assistente-acao-ext-painel]")
         ok(pg.evaluate("window.__cliques") == ["chrome-extension://abcdefghijklmnopabcdefghijklmnop/painel.html|_blank"] and pg.locator("[data-testid=assistente-pilula]").count() == 1, "extensão nova: abre o painel em aba nova e o assistente vira pílula")
+        # extensão com o “Inicie aqui” (4.0.2+): “o painel da extensão” é o SIMPLIFICADO; 4.0.1 e anteriores só têm o completo
+        for versao, pagina_esperada in (("4.0.1", "painel.html"), ("4.0.2", "iniciar.html"), ("4.0.10", "iniciar.html")):
+            pg.evaluate(f"document.documentElement.dataset.assessorExtensao = '{versao}'; window.__cliques = []")
+            pg.click("[data-testid=assistente-pilula]"); pg.wait_for_selector("[data-testid=assistente-saudacao]"); pg.click("[data-testid=assistente-op-fila]")
+            if versao == "4.0.2": ok("Inicie aqui" in pg.locator("[data-testid=assistente-acao-ext-painel]").inner_text(), "o botão da fila chama-se “Abrir o Inicie aqui da extensão”")
+            pg.click("[data-testid=assistente-acao-ext-painel]")
+            ok(pg.evaluate("window.__cliques") == [f"chrome-extension://abcdefghijklmnopabcdefghijklmnop/{pagina_esperada}|_blank"], f"extensão {versao}: o painel da extensão abre {pagina_esperada}")
         pg.click("[data-testid=assistente-pilula]"); pg.wait_for_selector("[data-testid=assistente-saudacao]")
         ok(pg.locator("[data-testid=assistente-op-fila]").count() == 1 and pg.locator("[data-testid^=assistente-resposta-]").count() == 0, "a pílula reabre a conversa do começo (não a tela anterior)")
         pg.evaluate("window.__cliques = []")
@@ -118,6 +125,9 @@ try:
         pg = pagina(TOUR + "window.__juiz = true;"); pg.wait_for_selector("[data-testid=assistente-boas-vindas]", timeout=8000)
         ids3 = pg.eval_on_selector_all("[data-testid^=assistente-op-]", "els => els.map(e => e.dataset.testid.replace('assistente-op-',''))")
         ok(ids3[0] == "lupa" and "lupa_fila" in ids3, f"usuário com função de magistrado vê as opções do magistrado: Lupa primeiro e fila para a Lupa ({ids3[:3]})")
+        pg.evaluate("document.documentElement.dataset.assessorExtensao = '4.0.2'; document.documentElement.dataset.assessorExtensaoId = 'abcdefghijklmnopabcdefghijklmnop'; window.__cliques = []; HTMLAnchorElement.prototype.click = function () { window.__cliques.push(this.href + '|' + this.target); }")
+        pg.click("[data-testid=assistente-op-lupa_fila]"); pg.click("[data-testid=assistente-acao-ext-painel-completo]")
+        ok("chrome-extension://abcdefghijklmnopabcdefghijklmnop/painel.html|_blank" in pg.evaluate("window.__cliques") and not any("iniciar.html" in c for c in pg.evaluate("window.__cliques")), f"a fila para a Lupa continua no painel COMPLETO (o modo Lupa não está no passo a passo): {pg.evaluate('window.__cliques')}")
         pg.close()
         # 8) celular: não estoura a tela
         pg = pagina(TOUR, {"width": 390, "height": 760}); pg.wait_for_selector("[data-testid=assistente-boas-vindas]", timeout=8000)

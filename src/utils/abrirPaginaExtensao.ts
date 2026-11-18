@@ -1,6 +1,6 @@
-// Abre uma página da extensão (painel completo ou pauta de audiências) numa ABA NOVA a partir do Studio.
+// Abre uma página da extensão (“Inicie aqui”, painel completo ou pauta de audiências) numa ABA NOVA a partir do Studio.
 // O navegador só permite isso se a extensão (2.0.6 ou mais nova) liberar a página para este site e anunciar o seu id em `data-assessor-extensao-id`.
-export type PaginaDaExtensao = "painel.html" | "pauta.html";
+export type PaginaDaExtensao = "painel.html" | "pauta.html" | "iniciar.html";
 export type ResultadoAbrirExtensao = "aberto" | "sem-extensao" | "extensao-antiga";
 
 export function estadoDaExtensao(): ResultadoAbrirExtensao {
@@ -20,3 +20,14 @@ export function abrirPaginaDaExtensao(pagina: PaginaDaExtensao): ResultadoAbrirE
   document.body.appendChild(a); a.click(); a.remove();      // dentro do clique do usuário: o navegador aceita abrir a aba
   return "aberto";
 }
+
+/** A página “Inicie aqui” (painel simplificado) existe na extensão 4.0.2 ou mais nova. */
+export function extensaoTemInicieAqui(): boolean {
+  try {
+    const v = String(document.documentElement.dataset.assessorExtensao || "").split(".").map((n) => parseInt(n, 10) || 0), min = [4, 0, 2];
+    for (let i = 0; i < 3; i++) { if ((v[i] || 0) !== min[i]) return (v[i] || 0) > min[i]; }
+    return true;
+  } catch { return false; }
+}
+/** Para onde o Studio manda quem quer “o painel da extensão”: o simplificado (“Inicie aqui”); em extensão antiga, o painel completo (único que ela tem). */
+export const paginaDoPainelSimples = (): PaginaDaExtensao => (extensaoTemInicieAqui() ? "iniciar.html" : "painel.html");

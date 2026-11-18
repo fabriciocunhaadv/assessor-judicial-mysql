@@ -7,20 +7,20 @@ import { getApiHeaders } from "../utils/apiKeyManager";
 import { useAuth } from "../lib/AuthContext";
 import { URL_EXTENSAO_CHROME_STORE } from "../config/extensao";
 import { extensaoInstalada } from "./AvisoExtensao";
-import { abrirPaginaDaExtensao } from "../utils/abrirPaginaExtensao";
+import { abrirPaginaDaExtensao, extensaoTemInicieAqui, paginaDoPainelSimples } from "../utils/abrirPaginaExtensao";
 
-export type AcaoAssistente = "ext-painel" | "ext-pauta" | "analisar" | "historico" | "lupa" | "mesa" | "turbo" | "gigantes" | "teses" | "manual" | "guia";
+export type AcaoAssistente = "ext-painel" | "ext-painel-completo" | "ext-pauta" | "analisar" | "historico" | "lupa" | "mesa" | "turbo" | "gigantes" | "teses" | "manual" | "guia";
 type Perfil = "assessor" | "magistrado";
 interface Botao { rotulo: string; acao: AcaoAssistente }
 interface No { id: string; icone: string; rotulo: string; resposta: string; filhos?: string[]; botoes?: Botao[]; exigeExtensao?: boolean }
 
 const NOS: Record<string, No> = {
   fila: { id: "fila", icone: "📥", rotulo: "Mandar uma fila de processos", exigeExtensao: true,
-    resposta: "Ótima escolha: a fila trabalha por você. No painel da extensão você marca os processos e escolhe quem analisa (Agaia, outra IA ou Studio). Enquanto ela roda, você trabalha nas minutas pelo Histórico.",
-    botoes: [{ rotulo: "Abrir o painel da extensão", acao: "ext-painel" }, { rotulo: "Abrir meu Histórico", acao: "historico" }] },
+    resposta: "Ótima escolha: a fila trabalha por você. Na extensão, o “Inicie aqui” leva você passo a passo: verificar a listagem, escolher as serventias e quem analisa (Studio ou Agaia). Enquanto ela roda, você trabalha nas minutas pelo Histórico.",
+    botoes: [{ rotulo: "Abrir o “Inicie aqui” da extensão", acao: "ext-painel" }, { rotulo: "Abrir meu Histórico", acao: "historico" }] },
   lupa_fila: { id: "lupa_fila", icone: "🔎", rotulo: "Mandar uma fila para a Lupa", exigeExtensao: true,
-    resposta: "No painel da extensão, marque os processos e escolha o modo Lupa. Os resultados chegam ao Histórico, um a um, para você ler os alertas.",
-    botoes: [{ rotulo: "Abrir o painel da extensão", acao: "ext-painel" }, { rotulo: "Abrir meu Histórico", acao: "historico" }] },
+    resposta: "No painel completo da extensão, marque os processos e escolha o modo Lupa. Os resultados chegam ao Histórico, um a um, para você ler os alertas.",
+    botoes: [{ rotulo: "Abrir o painel completo da extensão", acao: "ext-painel-completo" }, { rotulo: "Abrir meu Histórico", acao: "historico" }] },
   lupa: { id: "lupa", icone: "⚖️", rotulo: "Conferir uma minuta na Lupa",
     resposta: "A Lupa do Magistrado audita a minuta do assessor contra os autos, mostrando cada ponto de atenção e onde ele está no processo.",
     botoes: [{ rotulo: "Abrir a Lupa do Magistrado", acao: "lupa" }] },
@@ -157,15 +157,17 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
 
   // botões da extensão abrem a página dela numa aba nova; os demais abrem a função aqui dentro do Studio
   const clicar = (no: string, acao: AcaoAssistente) => {
-    if (acao === "ext-painel" || acao === "ext-pauta") {
-      const r = abrirPaginaDaExtensao(acao === "ext-painel" ? "painel.html" : "pauta.html");
+    if (acao === "ext-painel" || acao === "ext-painel-completo" || acao === "ext-pauta") {
+      // “painel da extensão” = o simplificado (Inicie aqui); o painel completo só quando o Studio pede por ele (ex.: modo Lupa) e em extensão antiga (que só tem esse)
+      const r = abrirPaginaDaExtensao(acao === "ext-painel" ? paginaDoPainelSimples() : acao === "ext-painel-completo" ? "painel.html" : "pauta.html");
       if (r === "aberto") { setMinimizado(true); return; }
       if (r === "sem-extensao") {
         try { window.open(URL_EXTENSAO_CHROME_STORE, "_blank", "noopener"); } catch { /* sem pop-up */ }
         setAviso({ no, texto: <>A extensão <b>Conclusões Projudi</b> não foi detectada neste navegador. Abri a página de instalação em outra aba; depois de instalar, volte aqui e clique de novo.</> });
         return;
       }
-      setAviso({ no, texto: <>Para abrir {acao === "ext-painel" ? "o painel completo" : "a pauta de audiências"}, clique no ícone <b>Conclusões Projudi</b> na barra do navegador (se não aparecer, clique no ícone de peça de quebra-cabeça 🧩 e fixe a extensão) e depois em <b>{acao === "ext-painel" ? "Abrir painel completo" : "Pauta de audiências"}</b>. Com a extensão na versão 2.0.6 ou mais nova, este botão abre direto.</> });
+      const simples = acao === "ext-painel" && extensaoTemInicieAqui();      // extensão nova: o botão do menu dela é “Inicie aqui”
+      setAviso({ no, texto: <>Para abrir {acao === "ext-pauta" ? "a pauta de audiências" : simples ? "o “Inicie aqui”" : "o painel completo"}, clique no ícone <b>Conclusões Projudi</b> na barra do navegador (se não aparecer, clique no ícone de peça de quebra-cabeça 🧩 e fixe a extensão) e depois em <b>{acao === "ext-pauta" ? "Pauta de audiências" : simples ? "▶ Inicie aqui" : "Abrir painel completo"}</b>. Com a extensão na versão 2.0.6 ou mais nova, este botão abre direto.</> });
       return;
     }
     aoAcao(acao); setMinimizado(true);
