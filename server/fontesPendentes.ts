@@ -2,6 +2,7 @@
 // Todo motor (análise normal, Turbo, Lupa, Gigantes, Mesa) alimenta a mesma lista por um único middleware; o Super Admin vê, edita (CRUD), manda a extensão buscar ou envia o arquivo.
 // Só guarda IDENTIFICADORES (tipo, número, ano, ente) e contagens: nenhum trecho do processo, nome de parte ou CPF.
 import { coletarLeiGoias, elegivelGoias } from "./coletorEstadual";
+import { federalConhecida, linkConhecido } from "./conhecimentoFontes";
 import express from "express";
 import { banco } from "./historyRoutes";
 import { garantirDocs } from "./docsRoutes";
@@ -134,6 +135,21 @@ fontesPendentesRouter.post("/", async (req, res) => {
     await gravar(f); res.json({ item: f });
   } catch { res.status(500).json({ erro: "não consegui gravar" }); }
 });
+/** Aplica o conhecimento do gabinete às fontes pendentes: marca como FEDERAIS as leis conhecidas (saem da busca de Goiás e vão para o Planalto/portal) e preenche o link oficial das que já foram conferidas. */
+fontesPendentesRouter.post("/aplicar-conhecimento", async (req, res) => {
+  if (!soSuper(req, res)) return;
+  try {
+    let federais = 0, anos = 0, links = 0;
+    for (const f of await lerTodos()) {
+      if (f.status !== "pendente") continue;
+      const fed = federalConhecida(f.tipo, f.numero, f.ano);
+      if (fed && (f.esfera !== "federal" || f.ano !== fed.ano)) { if (f.ano !== fed.ano) { f.ano = fed.ano; anos++; } f.esfera = "federal"; f.ente = ""; await gravar(f); federais++; continue; }
+      const lk = !fed ? linkConhecido(f.tipo, f.numero, f.ano) : undefined;
+      if (lk && f.link !== lk) { f.link = lk; if (f.esfera === "indefinida") { f.esfera = "estadual"; f.ente = f.ente || "Goiás"; } await gravar(f); links++; }
+    }
+    res.json({ federais, anosCorrigidos: anos, links });
+  } catch { res.status(500).json({ erro: "não consegui aplicar" }); }
+});
 /** Coletor de leis estaduais de Goiás (servidor): quais pendentes ele sabe buscar, e a busca em lotes pequenos (o painel chama de novo até acabar). */
 fontesPendentesRouter.get("/coletar-estaduais/elegiveis", async (req, res) => {
   if (!soSuper(req, res)) return;
@@ -148,11 +164,11 @@ fontesPendentesRouter.post("/coletar-estaduais", async (req, res) => {
       const f = await lerUm(id); if (!f) { resultados.push({ id, rotulo: id, ok: false, detalhe: "fonte não encontrada" }); continue; }
       const registrar = async (resultado: string, status?: StatusFonte) => { f.tentativas = [...f.tentativas, { em: Date.now(), via: "servidor-go", resultado: resultado.slice(0, 200) }].slice(-10); if (status) f.status = status; await gravar(f); };
       if (!elegivelGoias(f)) { resultados.push({ id, rotulo: f.rotulo, ok: false, detalhe: "não é lei ordinária/complementar de Goiás com número e ano" }); continue; }
-      const r = await coletarLeiGoias(f, async (url) => { const x = await baixar(url, 20000); return { status: x.status, buf: x.buf, contentType: x.contentType, finalUrl: x.finalUrl }; });
+      const r = await coletarLeiGoias({ ...f, link: f.link }, async (url) => { const x = await baixar(url, 20000); return { status: x.status, buf: x.buf, contentType: x.contentType, finalUrl: x.finalUrl }; });
       if (!r.ok || !r.buf) { await registrar(`Economia GO: ${r.detalhes.join(" | ")}`); resultados.push({ id, rotulo: f.rotulo, ok: false, detalhe: r.detalhes.join(" | ") }); }
       else {
         try {
-          const g = await salvarArquivoComoLei({ esfera: "estadual", ente: "Goiás", tipo: f.tipo, numero: f.numero, ano: f.ano, titulo: f.rotulo }, r.buf, "");
+          const g = await salvarArquivoComoLei({ esfera: "estadual", ente: "Goiás", tipo: f.tipo, numero: f.numero, ano: f.ano, titulo: f.rotulo }, r.buf, r.formato || "");
           f.esfera = "estadual"; f.ente = "Goiás"; esquecerBase();
           await registrar(`incluída em Outras leis (${g.lei?.artigos ?? "?"} artigos) — site da Economia de Goiás`, "incluida");
           resultados.push({ id, rotulo: f.rotulo, ok: true, detalhe: `${g.lei?.artigos ?? "?"} artigos` });

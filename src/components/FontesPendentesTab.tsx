@@ -61,6 +61,13 @@ export function FontesPendentesTab({ aoMudarContagem }: { aoMudarContagem?: (pen
   const cont = useMemo(() => { const l = itens || []; return { pendente: l.filter((i) => i.status === "pendente").length, incluida: l.filter((i) => i.status === "incluida").length, ignorada: l.filter((i) => i.status === "ignorada").length, buscaveis: l.filter((i) => i.status === "pendente" && buscavel(i)).length }; }, [itens]);
   const mudarStatus = async (it: FontePendente, status: FontePendente["status"]) => { try { trocar((await chamar(`/${encodeURIComponent(it.id)}`, { method: "PUT", body: JSON.stringify({ status }) })).item); void carregar(); } catch (e: any) { setErro(e.message); } };
   const excluir = async (it: FontePendente) => { if (!window.confirm(`Excluir “${it.rotulo}” da lista?`)) return; try { await chamar(`/${encodeURIComponent(it.id)}`, { method: "DELETE" }); void carregar(); } catch (e: any) { setErro(e.message); } };
+  // Aplica o conhecimento do gabinete: leis federais conhecidas saem da busca de Goiás (esfera federal) e os links oficiais já conferidos entram nas fontes
+  const [conhecimento, setConhecimento] = useState("");
+  const aplicarConhecimento = async () => {
+    setErro(""); setConhecimento("Aplicando…");
+    try { const j = await chamar("/aplicar-conhecimento", { method: "POST" }); setConhecimento(`Pronto: ${j.federais} lei(s) marcada(s) como federal${j.anosCorrigidos ? ` (${j.anosCorrigidos} com o ano corrigido)` : ""} e ${j.links} link(s) oficial(is) preenchido(s).`); void carregar(); }
+    catch (e: any) { setConhecimento(""); setErro(e.message); }
+  };
   // Coletor de leis estaduais de Goiás pelo SERVIDOR (site da Secretaria da Economia de Goiás): lotes pequenos até acabar
   const coletarGoias = async () => {
     setErro(""); setColetaGo({ rodando: true, total: 0, feitas: 0, ok: 0, falhas: [] });
@@ -90,10 +97,12 @@ export function FontesPendentesTab({ aoMudarContagem }: { aoMudarContagem?: (pen
         ))}
         <span className="flex-1" />
         <button disabled={!extensaoPronta || !!busca || cont.buscaveis === 0} onClick={() => itens && buscarPelaExtensao(itens)} data-testid="buscar-todas-pendentes" className={`${btn} bg-[#673de6] text-white`} title={extensaoPronta ? "A extensão procura no seu navegador todas as leis pendentes e entrega ao Studio" : `Precisa da extensão Conclusões Projudi 1.0.90 ou mais nova${versaoDaExtensao() ? ` (a sua é a ${versaoDaExtensao()})` : " instalada neste navegador"}`}>Buscar todas pela extensão ({cont.buscaveis})</button>
+        <button onClick={aplicarConhecimento} data-testid="aplicar-conhecimento" className={`${btn} bg-white border border-slate-400 text-slate-700`} title="Marca como federais as leis conhecidas (elas saem da busca de Goiás) e preenche os links oficiais já conferidos (Legisla Goiás)">Aplicar conhecimento do gabinete</button>
         <button disabled={!!coletaGo?.rodando} onClick={coletarGoias} data-testid="coletar-goias" className={`${btn} bg-white border border-emerald-600 text-emerald-700`} title="O servidor procura no site da Secretaria da Economia de Goiás o texto das leis estaduais (ordinárias e complementares) que os autos citam e ainda não estão na base">{coletaGo?.rodando ? "Buscando leis de Goiás…" : "Buscar leis estaduais de Goiás (servidor)"}</button>
         <button onClick={() => setNovo((v) => !v)} className={`${btn} bg-white border border-[#673de6] text-[#673de6]`} data-testid="adicionar-fonte">+ Adicionar fonte</button>
         <button onClick={() => setEditSites((v) => !v)} className={`${btn} bg-white border border-slate-300 text-slate-600`} data-testid="editar-sites">Sites de busca ({sites.filter((s) => s.ativa).length})</button>
       </div>
+      {conhecimento && <p className="rounded-lg border border-slate-200 bg-slate-50 text-slate-700 p-2" data-testid="resultado-conhecimento">{conhecimento}</p>}
       {coletaGo && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-900 p-2 space-y-1" data-testid="resultado-coleta-goias">
           <p className="font-bold">Leis estaduais de Goiás (servidor): {coletaGo.feitas} de {coletaGo.total} procuradas · {coletaGo.ok} incluída(s) · {coletaGo.falhas.length} sem resultado{coletaGo.rodando ? "…" : "."}</p>
