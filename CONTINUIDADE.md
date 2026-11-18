@@ -303,3 +303,6 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 ## Gigante parado 1 h (18/11, diagnóstico pelo log do servidor)
 - Log: Google devolvendo 503 em gemini-3.8/3.6-flash (resfriamento 600 s) e 429 nas 6 chaves; "Autos Grandes: classificação" com tentativas 1/2 repetidas (pausa 62 s). Causa = Google instável, não os ajustes. A tela do usuário ainda mostrava "tentativa 2/9" = bundle antigo (precisa Ctrl+Shift+R).
 - `GigantesPanel`: fora da fila, a régua cíclica foi trocada por `TempoNaEtapa` (há quanto tempo na mesma etapa; avisa após 10 min). Na fila continua a régua de 30 s. Pendente de "Pode publicar".
+
+## Não insistir no modelo que recusou (classificação de autos grandes) — pedido do usuário
+- `src/utils/autosGrandes.ts` `chamar`: a fila inclui os modelos leves desde a 1ª tentativa (antes só na 4ª, após ~3 min de pausas de 62 s); a pausa de 62 s só vale para erro de COTA (429); em 503 espera 4 s. Resfriamento por modelo (`resfriarModelo`, 45 s dobrando até 10 min) NÃO foi alterado: serve justamente para pular o modelo que recusou. Modelo leve entrega minuta robusta pela contingência por seções (já existente). Pendente de "Pode publicar".

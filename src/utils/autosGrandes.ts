@@ -83,13 +83,14 @@ async function chamar(gerar: (o: any) => Promise<any>, base: any, extra: any, pa
     for (let tent = 1; tent <= 4; tent++) {
         try {
             return await gerar({ ...base, ...extra,
-                customModelQueue: tent < 4 ? ["gemini-3.6-flash", "gemini-3.8-flash"] : ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"], maxCycles: 1 });
+                customModelQueue: ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"], maxCycles: 1 });      // classificar páginas é tarefa simples (JSON): se o modelo completo recusar, o leve entra na MESMA tentativa, sem insistir
         } catch (e: any) {
             ultimo = e;
             // pedido maior que o limite de uma vez só: não adianta repetir; mas se o pedido em si cabe (a "janela" de 1 minuto do Google está cheia pelas partes anteriores), espera e tenta de novo
             if (ehErroEntradaGrande(e) && estimar(extra?.contents ?? base?.contents, extra?.config?.systemInstruction ?? base?.config?.systemInstruction) > limiteDoErro(e) * 0.9) throw e;
             log(`[Autos Grandes] ${rotulo}, tentativa ${tent}: ${String(e?.message || e).slice(0, 140)}`);
-            if (tent < 4) await dorme(pausaMs);
+            // só espera a janela de 1 min quando o motivo é COTA (429); sobrecarga (503) é do modelo: tenta logo de novo (já com os outros modelos)
+            if (tent < 4) await dorme(/429|cota|quota|rate/i.test(String(e?.message || e)) ? pausaMs : 4000);
         }
     }
     throw ultimo;
