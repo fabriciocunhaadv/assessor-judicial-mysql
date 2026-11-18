@@ -273,3 +273,9 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 - Resultado 18/11 do coletor por endereço: 34 incluídas de 529; 404 em leis estaduais fora do padrão `L_<n>.htm` (14.376/2002, 21.268/2022, 11.651/1991, LC 58/2006…) e leis federais citadas como "a confirmar".
 - PENDENTE: o Legisla precisa do código interno; a busca por número ainda não foi descoberta. Foram adicionadas 4 linhas aos Testes de acesso (página, PDF, JSON e busca da Lei 11.651/1991 no Legisla) para ver o que o servidor recebe. Com o resultado, implementar a busca por número/ano.
 - Testes: `testes/teste_conhecimento_fontes.ts`, `testes/teste_coletor_estadual.ts`.
+
+## Esperas mais curtas e "adiar e voltar" no Processo Gigante (commit local, aguardando "Pode publicar")
+- Pedido: 2 minutos esperando modelo completo era demais; esperar pouco, liberar, seguir para o próximo e voltar depois.
+- Servidor: `gigante-lote` espera só 25 s (parâmetro `esperaMs`) e, com `podeAdiar:true`, usa só modelos completos e devolve `codigo: "FORTE_OCUPADO"` na hora (opção `adiarSeOcupado` na esteira, sem sonda de ~75 s); `gigante-fusao` 120 s → 30 s; pausa de resfriamento de cota 62 s×3 → 30 s×5 (`COTA_PAUSA_MS`) e agora avisa a barra (`aoEsperar(seg,"cota")`).
+- Painel (`gerente.ts`): lote ocupado é ADIADO e o painel segue para o próximo; depois volta nos adiados em até 6 rodadas (pausa de 20 s com barra); na 7ª aceita qualquer modelo. A pausa de recuo por cota (antes 70 s às cegas ×6) virou 15/15/20/20/30/30/45/60 s ×9 com a BARRA que diminui.
+- Testes: `testes/servidor/rodar_adiar_trecho.mjs` (FORTE_OCUPADO em ~4 s), `rodar_espera_barra.mjs` e `rodar_sonda_fila.mjs` continuam OK. O laço do painel (adiar/voltar) NÃO foi exercitado de ponta a ponta (os testes `testes/gigantes/teste_gigante*.py` falham por login obsoleto, já antes desta mudança): conferir com um gigante real e os logs.

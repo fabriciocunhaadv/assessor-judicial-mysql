@@ -40,6 +40,8 @@ http.createServer((req, res) => {
     if (process.env.GEMINI_FALSO_503_FORTES_SEG && /^gemini-3\.(6|8)-flash$/.test(modeloDaChamada) && (Date.now() - global.__inicioFalso) < Number(process.env.GEMINI_FALSO_503_FORTES_SEG) * 1000) {
       global.__erros503 = (global.__erros503 || 0) + 1; res.writeHead(503, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { code: 503, message: "The model is overloaded. Please try again later.", status: "UNAVAILABLE" } })); return;
     }
+    // cota esgotada em TODOS os modelos durante os primeiros N segundos (só em teste): GEMINI_FALSO_429_SEG=N
+    if (process.env.GEMINI_FALSO_429_SEG && (Date.now() - global.__inicioFalso) < Number(process.env.GEMINI_FALSO_429_SEG) * 1000) { res.writeHead(429, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { code: 429, message: "Quota exceeded: RESOURCE_EXHAUSTED rate limit", status: "RESOURCE_EXHAUSTED" } })); return; }
     if (/FALHAR-MOTOR/.test(corpo) && !/DEGRAVAÇÃO FIEL do áudio/.test(corpo)) { res.writeHead(500, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { code: 500, message: "falha simulada do motor", status: "INTERNAL" } })); return; }
     if (/CADERNO DE TESES E DIRETRIZES VINCULANTES/.test(corpo)) global.__comTesesTotal = (global.__comTesesTotal || 0) + 1;
     // teste da calibração: conta, por tipo de chamada, quantas levam a conferência de prontidão do ato

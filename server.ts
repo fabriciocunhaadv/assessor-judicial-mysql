@@ -510,6 +510,7 @@ app.post("/api/gigante-lote", async (req, res) => {
         let injecao: any = null, defesa = "";
         try { const r = detectarInjecao(texto); if (r.verificado) injecao = r; if (r.total > 0) defesa = instrucaoDefesaInjecao(r); } catch { /* ignora */ }
         const progIdGig = String(req.body?.progId || "").slice(0, 80);
+        const podeAdiarGig = req.body?.podeAdiar === true, esperaGigMs = Math.max(0, Math.min(60000, Number(req.body?.esperaMs ?? 25000) || 0));      // espera curta (padrão 25 s) por um modelo completo; o painel pode pedir 0
         manterViva(res);
         const opcoes: any = {
             apiKey: extractApiKey(req),
@@ -519,8 +520,9 @@ app.post("/api/gigante-lote", async (req, res) => {
             keepSchema: true,
             primaryModel: "gemini-3.8-flash",
             fallbackModel: "gemini-flash-latest",
-            customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
-            esperaProfundoMs: 120000, aoEsperar: progIdGig ? (seg: number) => setProg(progIdGig, `Aguardando o Google liberar um modelo completo (${seg}s)…`, undefined, undefined, { seg }) : undefined,      // a ficha de cada trecho também espera o modelo forte (ficha rasa do modelo leve empobrece a minuta final do gigante)
+            customModelQueue: podeAdiarGig ? ["gemini-3.8-flash", "gemini-3.6-flash"] : ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],      // com adiamento: só modelos completos (se estiverem ocupados, o trecho é adiado e retomado depois)
+            adiarSeOcupado: podeAdiarGig,
+            esperaProfundoMs: esperaGigMs, aoEsperar: progIdGig ? (seg: number, motivo?: string) => setProg(progIdGig, motivo === "cota" ? `Aguardando a cota do Google renovar (${seg}s)…` : `Aguardando o Google liberar um modelo completo (${seg}s)…`, undefined, undefined, { seg }) : undefined,      // a ficha de cada trecho também espera o modelo forte (ficha rasa do modelo leve empobrece a minuta final do gigante)
             timeoutMs: 180000,
             maxCycles: 3,
             cycleDelayMs: 8000,
@@ -539,6 +541,7 @@ app.post("/api/gigante-lote", async (req, res) => {
         if (!ficha) return res.status(502).json({ error: "A IA não devolveu a ficha do trecho em formato válido (mesmo após uma nova tentativa).", detalhe: `a IA respondeu ${String(response.text || "").length} caracteres sem os campos da ficha` });
         return res.json({ ficha, injecao, usage: response.usageMetadata || {}, modelUsed: response.modelVersion || "" });
     } catch (err: any) {
+        if (err?.codigo === "FORTE_OCUPADO") return res.status(503).json({ error: err.message, codigo: "FORTE_OCUPADO" });      // não é falha: o trecho será adiado e retomado
         console.error("Erro no gigante-lote:", err);
         return res.status(500).json({ error: formatGeminiError(err) || "Falha ao ler o trecho dos autos." });
     }
@@ -559,7 +562,7 @@ app.post("/api/gigante-fusao", async (req, res) => {
             primaryModel: "gemini-3.8-flash",
             fallbackModel: "gemini-flash-latest",
             customModelQueue: ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"],
-            esperaProfundoMs: 120000, aoEsperar: progIdGig ? (seg: number) => setProg(progIdGig, `Aguardando o Google liberar um modelo completo (${seg}s)…`, undefined, undefined, { seg }) : undefined,      // idem: a fusão das fichas espera o modelo forte
+            esperaProfundoMs: 30000, aoEsperar: progIdGig ? (seg: number, motivo?: string) => setProg(progIdGig, motivo === "cota" ? `Aguardando a cota do Google renovar (${seg}s)…` : `Aguardando o Google liberar um modelo completo (${seg}s)…`, undefined, undefined, { seg }) : undefined,      // idem: a fusão das fichas espera o modelo forte
             timeoutMs: 180000,
             maxCycles: 3,
             cycleDelayMs: 8000,
@@ -3510,12 +3513,13 @@ async function gerarResfriando(opts: any, grande?: { userPrompt: string; texto: 
     const entradaGrande = (e: any) => e?.codigo === "ENTRADA_GRANDE_GRATUITA" || String(e?.message || "").includes("free_tier_input_token_count");
     const semCota = (e: any) => !entradaGrande(e) && /\b429\b|RESOURCE_EXHAUSTED|Quota|chaves pessoais|limite de cota|Rate Limit/i.test(String(e?.message || ""));
     const esfriando = async (o: any) => {
-        const pausa = Number(process.env.COTA_PAUSA_MS || 62000);
+        const pausa = Number(process.env.COTA_PAUSA_MS || 30000);      // antes 62 s: a recusa por cota é rápida e não gasta nada, então tenta de novo mais cedo
         for (let i = 0; ; i++) {
             try { return await generateWithFallbackAndRetry(o); }
             catch (e: any) {
-                if (!semCota(e) || i >= 3) throw e;
-                console.log(`[Resfriamento de cota] todas as chaves sem cota; aguardando ${Math.round(pausa / 1000)}s para a janela renovar (tentativa ${i + 1}/3).`);
+                if (!semCota(e) || i >= 5) throw e;
+                console.log(`[Resfriamento de cota] todas as chaves sem cota; aguardando ${Math.round(pausa / 1000)}s para a janela renovar (tentativa ${i + 1}/5).`);
+                try { o.aoEsperar?.(Math.round(pausa / 1000), "cota"); } catch { /* o aviso nunca derruba a geração */ }      // o painel mostra a barra que diminui também nesta pausa
                 await new Promise((r) => setTimeout(r, pausa));
             }
         }
@@ -3631,6 +3635,12 @@ async function generateWithFallbackAndRetry(options) {
                     orcamentoEspera -= espera;
                 }
             }
+        }
+
+        // ADIAR EM VEZ DE ESPERAR: depois da espera curta, se TODOS os modelos completos seguem ocupados, devolve o sinal "FORTE_OCUPADO" na hora (sem sonda de ~75 s) para o chamador seguir com outro trabalho e voltar depois
+        if (options.adiarSeOcupado) {
+            const profundosAgora = modelsToTry.filter(ehProfundo);
+            if (profundosAgora.length > 0 && profundosAgora.every((m) => modeloBloqueado(m, keyPool))) throw Object.assign(new Error("Os modelos completos do Google estão ocupados agora."), { codigo: "FORTE_OCUPADO" });
         }
 
         // BLINDAGEM DO POOL DE CHAVES (SEM LIMITE DE QUANTIDADE DE CHAVES):

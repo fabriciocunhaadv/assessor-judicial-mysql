@@ -276,7 +276,7 @@ class Gerente {
 
   private async chamar(id: string, rota: string, corpo: any): Promise<any> {
     let ultimoErro: any;
-    for (let t = 0; t < 6; t++) {
+    for (let t = 0; t < 9; t++) {
       if (this.sinais.has(id)) throw new Error("__parar__");
       try {
         const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 14 * 60000);
@@ -304,9 +304,11 @@ class Gerente {
         ultimoErro = e;
         if (this.sinais.has(id)) throw new Error("__parar__");      // a chamada foi derrubada de propósito (Pausar/Cancelar)
         if (e?.message === "__parar__" || e?.codigo) throw e;      // erro com código (autos grandes demais para a chave gratuita): quem chamou decide, sem repetir
-        if (!/incompleta|503|indispon|429|cota|quota|rate|Failed to fetch|Network|aborted|timeout/i.test(String(e?.message || e)) || t === 5) throw e;
-        const j = this.jobs.get(id); if (j) { j.etapa = `Aguardando a cota da IA renovar (tentativa ${t + 2}/6)…`; this.avisar(); }
-        await dorme(70000);
+        if (!/incompleta|503|indispon|429|cota|quota|rate|Failed to fetch|Network|aborted|timeout/i.test(String(e?.message || e)) || t === 8) throw e;
+        const PAUSA_MS = [15, 15, 20, 20, 30, 30, 45, 60][t] * 1000;      // a cota renova aos poucos: tenta de novo cedo (a recusa por cota é rápida e não gasta nada), em vez de esperar 70 s às cegas
+        const j = this.jobs.get(id); if (j) { j.etapa = `Aguardando a cota da IA renovar (tentativa ${t + 2}/9)…`; j.espera = { ate: Date.now() + PAUSA_MS, total: PAUSA_MS }; this.avisar(); }      // a barra do painel diminui durante esta pausa também
+        await dorme(PAUSA_MS);
+        { const jj = this.jobs.get(id); if (jj?.espera) { jj.espera = undefined; this.avisar(); } }
       }
     }
     throw ultimoErro;
@@ -369,15 +371,41 @@ class Gerente {
       if (job.config.direto) { if (await this.tentarDireto(job)) return; if (this.sinais.has(id)) return this.encerrarPorSinal(job); }
       // 1) lotes: uma ficha por trecho dos autos
       job.status = "lendo"; job.progresso = { feitas: job.lotes.filter((l) => job.fichas[`n0:${l.i}`]).length, total: job.lotes.length };
+      // Espera CURTA por um modelo completo (25 s). Se continuar ocupado, o trecho é ADIADO: o painel segue para o próximo trecho e volta nos adiados no fim (rodadas com pausa curta e barra).
+      const adiados: typeof job.lotes = []; let ultimoAdiamento = 0;
+      const lerLote = async (lote: (typeof job.lotes)[number], opcoes: { podeAdiar: boolean; esperaMs: number }) => {
+        const paginas = await lerPaginas(id, lote.de, lote.ate);
+        const r = await this.chamar(id, "/api/gigante-lote", { texto: textoDoLote(paginas, nomes, totais), rotulo: `${lote.rotulo} (lote ${lote.i + 1}/${job.lotes.length})`, contexto, ...opcoes });
+        job.fichas[`n0:${lote.i}`] = { ...r.ficha, __rotulo: lote.rotulo };
+        somarInjecao(job, r.injecao);
+        job.progresso = { feitas: job.progresso.feitas + 1, total: job.lotes.length }; await this.gravar(job);
+      };
       for (const lote of job.lotes) {
         if (job.fichas[`n0:${lote.i}`]) continue;
         await this.aguardarVez(id); if (this.sinais.has(id)) break;
         job.etapa = `Lendo o lote ${lote.i + 1} de ${job.lotes.length} (${lote.rotulo})…`; await this.gravar(job);
-        const paginas = await lerPaginas(id, lote.de, lote.ate);
-        const r = await this.chamar(id, "/api/gigante-lote", { texto: textoDoLote(paginas, nomes, totais), rotulo: `${lote.rotulo} (lote ${lote.i + 1}/${job.lotes.length})`, contexto });
-        job.fichas[`n0:${lote.i}`] = { ...r.ficha, __rotulo: lote.rotulo };
-        somarInjecao(job, r.injecao);
-        job.progresso = { feitas: job.progresso.feitas + 1, total: job.lotes.length }; await this.gravar(job);
+        try { await lerLote(lote, { podeAdiar: true, esperaMs: Date.now() - ultimoAdiamento < 60000 ? 0 : 25000 }); }      // acabou de adiar um: não gasta outra espera, só tenta e segue
+        catch (e: any) {
+          if (e?.codigo !== "FORTE_OCUPADO") throw e;
+          adiados.push(lote); ultimoAdiamento = Date.now();
+          job.etapa = `Modelo completo do Google ocupado: o lote ${lote.i + 1} ficou para depois; seguindo para o próximo…`; await this.gravar(job);
+        }
+      }
+      // volta nos adiados: até 6 rodadas, cada uma com pausa curta (barra que diminui); por último, aceita qualquer modelo para não travar o processo
+      for (let rodada = 1; adiados.length && !this.sinais.has(id); rodada++) {
+        const ultima = rodada > 6;
+        if (!ultima) {
+          const PAUSA = 20000; job.etapa = `Voltando aos ${adiados.length} trecho(s) adiados (rodada ${rodada}/6)…`; job.espera = { ate: Date.now() + PAUSA, total: PAUSA }; this.avisar();
+          await dorme(PAUSA); job.espera = undefined; this.avisar();
+        } else { job.etapa = `Concluindo os ${adiados.length} trecho(s) restantes com o modelo disponível…`; this.avisar(); }
+        if (this.sinais.has(id)) break;
+        for (const lote of [...adiados]) {
+          if (this.sinais.has(id)) break;
+          await this.aguardarVez(id); if (this.sinais.has(id)) break;
+          job.etapa = `Lendo o lote ${lote.i + 1} de ${job.lotes.length} (${lote.rotulo})…`; await this.gravar(job);
+          try { await lerLote(lote, { podeAdiar: !ultima, esperaMs: 15000 }); adiados.splice(adiados.indexOf(lote), 1); }
+          catch (e: any) { if (e?.codigo !== "FORTE_OCUPADO") throw e; break; }      // continua ocupado: espera a próxima rodada
+        }
       }
       if (this.sinais.has(id)) return this.encerrarPorSinal(job);
       // 2) fusão em níveis até caber na minuta final
