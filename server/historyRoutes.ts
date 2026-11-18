@@ -163,6 +163,62 @@ historyRouter.get("/assinatura", rota(async (req, res, u) => {
   res.json({ n: Number(rows[0].n), ultima: Number(rows[0].ultima) });
 }));
 
+/** SUPER ADMIN — PROCESSOS PERDIDOS: procura nas tabelas (todos os gabinetes e unidades) atos que não aparecem no Histórico, mostra como estão gravados e aponta o que está irregular. */
+export const resumoDoRegistro = (r: any) => {
+  let d: any = {}; try { d = JSON.parse(r.data); } catch { /* registro sem JSON legível */ }
+  const min = d?.result?.minute || {};
+  const problemas: string[] = [];
+  if (!r.idx_existe) problemas.push("Não tem linha no índice da lista: não aparece em nenhuma listagem do Histórico.");
+  else if (String(r.idx_unit || "") !== String(r.unit_id || "")) problemas.push(`A unidade do índice (“${r.idx_unit}”) difere da unidade do registro (“${r.unit_id}”).`);
+  if (d?.tenant && tenantCanonico(String(d.tenant)) !== r.tenant) problemas.push(`O gabinete gravado dentro do ato (“${d.tenant}”) difere do gabinete do registro (“${r.tenant}”).`);
+  if (d?.unitId && String(d.unitId) !== String(r.unit_id)) problemas.push(`A unidade gravada dentro do ato (“${d.unitId}”) difere da unidade do registro (“${r.unit_id}”).`);
+  if (!r.created_by || r.created_by === "anonymous") problemas.push("Sem autor registrado (aparece só em “Sem autor”).");
+  if (!min?.title && !d?.promptTitle) problemas.push("Sem título de minuta.");
+  return {
+    tenant: r.tenant, id: r.id, unitId: r.unit_id, criadoPor: r.created_by, data: Number(r.date) || 0, atualizadoEm: Number(r.atualizado_em) || 0,
+    noIndice: !!r.idx_existe, unitIdNoIndice: r.idx_unit ?? null,
+    processo: d.processNumber || min.processNumber || "", titulo: String(min.title || d.promptTitle || "").slice(0, 160), vara: String(min.judicialUnit || "").slice(0, 160),
+    autorNome: String(d.creatorName || "").slice(0, 120), autorEmail: String(d.creatorEmail || "").slice(0, 160), lancado: d.lancadoProjudi ?? null, problemas,
+  };
+};
+historyRouter.get("/perdidos", rota(async (req, res, u) => {
+  if (!u.superAdmin) throw Object.assign(new Error("Somente o Super Administrador procura processos perdidos."), { status: 403 });
+  const q = String(req.query.q || "").trim().slice(0, 120), dig = digitosDoProcesso(q);
+  if (q.length < 3) throw Object.assign(new Error("Digite ao menos 3 caracteres: trecho do número do processo, e-mail ou nome do autor, ou o código do ato."), { status: 400 });
+  const cond = ["h.id LIKE ?", "h.created_by LIKE ?", "h.data LIKE ?"], args: any[] = [`%${q}%`, `%${q}%`, `%${q}%`];
+  if (dig.length >= 5) { cond.push("h.numero_limpo LIKE ?"); args.push(`%${dig}%`); }
+  const [rows] = await banco().query<any[]>(
+    `SELECT h.tenant, h.id, h.unit_id, h.created_by, h.date, h.atualizado_em, h.data,
+            (SELECT COUNT(*) FROM history_index i WHERE i.tenant=h.tenant AND i.id=h.id) AS idx_existe,
+            (SELECT i.unit_id FROM history_index i WHERE i.tenant=h.tenant AND i.id=h.id LIMIT 1) AS idx_unit
+       FROM history h WHERE ${cond.join(" OR ")} ORDER BY h.date DESC LIMIT 40`, args);
+  res.json({ itens: rows.map(resumoDoRegistro) });
+}));
+
+/** SUPER ADMIN — corrige onde o ato está gravado: gabinete, unidade, vara e autor. Regrava o ato e o índice juntos; se o gabinete muda, só apaga o original depois de gravar o novo. */
+historyRouter.post("/perdidos/corrigir", rota(async (req, res, u) => {
+  if (!u.superAdmin) throw Object.assign(new Error("Somente o Super Administrador corrige processos perdidos."), { status: 403 });
+  const b = req.body || {}, texto = (v: any, n: number) => String(v ?? "").trim().slice(0, n);
+  const origem = tenantCanonico(texto(b.tenant, 64)), destino = tenantCanonico(texto(b.paraTenant || b.tenant, 64)), id = texto(b.id, 128), unitId = texto(b.unitId, 64);
+  if (!origem || !id) throw Object.assign(new Error("Informe o gabinete e o código do ato."), { status: 400 });
+  if (!destino) throw Object.assign(new Error("Informe o gabinete de destino."), { status: 400 });
+  if (!/^[\w.\-]+$/.test(unitId)) throw Object.assign(new Error("Informe o código da unidade (letras, números, _ ou -)."), { status: 400 });
+  const [rows] = await banco().query<any[]>("SELECT data FROM history WHERE tenant=? AND id=?", [origem, id]);
+  if (!rows.length) throw Object.assign(new Error("Ato não encontrado nesse gabinete."), { status: 404 });
+  if (destino !== origem) { const [ja] = await banco().query<any[]>("SELECT 1 FROM history WHERE tenant=? AND id=?", [destino, id]); if (ja.length) throw Object.assign(new Error("O gabinete de destino já tem um ato com esse mesmo código."), { status: 409 }); }
+  let ato: any; try { ato = JSON.parse(rows[0].data); } catch { throw Object.assign(new Error("O registro está ilegível (JSON inválido): não dá para corrigir por aqui."), { status: 422 }); }
+  const antes = { tenant: origem, unitId: String(ato.unitId || "") };
+  ato.tenant = destino; ato.unitId = unitId; ato.id = id;
+  if (texto(b.judicialUnit, 160) && ato.result?.minute) ato.result = { ...ato.result, minute: { ...ato.result.minute, judicialUnit: texto(b.judicialUnit, 160) } };
+  if (texto(b.createdBy, 128)) ato.createdBy = texto(b.createdBy, 128);
+  if (texto(b.creatorEmail, 160)) ato.creatorEmail = texto(b.creatorEmail, 160).toLowerCase();
+  if (texto(b.creatorName, 120)) ato.creatorName = texto(b.creatorName, 120);
+  await gravarAtoDoTenant(destino, limparNaoDefinidos(ato));      // grava ato E índice no destino
+  if (destino !== origem) await apagarAtoDoTenant(origem, id, "transferencia", u.email);      // só depois de gravar o novo
+  await anotarEvento(destino, destino !== origem ? "gabinete" : "unidade", { atoId: id, processo: String(ato.processNumber || ""), ator: u.email, dono: String(ato.creatorEmail || ""), de: `${antes.tenant}/${antes.unitId}`, para: `${destino}/${unitId}` });
+  res.json({ ok: true, tenant: destino, unitId });
+}));
+
 /** Dono e unidade do ato (confere gravação e permissão de excluir sem baixar a minuta). */
 historyRouter.get("/:id/meta", rota(async (req, res, u) => {
   const [rows] = await banco().query<any[]>("SELECT unit_id, created_by FROM history_index WHERE tenant=? AND id=?", [u.tenant, req.params.id]);

@@ -232,3 +232,8 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 - Causa: o ato do Gigante guardou a unidade do INÍCIO do job (Montes Claros, do gabinete do Dr. Rafael), mas o `PUT` usou o gabinete ATIVO NA HORA de gravar (`globalTenantId`, que o super admin tinha trocado) → ato no gabinete do Dr. José Cássio com unidade de outro gabinete.
 - Correção: `SavedAnalysis.tenantId` = gabinete em que o ato foi iniciado (gigante `cfg.tenantId`, análise normal, análise retomada via `AnalisePendente.tenantId`). `saveHistoryToDb` grava no `tenantId` do ato (header e campo `tenant`) e na unidade do ato; `conferirAtoNaNuvem(id, tenant)` confere no mesmo gabinete.
 - Layout: linha "Gabinete ativo: <nome>" abaixo da unidade (ProcessUnitSelector) e no cabeçalho.
+
+## Painel Super Admin → aba Operação → "Processos perdidos" (commit local, aguardando "Pode publicar")
+- Procura em TODOS os gabinetes/unidades (tabela `history`, não só o índice) por trecho do nº do processo, e-mail/nome do autor ou código do ato; mostra gabinete, unidade, autor, vara e as irregularidades (sem linha no índice, unidade do índice/ato diferente, gabinete dentro do ato diferente, sem autor).
+- "Corrigir onde está gravado": gabinete, unidade (lista ou código), vara, autor. `POST /api/db/history/perdidos/corrigir` (só super admin) regrava ato + índice juntos; se o gabinete muda, só apaga o original depois de gravar o novo; anota evento. Rotas `GET /perdidos` e `POST /perdidos/corrigir` ficam ANTES de `/:id`.
+- Teste: `testes/teste_perdidos_resumo.ts` (resumo das irregularidades). Sem MySQL local, as rotas em si não foram exercitadas.
