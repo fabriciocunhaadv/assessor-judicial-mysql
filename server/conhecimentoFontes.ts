@@ -16,10 +16,6 @@ export function federalConhecida(tipo: string, numero: string, ano: number): { a
   if (FEDERAIS_ANO_CORRIGIVEL.has(`${t}|${n}`)) { const achou = [...CONJ.keys()].find((x) => x.startsWith(`${t}|${n}|`)); if (achou) return { ano: anoDe(achou) }; }
   void k; return null;
 }
-/** Endereços oficiais (Legisla Goiás, Casa Civil) já conferidos pelo Super Admin; entram no campo "link" da fonte. */
-export const LINKS_CONHECIDOS: Record<string, string> = {
-  "lei|11651|1991": "https://legisla.casacivil.go.gov.br/pesquisa_legislacao/86608/lei-ordinaria-11651",
-  "lei complementar|58|2006": "https://legisla.casacivil.go.gov.br/pesquisa_legislacao/86178/lei-complementar-58",
-  "lei|21268|2022": "https://legisla.casacivil.go.gov.br/pesquisa_legislacao/105777/lei-ordinaria-21268",
-};
+/** Endereços oficiais já CONFERIDOS (campo "link" da fonte). Vazio de propósito: os códigos do Legisla Goiás passados à mão estavam errados (o 86608 é a Lei 10.158/1987, não a 11.651/1991); o coletor agora acha o código sozinho pela busca do Legisla. */
+export const LINKS_CONHECIDOS: Record<string, string> = {};
 export const linkConhecido = (tipo: string, numero: string, ano: number): string | undefined => LINKS_CONHECIDOS[`${String(tipo).toLowerCase()}|${num(numero)}|${Number(ano)}`];

@@ -7,7 +7,7 @@ ok(federalConhecida("lei", "12965", 1996) === null, "mesmo número em outro ano 
 ok(federalConhecida("lei", "9099", 1996)?.ano === 1995 && federalConhecida("lei", "13709", 2019)?.ano === 2018, "ano errado nas citações é corrigido (9.099 e LGPD)");
 ok(federalConhecida("lei", "11651", 1991) === null, "Código Tributário de Goiás não é federal");
 ok(elegivelGoias({ tipo: "lei", numero: "6404", ano: 1976, esfera: "indefinida" }) === false && elegivelGoias({ tipo: "lei", numero: "14376", ano: 2002, esfera: "indefinida" }) === true, "federal conhecida sai da busca de Goiás; as outras continuam");
-ok(linkConhecido("lei", "11651", 1991)?.includes("/86608/") && linkConhecido("lei complementar", "58", 2006)?.includes("/86178/") && linkConhecido("lei", "21268", 2022)?.includes("/105777/"), "links oficiais conferidos");
+ok(linkConhecido("lei", "11651", 1991) === undefined, "sem links pré-preenchidos (os códigos passados à mão estavam errados; o coletor acha pelo número)");
 ok(candidatosPorLink("https://legisla.casacivil.go.gov.br/pesquisa_legislacao/86608/lei-ordinaria-11651")[0] === "https://legisla.casacivil.go.gov.br/api/v2/pesquisa/legislacoes/86608/pdf", "link do Legisla vira a API do PDF");
 ok(candidatosPorLink("https://evil.com/x.pdf").length === 0 && candidatosPorLink("http://goias.gov.br/x").length === 0, "link de site fora da lista é ignorado");
 const pdf = Buffer.from("%PDF-1.4 fake");
@@ -16,5 +16,5 @@ const urls: string[] = [];
 const r = await coletarLeiGoias({ tipo: "lei", numero: "11651", ano: 1991, link: "https://legisla.casacivil.go.gov.br/pesquisa_legislacao/86608/lei-ordinaria-11651" }, async (u) => { urls.push(u); return { status: 200, buf: pdf, contentType: "application/pdf" }; }, async () => texto);
 ok(r.ok && r.formato === "texto" && urls.length === 1 && urls[0].endsWith("/86608/pdf") && r.buf!.toString().includes("Art. 1º"), "com o link informado: baixa o PDF do Legisla, lê o texto e aceita");
 const r2 = await coletarLeiGoias({ tipo: "lei", numero: "11651", ano: 1991, link: "https://legisla.casacivil.go.gov.br/pesquisa_legislacao/1/lei-ordinaria-9" }, async () => ({ status: 200, buf: pdf, contentType: "application/pdf" }), async () => "LEI Nº 99, DE 1 DE JANEIRO DE 1991\nArt. 1º x");
-ok(!r2.ok && /não da/.test(r2.detalhes.join("|")), "PDF de outra lei é recusado");
+ok(!r2.ok && /não do/.test(r2.detalhes.join("|")), "PDF de outra lei é recusado");
 console.log(falhas ? `FALHAS: ${falhas}` : "\nTUDO OK"); process.exit(falhas ? 1 : 0);
