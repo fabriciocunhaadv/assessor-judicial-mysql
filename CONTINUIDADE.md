@@ -237,3 +237,9 @@ Pedido do usuário: os botões recolhidos no topo da minuta ("Prompt injection",
 - Procura em TODOS os gabinetes/unidades (tabela `history`, não só o índice) por trecho do nº do processo, e-mail/nome do autor ou código do ato; mostra gabinete, unidade, autor, vara e as irregularidades (sem linha no índice, unidade do índice/ato diferente, gabinete dentro do ato diferente, sem autor).
 - "Corrigir onde está gravado": gabinete, unidade (lista ou código), vara, autor. `POST /api/db/history/perdidos/corrigir` (só super admin) regrava ato + índice juntos; se o gabinete muda, só apaga o original depois de gravar o novo; anota evento. Rotas `GET /perdidos` e `POST /perdidos/corrigir` ficam ANTES de `/:id`.
 - Teste: `testes/teste_perdidos_resumo.ts` (resumo das irregularidades). Sem MySQL local, as rotas em si não foram exercitadas.
+
+## Legislação: Novo Portal da Legislação como fonte PRINCIPAL, Planalto como reserva (commit local, aguardando "Pode publicar")
+- O portal novo (`portaldalegislacao.presidencia.gov.br`) usa os MESMOS caminhos `ccivil_03/...` do Planalto (visto no HTML enviado pelo usuário). `src/utils/espelhoLegislacao.ts`: `enderecosDaLei(url)` = [portal novo, Planalto]; disjuntor (3 falhas seguidas de rede/5xx → 10 min de lado; 404 não conta).
+- Usado em `legislacaoPlanalto.ts` (`baixarLinhas`) e `server/fontesOficiais.ts` (`baixar`: cai no Planalto se vier não-200, <2 KB ou HTML sem "Art. N"). Host liberado em `HOSTS_BUSCA`. Env: `PORTAL_LEGISLACAO_BASE` ("off" desliga); com `PLANALTO_BASE` de teste o portal novo fica desligado.
+- NÃO consegui abrir o portal daqui (rede da sessão bloqueia o domínio no WebFetch/curl): o formato real das páginas do portal novo não foi conferido ao vivo. Se o formato diferir, a conferência de "poucas linhas"/"sem Art." faz o Planalto responder. Conferir nos logs do servidor (`[Legislação] ... localizada em`) depois de publicar.
+- Teste: `testes/servidor/rodar_portal_legislacao.mjs`.

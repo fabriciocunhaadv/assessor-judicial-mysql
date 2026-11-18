@@ -16,7 +16,7 @@ export interface FontePendente { id: string; chave: string; tipo: string; esfera
 /** Sites onde a extensão procura leis estaduais e municipais (o Super Admin edita a lista). Só endereços https de sites que a extensão pode abrir (veja `HOSTS_BUSCA`). */
 export interface FonteDeBusca { id: string; nome: string; esfera: "estadual" | "municipal"; ente: string; url: string; ativa: boolean }
 /** Os mesmos sites que o manifest da extensão declara como acesso opcional: a extensão não consegue abrir outros, então a lista não aceita outros. */
-export const HOSTS_BUSCA = ["acessoainformacao.montesclarosdegoias.go.leg.br", "leisestaduais.com.br", "leis.org", "www.lexml.gov.br", "normas.leg.br", "goias.gov.br", "www.planalto.gov.br", "legis.senado.leg.br", "www2.camara.leg.br"];
+export const HOSTS_BUSCA = ["acessoainformacao.montesclarosdegoias.go.leg.br", "leisestaduais.com.br", "leis.org", "www.lexml.gov.br", "normas.leg.br", "goias.gov.br", "portaldalegislacao.presidencia.gov.br", "www.planalto.gov.br", "legis.senado.leg.br", "www2.camara.leg.br"];
 const FONTES_PADRAO: FonteDeBusca[] = [
   { id: "mcgo-camara", nome: "Câmara de Montes Claros de Goiás (leis municipais)", esfera: "municipal", ente: "Montes Claros de Goiás", url: "https://acessoainformacao.montesclarosdegoias.go.leg.br/cidadao/legislacao/leis", ativa: true },
   { id: "leisestaduais-go", nome: "Leis Estaduais · Goiás", esfera: "estadual", ente: "Goiás", url: "https://leisestaduais.com.br/go", ativa: true },

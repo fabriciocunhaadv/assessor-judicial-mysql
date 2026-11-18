@@ -1,6 +1,7 @@
 // FONTES OFICIAIS: (1) teste de acesso do servidor aos sites dos tribunais e do Planalto; (2) importação das LEIS do Planalto para o MySQL, com a marca de cada artigo
 // (vigente, revogado ou vetado); (3) conferência das citações da minuta contra essa base, para não citar artigo revogado/vetado/inexistente.
 // Só o Super Admin dispara teste e importação. Os endereços são fixos (lista abaixo): não há URL digitada pelo usuário.
+import { enderecosDaLei, ehPortalNovo, registrarPortalNovo } from "../src/utils/espelhoLegislacao";
 import express from "express";
 import * as he from "he";
 import { banco } from "./historyRoutes";
@@ -50,7 +51,7 @@ const CPC_1973 = /\bCPC\s*\/?\s*(?:de\s*)?(?:19)?73\b|C[óo]digo de Processo Civ
 
 // ---------- download e leitura ----------
 const UA = "Mozilla/5.0 (compatible; AssessorJudicial/1.0; +https://judicial-mysql.assessor.net.br)";
-export async function baixar(url: string, timeoutMs = 30000, maxBytes = 25_000_000): Promise<{ status: number; finalUrl: string; contentType: string; buf: Buffer; ms: number }> {
+async function baixarUm(url: string, timeoutMs: number, maxBytes: number): Promise<{ status: number; finalUrl: string; contentType: string; buf: Buffer; ms: number }> {
   const t0 = Date.now(), ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
     const r = await fetch(url, { signal: ctl.signal, redirect: "follow", headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.5", "accept-language": "pt-BR,pt;q=0.9" } });
@@ -58,6 +59,23 @@ export async function baixar(url: string, timeoutMs = 30000, maxBytes = 25_000_0
     if (ab.byteLength > maxBytes) throw new Error(`arquivo grande demais (${Math.round(ab.byteLength / 1e6)} MB)`);
     return { status: r.status, finalUrl: r.url, contentType: r.headers.get("content-type") || "", buf: Buffer.from(ab), ms: Date.now() - t0 };
   } finally { clearTimeout(t); }
+}
+/** Baixa a página. Endereços do Planalto vão primeiro ao Novo Portal da Legislação (fonte principal); se ele falhar, não tiver a lei ou vier vazio, o Planalto responde. */
+export async function baixar(url: string, timeoutMs = 30000, maxBytes = 25_000_000): Promise<{ status: number; finalUrl: string; contentType: string; buf: Buffer; ms: number }> {
+  const alvos = enderecosDaLei(url);
+  for (let i = 0; i < alvos.length; i++) {
+    const portal = ehPortalNovo(alvos[i]), ultimo = i === alvos.length - 1;
+    try {
+      const r = await baixarUm(alvos[i], portal ? Math.min(timeoutMs, 10000) : timeoutMs, maxBytes);
+      if (portal) registrarPortalNovo(r.status === 200 && r.buf.length > 2000 ? "ok" : r.status >= 500 ? "falha" : "naoachou");
+      if (portal && !ultimo && (r.status !== 200 || r.buf.length <= 2000 || (/html/i.test(r.contentType) && !/\bArt(?:igo|\.)?\s*\d/i.test(r.buf.toString("latin1"))))) continue;      // sem a lei no portal novo: tenta o Planalto
+      return r;
+    } catch (e) {
+      if (portal) registrarPortalNovo("falha");
+      if (ultimo) throw e;
+    }
+  }
+  return baixarUm(url, timeoutMs, maxBytes);
 }
 /** As páginas do Planalto costumam vir em windows-1252: usa o charset do cabeçalho ou da página. */
 export function decodificar(buf: Buffer, contentType = ""): string {

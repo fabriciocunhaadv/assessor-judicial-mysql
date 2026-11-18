@@ -1,3 +1,4 @@
+import { enderecosDaLei, ehPortalNovo, registrarPortalNovo } from "./espelhoLegislacao";
 import { detectApplicableLegalFrameworks, LegalFramework } from "../data/legalTaxonomy";
 import { normalizarLinhaLei } from "./separarDispositivos";
 // CONSULTA À LEGISLAÇÃO OFICIAL (planalto.gov.br): os artigos citados nos autos e na minuta são buscados no texto oficial e entram no prompt, para a IA conferir número e redação
@@ -196,7 +197,6 @@ export const chaveDoDiploma = (d: { url: string }) => (d.url.split("/").pop() ||
 const cache = new Map<string, { em: number; linhas: string[]; url?: string }>();
 const negativos = new Map<string, number>();      // lei que não achei: não fica tentando de novo por 30 min
 const VALIDADE_MS = 12 * 3600_000, NEGATIVO_MS = 30 * 60_000;
-const baseUrl = (u: string) => u.replace("https://www.planalto.gov.br/", process.env.PLANALTO_BASE || "https://www.planalto.gov.br/");
 
 /** Bytes da página -> texto. Algumas páginas do Planalto estão gravadas em UTF-16 (um byte zero entre as letras); lidas como Windows-1252 viravam "\\0A\\0r\\0t". */
 export function decodificarPagina(buf: ArrayBuffer | Uint8Array, contentType = ""): string {
@@ -214,17 +214,25 @@ export function decodificarPagina(buf: ArrayBuffer | Uint8Array, contentType = "
 
 const motivoFalha = new Map<string, string>();      // url -> por que não consegui (para o teste manual)
 async function baixarLinhas(url: string, timeoutMs: number): Promise<string[] | null> {
-  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), timeoutMs);
-  try {
-    const r = await fetch(baseUrl(url), { signal: ctl.signal, headers: { "User-Agent": "Mozilla/5.0 (compatible; AssessorJudicial/1.0)", "Accept": "text/html" } });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const buf = await r.arrayBuffer();
-    const html = decodificarPagina(buf, r.headers.get("content-type") || "");
-    const linhas = htmlParaLinhas(html);
-    if (linhas.length < 20) { motivoFalha.set(url, `página com poucas linhas de texto (${linhas.length}; ${buf.byteLength} bytes)`); return null; }
-    motivoFalha.delete(url); return linhas;
-  } catch (e: any) { motivoFalha.set(url, e?.name === "AbortError" ? "tempo esgotado" : String(e?.message || e).slice(0, 120)); return null; }
-  finally { clearTimeout(to); }
+  // 1º o Novo Portal da Legislação (fonte principal); se não responder, não tiver a lei ou vier página vazia, o Planalto (reserva)
+  for (const alvo of enderecosDaLei(url)) {
+    const portal = ehPortalNovo(alvo);
+    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), portal ? Math.min(timeoutMs, 8000) : timeoutMs);
+    try {
+      const r = await fetch(alvo, { signal: ctl.signal, headers: { "User-Agent": "Mozilla/5.0 (compatible; AssessorJudicial/1.0)", "Accept": "text/html" } });
+      if (!r.ok) { if (portal) registrarPortalNovo(r.status === 404 ? "naoachou" : "falha"); throw new Error("HTTP " + r.status); }
+      const buf = await r.arrayBuffer();
+      const html = decodificarPagina(buf, r.headers.get("content-type") || "");
+      const linhas = htmlParaLinhas(html);
+      if (linhas.length < 20) { if (portal) registrarPortalNovo("naoachou"); motivoFalha.set(url, `página com poucas linhas de texto (${linhas.length}; ${buf.byteLength} bytes)`); continue; }
+      if (portal) registrarPortalNovo("ok");
+      motivoFalha.delete(url); return linhas;
+    } catch (e: any) {
+      if (portal && !/^HTTP /.test(String(e?.message))) registrarPortalNovo("falha");
+      motivoFalha.set(url, e?.name === "AbortError" ? "tempo esgotado" : String(e?.message || e).slice(0, 120));
+    } finally { clearTimeout(to); }
+  }
+  return null;
 }
 const guardar = (id: string, linhas: string[], url?: string) => { if (cache.size >= 40) cache.delete(cache.keys().next().value as string); cache.set(id, { em: Date.now(), linhas, url }); };
 
