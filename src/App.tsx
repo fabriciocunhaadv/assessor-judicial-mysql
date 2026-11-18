@@ -398,6 +398,10 @@ export default function App() {
   const [selectedActType, setSelectedActType] = useState<"auto" | "sentenca" | "decisao" | "despacho" | "embargos">("auto");
 
   useEffect(() => { try { document.documentElement.dataset.historicoSuporte = "1"; } catch { /* sem dataset */ } }, []);
+  // Perfil de quem está logado, para a extensão (página "Inicie aqui") decidir se mostra a Lupa do Magistrado: só aparece para magistrado. Sem login, o atributo some.
+  useEffect(() => {
+    try { const d = document.documentElement.dataset; if (user?.uid) d.assessorPerfil = isJudge ? "magistrado" : "assessor"; else delete d.assessorPerfil; } catch { /* sem dataset */ }
+  }, [user?.uid, isJudge]);
 
   useEffect(() => {
     try {
