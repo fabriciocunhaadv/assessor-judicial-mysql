@@ -70,7 +70,8 @@ function citacoesEmBloco(t: string): string {
   return t.split(/\n[ \t]*\n/).map((b) => {
     if (/^\s*(?:>|#|\d{1,2}\.|[-*•])/.test(b)) return b;
     // 1) texto legal transcrito após dois-pontos: "...: Art. 55. A sentença ..."
-    let m = b.match(/^([\s\S]*?[:,]\s)((?:Art\.|Artigo|§|Parágrafo único)[^\n]{40,}?)$/);
+    // a citação só começa DEPOIS DE DOIS-PONTOS ("...dispõe: Art. 156. ..."); trecho que vem depois de vírgula é parte da frase, nunca citação
+    let m = b.match(/^([\s\S]*?:\s)((?:Art\.|Artigo|§|Parágrafo único)[^\n]{40,}?)$/);
     if (m && /^[^"“]*$/.test(m[2].slice(0, 6)) && m[1].length > 30) return `${m[1].trim()}\n\n> *${m[2].trim().replace(/^\*+|\*+$/g, "")}*`;
     // 2) transcrição entre aspas longa (80+ caracteres) após dois-pontos
     m = b.match(/^([\s\S]*?:\s)(["“][^"”\n]{80,}["”])([.;]?[\s\S]*)$/);

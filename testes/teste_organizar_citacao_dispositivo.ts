@@ -13,3 +13,11 @@ assert.ok(o(q, "relatorio").includes("> *\"a implantação"), "aspas longas em b
 const ok = "> *Art. 1º Texto.*\n\nParágrafo comum.";
 assert.strictEqual(o(ok, "fundamentacao"), ok);
 console.log("ok");
+// a citação só vale depois de dois-pontos; depois de vírgula é parte da frase (exemplos reais enviados pelo usuário)
+const v1 = "O regime inicial de cumprimento de pena será o aberto, nos termos do art. 33, § 2º, alínea 'c', do Código Penal. Presentes os requisitos do art. 44 do Código Penal, substitui-se a pena privativa de liberdade por uma restritiva de direitos, consistente em prestação de serviços à comunidade.";
+assert.ok(!/(^|\n)>/.test(o(v1, "fundamentacao")), "vírgula antes de § não vira citação");
+const v2 = "Ademais, a parte autora, enquadrada como Microempresa - ME (Mov. 1, Arq. 5, Pág. 1), possui legitimidade ativa para litigar perante o sistema dos Juizados Especiais Cíveis, nos exatos termos do art. 8º, § 1º, inciso II, da Lei nº 9.099/1995. A representação processual encontra-se regida por meio de instrumento procuratório outorgado por sua sócia-administradora (Mov. 1, Arq. 2).";
+assert.ok(!/(^|\n)>/.test(o(v2, "fundamentacao")), "citação cortada na vírgula não é mais gerada");
+const v3 = "A prova da alegação incumbirá a quem a fizer, conforme o art. 156 do CPP, que dispõe: Art. 156. A prova da alegação incumbirá a quem a fizer, sendo, porém, facultado ao juiz de ofício: I - ordenar, mesmo antes de iniciada a ação penal, a produção antecipada de provas.";
+assert.ok(o(v3, "fundamentacao").includes("\n\n> *Art. 156."), "depois de dois-pontos continua virando citação");
+console.log("ok citação só após dois-pontos");
