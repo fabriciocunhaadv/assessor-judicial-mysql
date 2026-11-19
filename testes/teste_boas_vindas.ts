@@ -1,0 +1,11 @@
+import assert from "node:assert";
+import { mensagemBoasVindas, linkEmailBoasVindas } from "../src/utils/mensagemBoasVindas";
+const m = mensagemBoasVindas("Fábio Bergamin Capela", "Fabricio Alves da Cunha");
+assert.ok(m.corpo.startsWith("Olá, Fábio!"), "usa o primeiro nome");
+assert.ok(/nome completo e função/.test(m.corpo) && /gabinete\/vara e a comarca/.test(m.corpo) && /telefone ou WhatsApp/.test(m.corpo), "pede quem é, gabinete e telefone");
+assert.ok(/Um abraço,\nFabricio Alves da Cunha$/.test(m.corpo), "assina com o nome de quem envia");
+const l = linkEmailBoasVindas("fabiocapela@yahoo.com.br", "Fábio", "Admin");
+assert.ok(l.startsWith("mailto:fabiocapela@yahoo.com.br?subject="), l.slice(0, 60));
+assert.ok(l.length < 2000, "link curto o bastante para abrir em qualquer programa de e-mail (" + l.length + ")");
+assert.ok(mensagemBoasVindas("", "").corpo.startsWith("Olá!") && /Administração do Assessor Judicial$/.test(mensagemBoasVindas("", "").corpo), "sem nomes, texto neutro");
+console.log("ok boas-vindas", l.length);

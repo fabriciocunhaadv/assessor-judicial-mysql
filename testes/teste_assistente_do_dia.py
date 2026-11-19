@@ -56,10 +56,11 @@ try:
         pg.click("[data-testid=assistente-acao-ext-painel]")
         ok(pg.evaluate("window.__cliques") == ["chrome-extension://abcdefghijklmnopabcdefghijklmnop/painel.html|_blank"] and pg.locator("[data-testid=assistente-pilula]").count() == 1, "extensão nova: abre o painel em aba nova e o assistente vira pílula")
         # extensão com o “Inicie aqui” (4.0.2+): “o painel da extensão” é o SIMPLIFICADO; 4.0.1 e anteriores só têm o completo
-        for versao, pagina_esperada in (("4.0.1", "painel.html"), ("4.0.2", "iniciar.html"), ("4.0.10", "iniciar.html")):
-            pg.evaluate(f"document.documentElement.dataset.assessorExtensao = '{versao}'; window.__cliques = []")
+        # o Studio só abre o “Inicie aqui” quando a extensão o liberou para o site (recurso "inicie-web", 5.0.0+); antes disso o navegador bloquearia a aba, então abre o painel completo
+        for versao, recursos, pagina_esperada in (("4.0.1", "", "painel.html"), ("4.0.2", "pdf", "painel.html"), ("4.0.10", "pdf,sv", "painel.html"), ("5.0.0", "pdf,sv,inicie-web", "iniciar.html")):
+            pg.evaluate(f"document.documentElement.dataset.assessorExtensao = '{versao}'; document.documentElement.dataset.assessorExtensaoRecursos = '{recursos}'; window.__cliques = []")
             pg.click("[data-testid=assistente-pilula]"); pg.wait_for_selector("[data-testid=assistente-saudacao]"); pg.click("[data-testid=assistente-op-fila]")
-            if versao == "4.0.2": ok("Inicie aqui" in pg.locator("[data-testid=assistente-acao-ext-painel]").inner_text(), "o botão da fila chama-se “Abrir o Inicie aqui da extensão”")
+            if versao == "5.0.0": ok("Inicie aqui" in pg.locator("[data-testid=assistente-acao-ext-painel]").inner_text(), "o botão da fila chama-se “Abrir o Inicie aqui da extensão”")
             pg.click("[data-testid=assistente-acao-ext-painel]")
             ok(pg.evaluate("window.__cliques") == [f"chrome-extension://abcdefghijklmnopabcdefghijklmnop/{pagina_esperada}|_blank"], f"extensão {versao}: o painel da extensão abre {pagina_esperada}")
         pg.click("[data-testid=assistente-pilula]"); pg.wait_for_selector("[data-testid=assistente-saudacao]")

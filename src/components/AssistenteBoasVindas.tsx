@@ -7,7 +7,7 @@ import { getApiHeaders } from "../utils/apiKeyManager";
 import { useAuth } from "../lib/AuthContext";
 import { URL_EXTENSAO_CHROME_STORE } from "../config/extensao";
 import { extensaoInstalada } from "./AvisoExtensao";
-import { abrirPaginaDaExtensao, extensaoTemInicieAqui, paginaDoPainelSimples } from "../utils/abrirPaginaExtensao";
+import { abrirPaginaDaExtensao, extensaoTemInicieAqui, paginaDoPainelSimples, abrirExtensaoOuLoja } from "../utils/abrirPaginaExtensao";
 
 export type AcaoAssistente = "ext-painel" | "ext-painel-completo" | "ext-pauta" | "analisar" | "historico" | "lupa" | "mesa" | "turbo" | "gigantes" | "teses" | "manual" | "guia";
 type Perfil = "assessor" | "magistrado";
@@ -289,8 +289,8 @@ export const AssistenteBoasVindas: React.FC<Props> = ({ aoAcao }) => {
 
       <div className="px-6 py-2 border-t border-slate-100 text-[12px] shrink-0 bg-slate-50 flex items-center gap-3" data-testid="assistente-extensao">
         {versaoExt
-          ? <span className="text-emerald-700">✔ Extensão instalada (versão {versaoExt})</span>
-          : <span className="text-amber-800">⚠ Extensão não detectada. <a href={URL_EXTENSAO_CHROME_STORE} target="_blank" rel="noreferrer" className="underline font-bold" data-testid="assistente-instalar">Instalar</a></span>}
+          ? <span className="text-emerald-700">✔ Extensão instalada (versão {versaoExt}) · <button type="button" onClick={() => abrirExtensaoOuLoja(URL_EXTENSAO_CHROME_STORE)} className="underline font-bold cursor-pointer" data-testid="assistente-abrir-extensao">Abrir a extensão</button></span>
+          : <span className="text-amber-800">⚠ Extensão não detectada. <a href={URL_EXTENSAO_CHROME_STORE} target="_blank" rel="noreferrer" onClick={(e) => { if (extensaoInstalada()) { e.preventDefault(); abrirExtensaoOuLoja(URL_EXTENSAO_CHROME_STORE); } }} className="underline font-bold" data-testid="assistente-instalar">Instalar</a></span>}
         <span className="ml-auto text-slate-500 max-sm:hidden">Aparece na 1ª vez do dia. Para abrir de novo: “O que fazer hoje?” no menu.</span>
       </div>
     </aside>

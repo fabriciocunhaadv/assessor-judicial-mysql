@@ -29,5 +29,16 @@ export function extensaoTemInicieAqui(): boolean {
     return true;
   } catch { return false; }
 }
+/** A extensão libera o “Inicie aqui” para o Studio abrir (4.0.11+: recurso "inicie-web"); antes disso o navegador bloqueia a aba e só o painel completo abre. */
+export function extensaoAbreInicieAqui(): boolean {
+  try { return String(document.documentElement.dataset.assessorExtensaoRecursos || "").split(",").includes("inicie-web"); } catch { return false; }
+}
+/** Link “Extensão do Chrome” do Studio: com a extensão instalada abre o “Inicie aqui” dela (o painel completo se for versão antiga); sem ela, a página de instalação. Devolve true se abriu a extensão. */
+export function abrirExtensaoOuLoja(urlLoja: string): boolean {
+  const r = abrirPaginaDaExtensao(extensaoAbreInicieAqui() ? "iniciar.html" : "painel.html");
+  if (r === "aberto") return true;
+  try { window.open(urlLoja, "_blank", "noopener"); } catch { /* sem pop-up */ }
+  return false;
+}
 /** Para onde o Studio manda quem quer “o painel da extensão”: o simplificado (“Inicie aqui”); em extensão antiga, o painel completo (único que ela tem). */
-export const paginaDoPainelSimples = (): PaginaDaExtensao => (extensaoTemInicieAqui() ? "iniciar.html" : "painel.html");
+export const paginaDoPainelSimples = (): PaginaDaExtensao => (extensaoAbreInicieAqui() ? "iniciar.html" : "painel.html");

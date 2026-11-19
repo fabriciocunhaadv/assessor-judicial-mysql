@@ -4,6 +4,8 @@ import toast from "react-hot-toast";
 import { chamarAuth } from "../lib/sessao";
 import { collection, getDocs } from "../lib/docstore";
 import { isPrimaryCabinet } from "../lib/firestoreUtils";
+import { useAuth } from "../lib/AuthContext";
+import { linkEmailBoasVindas, mensagemBoasVindas } from "../utils/mensagemBoasVindas";
 
 interface Cadastro { uid: string; name: string; email: string; status: string; role: string; tenantId: string; isJudge: boolean; superAdmin?: boolean; perfilImportado?: { tenantId?: string; role?: string; isJudge?: boolean; judgeTitle?: string }; createdAt: number }
 interface Gabinete { id: string; nome: string }
@@ -13,6 +15,7 @@ const canon = (t?: string) => (!t || t === "unassigned" || isPrimaryCabinet(t) ?
 
 /** Super admin: aprova ou recusa pedidos de cadastro (escolhendo o gabinete de cada pessoa), desativa, reativa e redefine senhas. */
 export const AprovacaoUsuarios: React.FC = () => {
+  const { userProfile } = useAuth();
   const [aberto, setAberto] = useState(false), [lista, setLista] = useState<Cadastro[]>([]), [ocupado, setOcupado] = useState(false);
   const [gabinetes, setGabinetes] = useState<Gabinete[]>([{ id: PRINCIPAL, nome: "Gabinete principal" }]);
   const [escolhido, setEscolhido] = useState<Record<string, string>>({});      // gabinete escolhido por usuário
@@ -80,6 +83,8 @@ export const AprovacaoUsuarios: React.FC = () => {
                       <button disabled={ocupado} className={`${btn} bg-[#673de6] text-white`} onClick={() => agir(c, "aprovar", { tenantId: gabDe(c), role: "user" })}>Aprovar</button>
                       <button disabled={ocupado} className={`${btn} bg-[#4a2bb3] text-white`} onClick={() => agir(c, "aprovar", { tenantId: gabDe(c), role: "admin" })}>Aprovar como admin</button>
                       <button disabled={ocupado} className={`${btn} bg-red-700 text-white`} onClick={() => agir(c, "recusar")}>Recusar</button>
+                      <a href={linkEmailBoasVindas(c.email, c.name, String((userProfile as any)?.name || ""))} data-testid="btn-boas-vindas" title="Abre um e-mail já escrito dando boas-vindas, apresentando o sistema e pedindo nome, gabinete e telefone. Você revisa e envia." className={`${btn} bg-white border border-[#673de6] text-[#673de6] no-underline inline-flex items-center`}>✉ Dar boas-vindas</a>
+                      <button type="button" data-testid="btn-copiar-boas-vindas" title="Copia o texto da mensagem para você colar no e-mail ou no WhatsApp" className={`${btn} bg-white border border-[#c9cbd8] text-[#5025d1]`} onClick={async () => { const m = mensagemBoasVindas(c.name, String((userProfile as any)?.name || "")); const txt = `Assunto: ${m.assunto}\n\n${m.corpo}`; try { await navigator.clipboard.writeText(txt); toast.success("Mensagem copiada."); } catch { toast.error("Não consegui copiar; use o botão ✉ Dar boas-vindas."); } }}>Copiar mensagem</button>
                     </>}
                     {(c.status === "desativado" || c.status === "recusado") && <button disabled={ocupado} className={`${btn} bg-[#673de6] text-white`} onClick={() => agir(c, "reativar", { tenantId: gabDe(c) })}>Reativar neste gabinete</button>}
                   </div>

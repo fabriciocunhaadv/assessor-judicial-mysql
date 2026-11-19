@@ -1,4 +1,5 @@
 import { useExtensaoStatus, URL_EXTENSAO_CHROME_STORE } from "./AvisoExtensao";
+import { abrirExtensaoOuLoja } from "../utils/abrirPaginaExtensao";
 import React, { useState, useEffect } from "react";
 import {
   Server,
@@ -433,8 +434,9 @@ export const Header: React.FC<HeaderProps> = ({
                     href={URL_EXTENSAO_CHROME_STORE}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={(e) => { if (extStatus === "instalada") { e.preventDefault(); abrirExtensaoOuLoja(URL_EXTENSAO_CHROME_STORE); } }}
                     className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-slate-100 font-semibold text-xs transition cursor-pointer text-left w-full relative"
-                    title="Abrir a página da extensão Conclusões Projudi na Chrome Web Store"
+                    title={extStatus === "instalada" ? "Abrir a extensão Conclusões Projudi instalada neste navegador (primeira página, “Inicie aqui”)" : "Abrir a página da extensão Conclusões Projudi na Chrome Web Store"}
                   >
                     <Puzzle className={`w-3.5 h-3.5 shrink-0 ${extStatus === "instalada" ? "text-emerald-400" : "text-amber-400"}`} />
                     <span>{extStatus === "instalada" ? "Extensão do Chrome (instalada)" : "Instalar extensão do Chrome"}</span>
@@ -1128,6 +1130,7 @@ export const Header: React.FC<HeaderProps> = ({
                       href={URL_EXTENSAO_CHROME_STORE}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => { if (extStatus === "instalada") { e.preventDefault(); abrirExtensaoOuLoja(URL_EXTENSAO_CHROME_STORE); } }}
                       className="w-full p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-between border border-slate-700 transition"
                     >
                       <div className="flex items-center gap-2.5">
